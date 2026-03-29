@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/types": ["../../packages/types/src/index.ts"],
+      "@shared/types/*": ["../../packages/types/src/*"],
+      "@shared/rest": ["../../packages/rest/src/index.ts"],
+      "@shared/rest/*": ["../../packages/rest/src/*"],
+      "@shared/database": ["../../packages/database/src/index.ts"],
+      "@shared/database/*": ["../../packages/database/src/*"],
+      "@shared/env": ["../../packages/env/src/index.ts"],
+      "@shared/env/*": ["../../packages/env/src/*"],
+      "@apps/queue": ["./src/index.ts"],
+      "@apps/queue/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

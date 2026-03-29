@@ -1,0 +1,15 @@
+node_modules
+**/.next
+**/.turbo
+**/dist
+**/coverage
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# Prisma generated artifacts
+packages/database/src/generated/
+packages/types/src/prisma-generated/client.ts

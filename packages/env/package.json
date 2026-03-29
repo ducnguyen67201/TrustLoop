@@ -1,0 +1,17 @@
+{
+  "name": "@shared/env",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsgo --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@shared/types",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsgo --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "prisma:sync": "tsx ./scripts/sync-prisma-types.ts"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  }
+}

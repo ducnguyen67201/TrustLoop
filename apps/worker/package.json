@@ -1,0 +1,18 @@
+{
+  "name": "@trustloop/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsgo --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@apps/queue": "*",
+    "@shared/env": "*",
+    "@temporalio/worker": "^1.13.0"
+  }
+}

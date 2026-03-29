@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop?schema=public
+      APP_BASE_URL: http://localhost:3000
+      TEMPORAL_ADDRESS: localhost:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: support-general
+      CODEX_TASK_QUEUE: codex-intensive
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm install
+      - run: npm run db:generate
+      - run: git diff --exit-code
+      - run: npm run openapi:check
+      - run: npm run type-check
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build

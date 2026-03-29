@@ -33,8 +33,8 @@ Queue-level isolation is mandatory even if both are run in one worker runtime.
 ## Code/Domain Boundaries
 
 - `apps/web`: UI + API transport boundary
-- `apps/queue`: support workflow domain
-- `apps/codex`: codex workflow domain
+- `apps/worker`: single worker runtime (consumes both Temporal queues)
+- `apps/queue`: workflow domain (support + codex)
 - `packages/types`: shared types + Zod schemas + Prisma-generated model types
 - `packages/rest`: tRPC routers/orchestration
 - `packages/database`: Prisma schema + client
@@ -47,6 +47,15 @@ Queue-level isolation is mandatory even if both are run in one worker runtime.
 - `packages/rest` owns API procedure contracts and validation boundaries
 - avoid circular dependencies across packages
 
+### Internal folder layering
+
+- `apps/queue/src/domains/<domain>/`: domain-specific workflows + activities (`support`, `codex`, etc.)
+- `apps/queue/src/runtime/`: worker registration surfaces (`./workflows`, `./activities`) consumed by worker runtime
+- `apps/web/src/server/http/`: HTTP transport handlers grouped by concern (`system`, `rest`, `trpc`)
+- `apps/web/src/app/api/**/route.ts`: thin wrappers that delegate to `src/server/http/*`
+- Use `@/` for local imports inside app runtimes (`apps/web`, `apps/queue`, `apps/worker`)
+- Use package-root imports inside shared packages (for example `@shared/rest/*`, `@shared/types/*`)
+
 ## Core Stack
 
 - Node.js 22+
@@ -57,6 +66,8 @@ Queue-level isolation is mandatory even if both are run in one worker runtime.
 - PostgreSQL + pgvector
 - Prisma 7 (`prisma-client` generator)
 - Zod 4
+- Biome for linting/format checks
+- `tsgo` (`@typescript/native-preview`) for fast type-check
 - Turborepo
 - Docker Compose for local infra
 
@@ -69,17 +80,17 @@ cp .env.example .env
 npm run db:generate
 npm run db:migrate
 npm run dev:web
-npm run dev:queue
-npm run dev:codex
+npm run dev:worker
 ```
 
-Local dev can run queue/codex workers separately. Deployment should target one worker service.
+For workflow-only debugging, local dev can run `npm run dev:queue`.
 
 ## Type Safety Rules (Non-Negotiable)
 
 - Define request/response schemas in shared contracts (`packages/types`) with Zod.
 - Infer TypeScript types from Zod; do not duplicate DTOs per app.
 - Share workflow input/output payload types via `@shared/types`.
+- Define shared enums/status literals once in `packages/types/src/<topic>/` and reuse them everywhere.
 - Validate all ingress boundaries at runtime (API, webhook, workflow input).
 
 ### Contract source of truth order
@@ -101,7 +112,8 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 
 ## Database + Prisma Rules
 
-- Keep Prisma schema split by domain files under `packages/database/prisma/*.schema.prisma`.
+- Start with `packages/database/prisma/schema.prisma` while solo.
+- Split into `packages/database/prisma/*.schema.prisma` once schema size or ownership boundaries require it.
 - Every schema change must include a committed migration.
 - `db:push` is local-prototyping only.
 - Use explicit transactions for multi-step writes requiring atomicity.
@@ -128,6 +140,27 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 - `*.schema.ts` for validation contracts
 - `*.prompt.ts` for prompt modules
 - `index.ts` for controlled exports only
+- Group reusable domain contracts in focused folders under `packages/types/src/<topic>/` (example: `status/workflow-status.ts`).
+- Never duplicate literal unions/enums across files; export shared constants/schema/type from one module and import it.
+
+## Commenting Conventions
+
+- Write comments for human clarity first, but keep them precise so AI agents can reliably infer intent.
+- Add a short JSDoc comment for exported functions and non-trivial internal functions:
+  - purpose of the function
+  - key inputs/assumptions
+  - important side effects (DB writes, external calls, retries, idempotency)
+- Add inline comments only for non-obvious logic, invariants, or deterministic workflow constraints.
+- Do not add noisy comments that restate obvious code.
+- Keep comments updated when behavior changes; stale comments are treated as bugs.
+
+## Import Conventions
+
+- Use `@/` for local imports inside app runtimes (`apps/web`, `apps/queue`, `apps/worker`).
+- Use `@shared/*` for cross-package shared modules.
+- Inside `packages/*`, prefer package-root imports (for example `@shared/types/workflow.schema`) over `@/`.
+- Do not use deep relative import chains (`../../..`) for local code.
+- Avoid copy-pasted types in app-level code.
 
 ## Error Handling + Observability
 
@@ -156,16 +189,19 @@ For non-trivial changes:
 Pre-PR baseline:
 
 ```bash
-npm run type-check
-npm run lint
-npm run test
-npm run build
+npm run check
+```
+
+If you want to reclaim local disk after checks/builds:
+
+```bash
+npm run check:clean
 ```
 
 ## CI Guardrails
 
 - `db:generate` should produce no uncommitted diff
-- type-check/lint/tests/build must pass
+- `tsgo` type-check + Biome lint + tests/build must pass
 - optional but recommended: OpenAPI drift check + Temporal smoke checks
 
 ## Definition of Done

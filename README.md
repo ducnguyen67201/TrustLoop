@@ -1,12 +1,47 @@
 ## TrustLoop
 
-TrustLoop is an AI-native customer ops workspace that unifies Slack, support threads, errors, and code context.
+TrustLoop is an AI-native customer ops workspace with a type-safe monorepo foundation.
 
-It turns customer issues into clear engineering action, fast.
+### Runtime topology
 
-### Core focus
+- `web` service: Next.js 16 UI + HTTP transport (`/api/rest/*`, `/api/trpc/*`)
+- `worker` service: single Temporal worker process consuming:
+  - `TEMPORAL_TASK_QUEUE` (support/general)
+  - `CODEX_TASK_QUEUE` (codex)
 
-- Centralized customer ops inbox
-- Smart thread grouping by issue/intent
-- AI summaries with Sentry + code index context
-- Workspace-based collaboration and billing-ready usage metering
+### Monorepo boundaries
+
+- `apps/web`: product UI + API transport
+  - HTTP handlers in `src/server/http/*`
+- `apps/worker`: deployed worker runtime
+- `apps/queue`: workflow domain module (support + codex workflows)
+  - domain folders in `src/domains/*`
+- `packages/types`: shared Zod/TS contracts
+- `packages/rest`: shared API and orchestration logic
+- `packages/database`: Prisma schema + client
+- `packages/env`: env validation/parsing
+
+Local import convention:
+- app runtimes (`apps/web`, `apps/queue`, `apps/worker`): use `@/` (`@/` => app `src` root)
+- shared packages (`packages/*`): use package-root imports (`@shared/<pkg>/*`)
+
+### Local setup
+
+```bash
+npm install
+cp .env.example .env
+docker compose up -d postgres temporal
+npm run db:generate
+npm run openapi:generate
+npm run dev:web
+npm run dev:worker
+```
+
+### Quality gates
+
+Type-check uses `tsgo` and lint uses Biome.
+
+```bash
+npm run check
+npm run check:clean
+```

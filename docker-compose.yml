@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: trustloop-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    container_name: trustloop-temporal
+    depends_on:
+      - postgres
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: postgres
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+
+  temporal-ui:
+    image: temporalio/ui:2.37.2
+    container_name: trustloop-temporal-ui
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:

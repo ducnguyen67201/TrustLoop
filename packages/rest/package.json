@@ -1,0 +1,24 @@
+{
+  "name": "@shared/rest",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsgo --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "openapi:generate": "tsx ./scripts/generate-openapi.ts",
+    "openapi:check": "tsx ./scripts/generate-openapi.ts --check"
+  },
+  "dependencies": {
+    "@shared/env": "*",
+    "@shared/types": "*",
+    "@temporalio/client": "^1.13.0",
+    "@trpc/server": "^11.0.0",
+    "zod": "^4.0.0"
+  }
+}
