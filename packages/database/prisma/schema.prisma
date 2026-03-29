@@ -8,8 +8,95 @@ datasource db {
 }
 
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String                @id @default(cuid())
+  name           String
+  memberships    WorkspaceMembership[]
+  apiKeys        WorkspaceApiKey[]
+  auditLogs      AuditLog[]
+  activeSessions Session[]             @relation("SessionActiveWorkspace")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+}
+
+model User {
+  id             String                @id @default(cuid())
+  email          String                @unique
+  passwordHash   String
+  sessions       Session[]
+  memberships    WorkspaceMembership[]
+  createdApiKeys WorkspaceApiKey[]     @relation("ApiKeyCreatedBy")
+  auditLogs      AuditLog[]            @relation("AuditActor")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+}
+
+model Session {
+  id                String     @id @default(cuid())
+  userId            String
+  tokenHash         String     @unique
+  csrfToken         String
+  activeWorkspaceId String?
+  expiresAt         DateTime
+  ip                String?
+  userAgent         String?
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeWorkspace   Workspace? @relation("SessionActiveWorkspace", fields: [activeWorkspaceId], references: [id], onDelete: SetNull)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model WorkspaceMembership {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model WorkspaceApiKey {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  name            String
+  keyPrefix       String    @unique
+  secretHash      String
+  createdByUserId String
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  expiresAt       DateTime
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy       User      @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([workspaceId, revokedAt, expiresAt])
+}
+
+model AuditLog {
+  id          String     @id @default(cuid())
+  workspaceId String?
+  actorUserId String?
+  action      String
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actorUser   User?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now())
+
+  @@index([workspaceId, createdAt])
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
 }

@@ -54,6 +54,8 @@ Why fourth:
 
 ## A. Auth, Workspace Isolation, and Security (P0)
 
+- Focused execution spec: `docs/spec-auth-workspace-security-p0.md`
+
 - [ ] Replace unsigned session cookie with signed/encrypted server session.
 - [ ] Enforce authenticated procedures for sensitive mutations.
 - [ ] Remove caller-controlled `userId` trust pattern in server routes.
