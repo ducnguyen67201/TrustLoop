@@ -91,6 +91,7 @@ For workflow-only debugging, local dev can run `npm run dev:queue`.
 - Infer TypeScript types from Zod; do not duplicate DTOs per app.
 - Share workflow input/output payload types via `@shared/types`.
 - Define shared enums/status literals once in `packages/types/src/<topic>/` and reuse them everywhere.
+- Prefer shared enum-style constants (for example `WORKSPACE_ROLE.ADMIN`) across router/service/UI logic; avoid inline string literals for roles/statuses/permissions.
 - Validate all ingress boundaries at runtime (API, webhook, workflow input).
 
 ### Contract source of truth order
@@ -136,6 +137,8 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 - Keep `apps/web` route handlers thin wrappers over shared procedures.
 - Use shared Zod schemas for validation.
 - Return stable, explicit response shapes.
+- Before writing new Prisma/business logic in a router, first search for an existing reusable service under `packages/rest/src/services/**` (and related domain modules) and reuse it when possible.
+- If no suitable service exists, create a focused service module and move reusable query/orchestration logic there; keep routers focused on auth/context checks, validation, and response mapping.
 
 ## Environment + Secrets Rules
 

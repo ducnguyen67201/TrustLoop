@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { useWorkspaceMemberships } from "@/hooks/use-workspace-memberships";
-import { useRouter } from "next/navigation";
+import { replaceWorkspaceInPath } from "@/lib/workspace-paths";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useTransition } from "react";
 
 /**
@@ -19,6 +20,7 @@ import { useMemo, useTransition } from "react";
  */
 export function WorkspaceSwitcher() {
   const router = useRouter();
+  const pathname = usePathname();
   const [pending, startTransition] = useTransition();
   const memberships = useWorkspaceMemberships();
   const active = useActiveWorkspace();
@@ -41,6 +43,9 @@ export function WorkspaceSwitcher() {
         .switchWorkspace(workspaceId)
         .then(async () => {
           await Promise.all([active.refresh(), memberships.refresh()]);
+          router.replace(
+            replaceWorkspaceInPath(pathname, workspaceId, active.data?.activeWorkspaceId)
+          );
           router.refresh();
         })
         .catch(() => {

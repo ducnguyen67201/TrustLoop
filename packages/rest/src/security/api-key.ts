@@ -2,6 +2,8 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { env } from "@shared/env";
 
 const API_KEY_PREFIX = "tlk";
+const API_KEY_PREFIX_BYTES = 10;
+const API_KEY_SECRET_BYTES = 40;
 
 function hashApiKeySecret(fullSecret: string): string {
   return createHmac("sha256", env.API_KEY_PEPPER).update(fullSecret).digest("hex");
@@ -15,8 +17,8 @@ export function generateWorkspaceApiKeyMaterial(): {
   fullSecret: string;
   secretHash: string;
 } {
-  const prefixPart = randomBytes(6).toString("hex");
-  const secretPart = randomBytes(24).toString("hex");
+  const prefixPart = randomBytes(API_KEY_PREFIX_BYTES).toString("hex");
+  const secretPart = randomBytes(API_KEY_SECRET_BYTES).toString("hex");
   const keyPrefix = `${API_KEY_PREFIX}_${prefixPart}`;
   const fullSecret = `${keyPrefix}.${secretPart}`;
 

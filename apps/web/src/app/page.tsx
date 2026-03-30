@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { WorkspaceEntryRedirect } from "@/components/workspace/workspace-entry-redirect";
 
 export default function HomePage() {
-  redirect("/app");
+  return <WorkspaceEntryRedirect />;
 }

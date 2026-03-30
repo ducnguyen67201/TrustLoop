@@ -1,4 +1,3 @@
-import { prisma } from "@shared/database";
 import { writeAuditEvent } from "@shared/rest/security/audit";
 import { hashPassword, verifyPassword } from "@shared/rest/security/password";
 import { consumeLoginAttempt } from "@shared/rest/security/rate-limit";
@@ -8,6 +7,13 @@ import {
   createUserSession,
   getSessionRequestMeta,
 } from "@shared/rest/security/session";
+import {
+  createUserWithPassword,
+  findUserAuthByEmail,
+  findUserIdentityByEmail,
+  normalizeUserEmail,
+} from "@shared/rest/services/user-service";
+import { listUserWorkspaceAccess } from "@shared/rest/services/workspace-membership-service";
 import { authenticatedProcedure, publicProcedure, router } from "@shared/rest/trpc";
 import {
   loginRequestSchema,
@@ -21,17 +27,10 @@ import { TRPCError } from "@trpc/server";
 
 export const authRouter = router({
   register: publicProcedure.input(registerRequestSchema).mutation(async ({ ctx, input }) => {
-    const normalizedEmail = input.email.trim().toLowerCase();
+    const normalizedEmail = normalizeUserEmail(input.email);
     const requestMeta = getSessionRequestMeta(ctx.req);
 
-    const existingUser = await prisma.user.findUnique({
-      where: {
-        email: normalizedEmail,
-      },
-      select: {
-        id: true,
-      },
-    });
+    const existingUser = await findUserIdentityByEmail(normalizedEmail);
 
     if (existingUser) {
       await writeAuditEvent({
@@ -50,16 +49,7 @@ export const authRouter = router({
     }
 
     const passwordHash = await hashPassword(input.password);
-    const user = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        passwordHash,
-      },
-      select: {
-        id: true,
-        email: true,
-      },
-    });
+    const user = await createUserWithPassword(normalizedEmail, passwordHash);
 
     const createdSession = await createUserSession(user.id, requestMeta, null);
     ctx.resHeaders.append("set-cookie", createdSession.cookie);
@@ -85,7 +75,7 @@ export const authRouter = router({
     });
   }),
   login: publicProcedure.input(loginRequestSchema).mutation(async ({ ctx, input }) => {
-    const normalizedEmail = input.email.trim().toLowerCase();
+    const normalizedEmail = normalizeUserEmail(input.email);
     const requestMeta = getSessionRequestMeta(ctx.req);
     const rateLimitKey = `${requestMeta.ip ?? "unknown"}:${normalizedEmail}`;
     const rateLimit = consumeLoginAttempt(rateLimitKey);
@@ -97,16 +87,7 @@ export const authRouter = router({
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: {
-        email: normalizedEmail,
-      },
-      select: {
-        id: true,
-        email: true,
-        passwordHash: true,
-      },
-    });
+    const user = await findUserAuthByEmail(normalizedEmail);
 
     const isValid = user ? await verifyPassword(user.passwordHash, input.password) : false;
 
@@ -125,18 +106,7 @@ export const authRouter = router({
       });
     }
 
-    const memberships = await prisma.workspaceMembership.findMany({
-      where: {
-        userId: user.id,
-      },
-      select: {
-        workspaceId: true,
-        role: true,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+    const memberships = await listUserWorkspaceAccess(user.id);
 
     const activeWorkspaceId = memberships[0]?.workspaceId ?? null;
     const role = memberships[0]?.role ?? null;

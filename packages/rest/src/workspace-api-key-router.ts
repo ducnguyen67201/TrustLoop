@@ -3,6 +3,7 @@ import { generateWorkspaceApiKeyMaterial } from "@shared/rest/security/api-key";
 import { writeAuditEvent } from "@shared/rest/security/audit";
 import { router, workspaceProcedure, workspaceRoleProcedure } from "@shared/rest/trpc";
 import {
+  WORKSPACE_ROLE,
   workspaceApiKeyCreateRequestSchema,
   workspaceApiKeyCreateResponseSchema,
   workspaceApiKeyListResponseSchema,
@@ -70,7 +71,7 @@ export const workspaceApiKeyRouter = router({
       })),
     });
   }),
-  create: workspaceRoleProcedure("ADMIN")
+  create: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
     .input(workspaceApiKeyCreateRequestSchema)
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {
@@ -132,7 +133,7 @@ export const workspaceApiKeyRouter = router({
         secret: keyMaterial.fullSecret,
       });
     }),
-  revoke: workspaceRoleProcedure("ADMIN")
+  revoke: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
     .input(workspaceApiKeyRevokeRequestSchema)
     .mutation(async ({ ctx, input }) => {
       if (!ctx.user) {

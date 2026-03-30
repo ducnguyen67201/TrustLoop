@@ -1,4 +1,7 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -8,7 +11,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { RevokeApiKeyDialog } from "@/components/workspace/revoke-api-key-dialog";
+import { RiEyeLine, RiEyeOffLine } from "@remixicon/react";
 import type { WorkspaceApiKey } from "@shared/types";
+import { useMemo, useState } from "react";
 
 interface ApiKeyTableProps {
   keys: WorkspaceApiKey[];
@@ -40,16 +45,38 @@ function keyStatus(key: WorkspaceApiKey): {
   return { label: "Active", variant: "secondary" };
 }
 
+function maskKeyValue(value: string): string {
+  return "•".repeat(Math.max(12, Math.min(24, value.length)));
+}
+
 /**
  * API key table for workspace-scoped key lifecycle visibility.
  */
 export function ApiKeyTable({ keys, onRevoke, canManage }: ApiKeyTableProps) {
+  const [visibleKeyIds, setVisibleKeyIds] = useState<Record<string, boolean>>({});
+
+  const displayedValues = useMemo(
+    () =>
+      keys.reduce<Record<string, string>>((accumulator, key) => {
+        accumulator[key.id] = visibleKeyIds[key.id] ? key.keyPrefix : maskKeyValue(key.keyPrefix);
+        return accumulator;
+      }, {}),
+    [keys, visibleKeyIds]
+  );
+
+  function toggleVisibility(keyId: string): void {
+    setVisibleKeyIds((previous) => ({
+      ...previous,
+      [keyId]: !previous[keyId],
+    }));
+  }
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
-          <TableHead>Prefix</TableHead>
+          <TableHead>Key</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Last used</TableHead>
           <TableHead>Expires</TableHead>
@@ -64,7 +91,19 @@ export function ApiKeyTable({ keys, onRevoke, canManage }: ApiKeyTableProps) {
             <TableRow key={key.id}>
               <TableCell>{key.name}</TableCell>
               <TableCell>
-                <code className="text-xs">{key.keyPrefix}</code>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs">{displayedValues[key.id]}</code>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => toggleVisibility(key.id)}
+                    title={visibleKeyIds[key.id] ? "Hide key" : "Show key"}
+                    aria-label={visibleKeyIds[key.id] ? "Hide key" : "Show key"}
+                  >
+                    {visibleKeyIds[key.id] ? <RiEyeOffLine /> : <RiEyeLine />}
+                  </Button>
+                </div>
               </TableCell>
               <TableCell>
                 <Badge variant={status.variant}>{status.label}</Badge>

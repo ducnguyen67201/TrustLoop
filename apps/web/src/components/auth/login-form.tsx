@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthSession } from "@/hooks/use-auth-session";
+import { workspaceRootPath } from "@/lib/workspace-paths";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -34,19 +35,20 @@ export function LoginForm() {
         return;
       }
 
-      if (mode === "sign-in") {
-        await login({
-          email,
-          password,
-        });
-      } else {
-        await register({
-          email,
-          password,
-        });
-      }
+      const session =
+        mode === "sign-in"
+          ? await login({
+              email,
+              password,
+            })
+          : await register({
+              email,
+              password,
+            });
 
-      router.replace("/app");
+      router.replace(
+        session.activeWorkspaceId ? workspaceRootPath(session.activeWorkspaceId) : "/no-workspace"
+      );
       router.refresh();
     } catch (submitError) {
       setError(
