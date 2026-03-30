@@ -1,6 +1,7 @@
 import { env } from "@shared/env";
 import {
   type CodexWorkflowInput,
+  type RepositoryIndexWorkflowInput,
   type SupportWorkflowInput,
   type WorkflowDispatchResponse,
   workflowDispatchResponseSchema,
@@ -10,6 +11,9 @@ import { Client, Connection } from "@temporalio/client";
 
 export interface WorkflowDispatcher {
   startSupportWorkflow(input: SupportWorkflowInput): Promise<WorkflowDispatchResponse>;
+  startRepositoryIndexWorkflow(
+    input: RepositoryIndexWorkflowInput
+  ): Promise<WorkflowDispatchResponse>;
   startCodexWorkflow(input: CodexWorkflowInput): Promise<WorkflowDispatchResponse>;
 }
 
@@ -39,6 +43,21 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
       workflowId,
       runId: handle.firstExecutionRunId,
       queue: env.TEMPORAL_TASK_QUEUE,
+    });
+  },
+  async startRepositoryIndexWorkflow(input) {
+    const client = await getClient();
+    const workflowId = `repository-index-${input.syncRequestId}`;
+    const handle = await client.workflow.start(workflowNames.repositoryIndex, {
+      args: [input],
+      taskQueue: env.CODEX_TASK_QUEUE,
+      workflowId,
+    });
+
+    return workflowDispatchResponseSchema.parse({
+      workflowId,
+      runId: handle.firstExecutionRunId,
+      queue: env.CODEX_TASK_QUEUE,
     });
   },
   async startCodexWorkflow(input) {

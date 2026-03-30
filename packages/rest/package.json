@@ -15,6 +15,7 @@
     "openapi:check": "tsx ./scripts/generate-openapi.ts --check"
   },
   "dependencies": {
+    "@shared/database": "*",
     "@shared/env": "*",
     "@shared/types": "*",
     "@temporalio/client": "^1.13.0",

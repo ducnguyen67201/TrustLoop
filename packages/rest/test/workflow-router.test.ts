@@ -9,6 +9,11 @@ function createDispatcher(): WorkflowDispatcher {
       runId: "run_support_1",
       queue: "support-general",
     })),
+    startRepositoryIndexWorkflow: vi.fn(async () => ({
+      workflowId: "repository-index-sync_1",
+      runId: "run_repository_index_1",
+      queue: "codex-intensive",
+    })),
     startCodexWorkflow: vi.fn(async () => ({
       workflowId: "fix-pr-analysis_1",
       runId: "run_codex_1",
@@ -48,5 +53,21 @@ describe("dispatchWorkflow", () => {
 
     expect(result.workflowId).toContain("fix-pr");
     expect(dispatcher.startCodexWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes repository index payloads to the codex indexing dispatcher", async () => {
+    const dispatcher = createDispatcher();
+
+    const result = await dispatchWorkflow(dispatcher, {
+      type: "repository-index",
+      payload: {
+        syncRequestId: "sync_1",
+        workspaceId: "ws_1",
+        repositoryId: "repo_1",
+      },
+    });
+
+    expect(result.workflowId).toContain("repository-index");
+    expect(dispatcher.startRepositoryIndexWorkflow).toHaveBeenCalledTimes(1);
   });
 });
