@@ -75,9 +75,23 @@ export function setStoredCsrfToken(token: string | null): void {
   window.localStorage.setItem(CSRF_STORAGE_KEY, token);
 }
 
-export async function trpcQuery<TData>(path: string): Promise<TData> {
+function buildTrpcQueryUrl(path: string, input?: unknown): string {
+  if (input === undefined) {
+    return `${TRPC_BASE_PATH}/${path}`;
+  }
+
+  const params = new URLSearchParams({
+    input: JSON.stringify(input),
+  });
+  return `${TRPC_BASE_PATH}/${path}?${params.toString()}`;
+}
+
+export async function trpcQuery<TData, TInput = undefined>(
+  path: string,
+  input?: TInput
+): Promise<TData> {
   const startedAt = nowMs();
-  const response = await fetch(`${TRPC_BASE_PATH}/${path}`, {
+  const response = await fetch(buildTrpcQueryUrl(path, input), {
     method: "GET",
     credentials: "same-origin",
     cache: "no-store",

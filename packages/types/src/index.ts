@@ -3,6 +3,7 @@ export * from "@shared/types/api.schema";
 export * from "@shared/types/errors";
 export * from "@shared/types/prisma-generated/index";
 export * from "@shared/types/status/index";
+export * from "@shared/types/support/index";
 export * from "@shared/types/workspace-api-key.schema";
 export * from "@shared/types/workspace.schema";
 export * from "@shared/types/workflow.schema";

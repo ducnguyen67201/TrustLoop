@@ -1,3 +1,4 @@
+import { processSlackWebhook } from "@shared/rest/services/support/support-ingress-service";
 import { temporalWorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import { dispatchWorkflow } from "@shared/rest/workflow-router";
 import {
@@ -20,4 +21,14 @@ export async function dispatchWorkflowFromHttpBody(
 ): Promise<WorkflowDispatchResponse> {
   const request = workflowDispatchSchema.parse(body);
   return dispatchWorkflow(temporalWorkflowDispatcher, request);
+}
+
+export async function processSlackWebhookFromHttpRequest(
+  rawBody: string,
+  headers: {
+    signature: string | null;
+    timestamp: string | null;
+  }
+) {
+  return processSlackWebhook(rawBody, headers);
 }

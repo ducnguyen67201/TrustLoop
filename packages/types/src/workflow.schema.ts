@@ -7,15 +7,17 @@ export const workflowNames = {
 } as const;
 
 export const supportWorkflowInputSchema = z.object({
-  threadId: z.string().min(1),
   workspaceId: z.string().min(1),
-  requesterId: z.string().min(1),
+  installationId: z.string().min(1),
+  ingressEventId: z.string().min(1),
+  canonicalIdempotencyKey: z.string().trim().min(1),
 });
 
 export const supportWorkflowResultSchema = z.object({
-  threadId: z.string(),
+  ingressEventId: z.string(),
+  conversationId: z.string().min(1).nullable(),
   status: workflowProcessingStatusSchema,
-  receivedAt: z.iso.datetime(),
+  processedAt: z.iso.datetime(),
 });
 
 export const codexWorkflowInputSchema = z.object({

@@ -6,6 +6,13 @@ export function workspaceRootPath(workspaceId: string): string {
 }
 
 /**
+ * Returns the support inbox path for a workspace.
+ */
+export function workspaceSupportPath(workspaceId: string): string {
+  return `/${workspaceId}/support`;
+}
+
+/**
  * Returns the settings landing path for a workspace.
  */
 export function workspaceSettingsPath(workspaceId: string): string {

@@ -1,0 +1,57 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { env } from "@shared/env";
+import { ValidationError } from "@shared/types";
+
+function toBuffer(value: string): Buffer {
+  return Buffer.from(value, "utf8");
+}
+
+function buildSlackBaseString(timestamp: string, rawBody: string): string {
+  return `v0:${timestamp}:${rawBody}`;
+}
+
+function computeSlackSignature(timestamp: string, rawBody: string): string {
+  const digest = createHmac("sha256", env.SLACK_SIGNING_SECRET)
+    .update(buildSlackBaseString(timestamp, rawBody))
+    .digest("hex");
+
+  return `v0=${digest}`;
+}
+
+function assertReplayWindow(timestamp: string): void {
+  const timestampSeconds = Number.parseInt(timestamp, 10);
+  if (!Number.isFinite(timestampSeconds)) {
+    throw new ValidationError("Slack request timestamp is invalid");
+  }
+
+  const ageSeconds = Math.abs(Math.floor(Date.now() / 1000) - timestampSeconds);
+  if (ageSeconds > env.SLACK_REPLAY_WINDOW_SECONDS) {
+    throw new ValidationError("Slack request timestamp is outside replay window");
+  }
+}
+
+/**
+ * Verify the Slack request signature and replay window against the raw body.
+ */
+export function verifySlackRequestSignature(
+  rawBody: string,
+  signature: string | null,
+  timestamp: string | null
+): void {
+  if (!signature || !timestamp) {
+    throw new ValidationError("Missing Slack signature headers");
+  }
+
+  assertReplayWindow(timestamp);
+
+  const expected = computeSlackSignature(timestamp, rawBody);
+  const actualBuffer = toBuffer(signature);
+  const expectedBuffer = toBuffer(expected);
+
+  if (
+    actualBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(actualBuffer, expectedBuffer)
+  ) {
+    throw new ValidationError("Slack signature verification failed");
+  }
+}

@@ -7,7 +7,11 @@ import { Separator } from "@/components/ui/separator";
 import { WorkspaceSwitcher } from "@/components/workspace/workspace-switcher";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useWorkspaceMemberships } from "@/hooks/use-workspace-memberships";
-import { workspaceApiKeysPath, workspaceMembersPath } from "@/lib/workspace-paths";
+import {
+  workspaceApiKeysPath,
+  workspaceMembersPath,
+  workspaceSupportPath,
+} from "@/lib/workspace-paths";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -21,6 +25,7 @@ export default function AppHomePage() {
     ? params.workspaceId[0]
     : params.workspaceId;
   const workspaceId = workspaceIdValue ?? "";
+  const supportPath = workspaceSupportPath(workspaceId);
 
   useEffect(() => {
     if (!auth.isLoading && !auth.session) {
@@ -96,6 +101,9 @@ export default function AppHomePage() {
       </Card>
 
       <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline">
+          <Link href={supportPath}>Support inbox</Link>
+        </Button>
         <Button asChild variant="outline">
           <Link href={workspaceMembersPath(workspaceId)}>Workspace memberships</Link>
         </Button>

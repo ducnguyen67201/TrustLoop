@@ -19,6 +19,10 @@ const envSchema = z.object({
   TEMPORAL_NAMESPACE: z.string().default("default"),
   TEMPORAL_TASK_QUEUE: z.string().default("support-general"),
   CODEX_TASK_QUEUE: z.string().default("codex-intensive"),
+  SUPPORT_INGEST_ENABLED: z.enum(["0", "1"]).default("0"),
+  SLACK_SIGNING_SECRET: z.string().min(16).default("dev-only-trustloop-slack-signing-secret"),
+  SLACK_REPLAY_WINDOW_SECONDS: z.coerce.number().int().positive().default(300),
+  SLACK_BOT_TOKEN: z.string().min(1).default("xoxb-dev-placeholder"),
   TRUSTLOOP_DEBUG_TRPC: z.enum(["0", "1"]).default("0"),
 });
 
