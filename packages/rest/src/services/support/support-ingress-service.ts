@@ -159,7 +159,7 @@ export async function processSlackWebhook(
       provider: "SLACK",
       providerEventId: envelope.event_id,
       canonicalIdempotencyKey,
-      payloadJson: envelope as Prisma.InputJsonValue,
+      rawPayloadJson: envelope as Prisma.InputJsonValue,
       processingState: SUPPORT_INGRESS_PROCESSING_STATE.received,
     },
     select: {

@@ -80,7 +80,7 @@ export async function runSupportPipeline(
     };
   }
 
-  const normalized = normalizeSlackMessageEvent(ingressEvent.payloadJson);
+  const normalized = normalizeSlackMessageEvent(ingressEvent.rawPayloadJson);
   if (!normalized) {
     throw new ValidationError("Slack ingress payload could not be normalized");
   }
@@ -140,6 +140,8 @@ export async function runSupportPipeline(
           channelId: normalized.channelId,
           teamId: normalized.teamId,
           authorRoleBucket: normalized.authorRoleBucket,
+          rawText: normalized.text,
+          slackUserId: normalized.slackUserId,
         },
       },
     });

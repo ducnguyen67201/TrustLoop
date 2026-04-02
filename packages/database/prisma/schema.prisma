@@ -195,7 +195,7 @@ model SupportIngressEvent {
   provider               SupportProvider
   providerEventId        String
   canonicalIdempotencyKey String                      @unique
-  payloadJson            Json
+  rawPayloadJson         Json
   processingState        SupportIngressProcessingState @default(RECEIVED)
   receivedAt             DateTime                     @default(now())
   processedAt            DateTime?

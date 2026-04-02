@@ -47,7 +47,7 @@ export const supportIngressEventSchema = z.object({
   providerEventId: z.string().trim().min(1),
   canonicalIdempotencyKey: supportCanonicalIdempotencyKeySchema,
   thread: supportThreadReferenceSchema,
-  payloadJson: z.record(z.string(), z.unknown()),
+  rawPayloadJson: z.record(z.string(), z.unknown()),
   processingState: supportIngressProcessingStateSchema,
   receivedAt: z.iso.datetime(),
   processedAt: z.iso.datetime().nullable(),

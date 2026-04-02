@@ -11,6 +11,7 @@ export interface NormalizedSlackMessageEvent {
   eventTs: string;
   eventType: string;
   text: string | null;
+  slackUserId: string | null;
   authorRoleBucket: SupportAuthorRoleBucket;
 }
 
@@ -68,6 +69,7 @@ export function normalizeSlackMessageEvent(
     eventTs,
     eventType: readString(event, "type") ?? readString(payloadJson, "type") ?? "message",
     text: readString(event, "text"),
+    slackUserId: userId,
     authorRoleBucket,
   };
 }
