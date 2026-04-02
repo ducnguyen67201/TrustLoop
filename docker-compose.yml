@@ -18,12 +18,11 @@ services:
     depends_on:
       - postgres
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: postgres
       POSTGRES_PWD: postgres
       POSTGRES_SEEDS: postgres
-      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
     ports:
       - "7233:7233"
 
@@ -36,7 +35,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:3000
     ports:
-      - "8080:8080"
+      - "8233:8080"
 
 volumes:
   postgres_data:
