@@ -121,12 +121,14 @@ export async function resolveSessionFromRequest(
         select: {
           id: true,
           email: true,
+          deletedAt: true,
         },
       },
     },
   });
 
-  if (!session) {
+  // Extension doesn't filter nested includes — check user soft-delete explicitly
+  if (!session || session.user.deletedAt) {
     return null;
   }
 

@@ -2,6 +2,8 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
 import { writeAuditEvent } from "@shared/rest/security/audit";
+import { resurrectOrUpsert } from "@shared/database";
+import { cascadeSoftDeleteInstallation } from "@shared/rest/services/soft-delete-cascade";
 import {
   type SlackOAuthStatePayload,
   type SupportInstallationSummary,
@@ -173,7 +175,7 @@ export async function exchangeSlackOAuthCode(
 
 /**
  * Create or update a SupportInstallation from an OAuth response.
- * Uses upsert on (provider, providerInstallationId) so re-installs refresh the token.
+ * Checks for soft-deleted records and resurrects them on reconnect.
  */
 export async function completeSlackOAuthInstall(
   workspaceId: string,
@@ -186,34 +188,34 @@ export async function completeSlackOAuthInstall(
   },
   actorUserId?: string
 ) {
-  const installation = await prisma.supportInstallation.upsert({
-    where: {
-      provider_providerInstallationId: {
-        provider: "SLACK",
-        providerInstallationId: oauthResult.appId,
-      },
-    },
-    create: {
-      workspaceId,
-      provider: "SLACK",
-      providerInstallationId: oauthResult.appId,
-      teamId: oauthResult.teamId,
-      botUserId: oauthResult.botUserId,
-      metadata: {
-        botToken: oauthResult.accessToken,
-        teamName: oauthResult.teamName,
-      },
-    },
-    update: {
-      workspaceId,
-      teamId: oauthResult.teamId,
-      botUserId: oauthResult.botUserId,
-      metadata: {
-        botToken: oauthResult.accessToken,
-        teamName: oauthResult.teamName,
-      },
-    },
-  });
+  const metadata = {
+    botToken: oauthResult.accessToken,
+    teamName: oauthResult.teamName,
+  };
+
+  const installData = {
+    workspaceId,
+    teamId: oauthResult.teamId,
+    botUserId: oauthResult.botUserId,
+    metadata,
+  };
+
+  const installation = await resurrectOrUpsert(
+    prisma.supportInstallation,
+    { provider: "SLACK", providerInstallationId: oauthResult.appId },
+    installData,
+    async () =>
+      prisma.supportInstallation.upsert({
+        where: {
+          provider_providerInstallationId: {
+            provider: "SLACK",
+            providerInstallationId: oauthResult.appId,
+          },
+        },
+        create: { provider: "SLACK", providerInstallationId: oauthResult.appId, ...installData },
+        update: installData,
+      })
+  );
 
   await writeAuditEvent({
     action: "workspace.slack.connect",
@@ -257,26 +259,28 @@ export async function listWorkspaceInstallations(workspaceId: string) {
 }
 
 /**
- * Delete a Slack installation with workspace scope check.
+ * Soft-delete a Slack installation and cascade to its conversations/children.
  */
 export async function disconnectInstallation(
   workspaceId: string,
   installationId: string,
   actorUserId: string
 ) {
-  const deleted = await prisma.supportInstallation.deleteMany({
-    where: {
-      id: installationId,
-      workspaceId,
-    },
-  });
-
-  if (deleted.count === 0) {
-    throw new TRPCError({
-      code: "NOT_FOUND",
-      message: "Installation not found or already disconnected",
+  await prisma.$transaction(async (tx) => {
+    const deleted = await tx.supportInstallation.updateMany({
+      where: { id: installationId, workspaceId, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
-  }
+
+    if (deleted.count === 0) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Installation not found or already disconnected",
+      });
+    }
+
+    await cascadeSoftDeleteInstallation(installationId, workspaceId, tx);
+  });
 
   await writeAuditEvent({
     action: "workspace.slack.disconnect",

@@ -5,9 +5,10 @@ import { cn } from "@/lib/utils";
 import {
   workspaceApiKeysPath,
   workspaceGeneralPath,
+  workspaceGithubPath,
   workspaceIntegrationsPath,
 } from "@/lib/workspace-paths";
-import { RiKey2Line, RiPlugLine, RiSettings3Line } from "@remixicon/react";
+import { RiGithubLine, RiKey2Line, RiPlugLine, RiSettings3Line } from "@remixicon/react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -37,6 +38,7 @@ export default function WorkspaceSettingsLayout({ children }: WorkspaceSettingsL
   const generalPath = workspaceGeneralPath(workspaceId);
   const apiKeysPath = workspaceApiKeysPath(workspaceId);
   const integrationsPath = workspaceIntegrationsPath(workspaceId);
+  const githubPath = workspaceGithubPath(workspaceId);
 
   const navItems: SettingsNavItem[] = [
     {
@@ -56,6 +58,12 @@ export default function WorkspaceSettingsLayout({ children }: WorkspaceSettingsL
       label: "Integrations",
       icon: RiPlugLine,
       isActive: pathname === integrationsPath,
+    },
+    {
+      href: githubPath,
+      label: "GitHub",
+      icon: RiGithubLine,
+      isActive: pathname === githubPath,
     },
   ];
 

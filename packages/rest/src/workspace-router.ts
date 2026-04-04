@@ -1,4 +1,4 @@
-import { prisma } from "@shared/database";
+import { prisma, resurrectOrUpsert } from "@shared/database";
 import { writeAuditEvent } from "@shared/rest/security/audit";
 import { canAssignWorkspaceRole, canManageWorkspaceMember } from "@shared/rest/security/rbac";
 import { setActiveWorkspaceForSession } from "@shared/rest/security/session";
@@ -138,6 +138,7 @@ export const workspaceRouter = router({
         });
       }
 
+      // Check active membership (auto-filtered by soft-delete extension)
       const existing = await findWorkspaceMembershipId(ctx.workspaceId, targetUser.id);
 
       if (existing) {
@@ -147,21 +148,16 @@ export const workspaceRouter = router({
         });
       }
 
-      const created = await prisma.workspaceMembership.create({
-        data: {
-          workspaceId: ctx.workspaceId,
-          userId: targetUser.id,
-          role: input.role,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-        },
-      });
+      const created = await resurrectOrUpsert(
+        prisma.workspaceMembership,
+        { workspaceId: ctx.workspaceId, userId: targetUser.id },
+        { role: input.role },
+        async () =>
+          prisma.workspaceMembership.create({
+            data: { workspaceId: ctx.workspaceId, userId: targetUser.id, role: input.role },
+            include: { user: { select: { id: true, email: true } } },
+          })
+      );
 
       await writeAuditEvent({
         action: "workspace.member.add",

@@ -1,6 +1,19 @@
 import { supportThreadReferenceSchema } from "@shared/types/support/support-adapter.schema";
 import { z } from "zod";
 
+/** Default grouping window configuration for standalone message grouping. */
+export const GROUPING_DEFAULTS = {
+  windowMinutes: 5,
+  maxWindowMinutes: 60,
+} as const;
+
+/** Conversation statuses eligible for standalone message grouping. */
+export const GROUPING_ELIGIBLE_STATUSES = [
+  "UNREAD",
+  "IN_PROGRESS",
+  "STALE",
+] as const;
+
 export const SUPPORT_CONVERSATION_STATUS = {
   unread: "UNREAD",
   inProgress: "IN_PROGRESS",

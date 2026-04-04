@@ -121,6 +121,12 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 - Use explicit transactions for multi-step writes requiring atomicity.
 - Add indexes intentionally for new query paths.
 
+### Soft Delete Rules
+
+- Never call `.delete()` or `.deleteMany()` inside `$transaction()` for soft-delete models. The extension's delete-to-update conversion uses the base client, not the transaction client, so the soft-delete escapes the transaction boundary. Use manual `updateMany({ data: { deletedAt: new Date() } })` inside transactions instead.
+- `@@unique` annotations in `schema.prisma` drive TypeScript type generation only. The actual DB constraints are partial unique indexes (`WHERE deletedAt IS NULL`) managed in raw SQL migrations. Do not use `db:push` on soft-deletable models as it will recreate full unique indexes.
+- Use the `findIncludingDeleted()` helper for queries that need to see soft-deleted records. Do not use `as any` casts with `includeDeleted`.
+
 ## UI Rules (Non-Negotiable)
 
 - Use **shadcn/ui** exclusively for all UI components. Do not use any other component library (MUI, Chakra, Ant Design, Radix primitives directly, etc.).
@@ -266,3 +272,23 @@ Primary governance skill:
 - On every substantive AGENTS change, verify linked docs remain accurate.
 
 If uncertain between clever and simple, choose simple while preserving boundaries.
+
+## Skill routing
+
+When the user's request matches an available skill, ALWAYS invoke it using the Skill
+tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
+The skill has specialized workflows that produce better results than ad-hoc answers.
+
+Key routing rules:
+- Product ideas, "is this worth building", brainstorming → invoke office-hours
+- Bugs, errors, "why is this broken", 500 errors → invoke investigate
+- Ship, deploy, push, create PR → invoke ship
+- QA, test the site, find bugs → invoke qa
+- Code review, check my diff → invoke review
+- Update docs after shipping → invoke document-release
+- Weekly retro → invoke retro
+- Design system, brand → invoke design-consultation
+- Visual audit, design polish → invoke design-review
+- Architecture review → invoke plan-eng-review
+- Save progress, checkpoint, resume → invoke checkpoint
+- Code quality, health check → invoke health

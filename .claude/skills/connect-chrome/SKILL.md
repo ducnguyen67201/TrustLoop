@@ -1,1 +1,1 @@
-/Users/ducng/Desktop/workspace/TrustLoop/.skills/gstack/connect-chrome/SKILL.md
+/Users/ducng/Desktop/workspace/TrustLoop/.claude/skills/gstack/connect-chrome/SKILL.md

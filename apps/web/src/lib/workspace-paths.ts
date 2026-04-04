@@ -48,6 +48,13 @@ export function workspaceIntegrationsPath(workspaceId: string): string {
 }
 
 /**
+ * Returns the GitHub indexing settings path for a workspace.
+ */
+export function workspaceGithubPath(workspaceId: string): string {
+  return `${workspaceSettingsPath(workspaceId)}/github`;
+}
+
+/**
  * Rewrites the current app path so it points to the selected workspace.
  */
 export function replaceWorkspaceInPath(

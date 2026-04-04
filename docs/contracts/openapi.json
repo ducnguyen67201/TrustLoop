@@ -46,10 +46,627 @@
           }
         }
       }
+    },
+    "/api/rest/codex/settings": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Codex integration state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexSettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rest/codex/connect": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectGithubInstallationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "GitHub integration connected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectGithubInstallationResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rest/codex/repositories/select": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRepositorySelectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Repository selection updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateRepositorySelectionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rest/codex/sync": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestRepositorySyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Repository sync accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestRepositorySyncResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rest/codex/search": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchCodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ranked repository evidence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchCodeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rest/codex/feedback": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Feedback stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchFeedbackResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rest/codex/pr-intent": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreparePrIntentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "PR intent validated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparePrIntentResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "CodexSettingsResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "githubConnection": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "disconnected",
+                  "connected",
+                  "permission_gap"
+                ]
+              },
+              "installationOwner": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "connectedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "missingPermissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "status",
+              "installationOwner",
+              "connectedAt",
+              "missingPermissions"
+            ],
+            "additionalProperties": false
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "fullName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "selected": {
+                  "type": "boolean"
+                },
+                "defaultBranch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "branchPolicy": {
+                  "type": "string",
+                  "enum": [
+                    "default_branch_only",
+                    "workspace_selected"
+                  ]
+                },
+                "indexHealth": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "needs_setup",
+                        "ready",
+                        "syncing",
+                        "stale",
+                        "error"
+                      ]
+                    },
+                    "staleAfterMinutes": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "lastSyncRequestedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastCompletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activeCommitSha": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activeVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastErrorMessage": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncStageLabel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "staleAfterMinutes",
+                    "lastSyncRequestedAt",
+                    "lastCompletedAt",
+                    "activeCommitSha",
+                    "activeVersionId",
+                    "lastErrorMessage",
+                    "syncStageLabel"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "owner",
+                "name",
+                "fullName",
+                "selected",
+                "defaultBranch",
+                "branchPolicy",
+                "indexHealth"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "workspace",
+          "githubConnection",
+          "repositories"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectGithubInstallationRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "installationOwner": {
+            "default": "ducnguyen67201",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "workspaceId",
+          "installationOwner"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectGithubInstallationResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "connection": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "disconnected",
+                  "connected",
+                  "permission_gap"
+                ]
+              },
+              "installationOwner": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "connectedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "missingPermissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "status",
+              "installationOwner",
+              "connectedAt",
+              "missingPermissions"
+            ],
+            "additionalProperties": false
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "fullName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "selected": {
+                  "type": "boolean"
+                },
+                "defaultBranch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "branchPolicy": {
+                  "type": "string",
+                  "enum": [
+                    "default_branch_only",
+                    "workspace_selected"
+                  ]
+                },
+                "indexHealth": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "needs_setup",
+                        "ready",
+                        "syncing",
+                        "stale",
+                        "error"
+                      ]
+                    },
+                    "staleAfterMinutes": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "lastSyncRequestedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastCompletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activeCommitSha": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activeVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastErrorMessage": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncStageLabel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "staleAfterMinutes",
+                    "lastSyncRequestedAt",
+                    "lastCompletedAt",
+                    "activeCommitSha",
+                    "activeVersionId",
+                    "lastErrorMessage",
+                    "syncStageLabel"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "owner",
+                "name",
+                "fullName",
+                "selected",
+                "defaultBranch",
+                "branchPolicy",
+                "indexHealth"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "connection",
+          "repositories"
+        ],
+        "additionalProperties": false
+      },
       "HealthResponse": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -71,6 +688,406 @@
           "ok",
           "service",
           "timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "PreparePrIntentRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repositoryId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 120
+          },
+          "targetBranch": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "problemStatement": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 2000
+          },
+          "riskSummary": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 1000
+          },
+          "validationChecklist": {
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 200
+            }
+          },
+          "humanApproval": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "workspaceId",
+          "repositoryId",
+          "title",
+          "targetBranch",
+          "problemStatement",
+          "riskSummary",
+          "validationChecklist",
+          "humanApproval"
+        ],
+        "additionalProperties": false
+      },
+      "PreparePrIntentResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "intentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "validated"
+            ]
+          },
+          "repositoryHealthStatus": {
+            "type": "string",
+            "enum": [
+              "needs_setup",
+              "ready",
+              "syncing",
+              "stale",
+              "error"
+            ]
+          },
+          "acceptedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "intentId",
+          "status",
+          "repositoryHealthStatus",
+          "acceptedAt"
+        ],
+        "additionalProperties": false
+      },
+      "RepositoryIndexWorkflowInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "syncRequestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repositoryId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "syncRequestId",
+          "workspaceId",
+          "repositoryId"
+        ],
+        "additionalProperties": false
+      },
+      "RequestRepositorySyncRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repositoryId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "triggerSource": {
+            "default": "manual",
+            "type": "string",
+            "enum": [
+              "manual",
+              "webhook"
+            ]
+          }
+        },
+        "required": [
+          "workspaceId",
+          "repositoryId",
+          "triggerSource"
+        ],
+        "additionalProperties": false
+      },
+      "RequestRepositorySyncResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "syncRequestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workflowId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "queue": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "syncRequestId",
+          "workflowId",
+          "runId",
+          "queue"
+        ],
+        "additionalProperties": false
+      },
+      "SearchCodeRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repositoryId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "query": {
+            "type": "string",
+            "minLength": 3
+          },
+          "limit": {
+            "default": 5,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "workspaceId",
+          "repositoryId",
+          "query",
+          "limit"
+        ],
+        "additionalProperties": false
+      },
+      "SearchCodeResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "queryAuditId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rankProfileVersion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repositoryHealthStatus": {
+            "type": "string",
+            "enum": [
+              "needs_setup",
+              "ready",
+              "syncing",
+              "stale",
+              "error"
+            ]
+          },
+          "fallbackRankingUsed": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resultId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "filePath": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "lineStart": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "lineEnd": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "snippet": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "symbolName": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "commitSha": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "freshnessStatus": {
+                  "type": "string",
+                  "enum": [
+                    "needs_setup",
+                    "ready",
+                    "syncing",
+                    "stale",
+                    "error"
+                  ]
+                },
+                "scoreBreakdown": {
+                  "type": "object",
+                  "properties": {
+                    "keywordScore": {
+                      "type": "number"
+                    },
+                    "semanticScore": {
+                      "type": "number"
+                    },
+                    "pathScore": {
+                      "type": "number"
+                    },
+                    "freshnessScore": {
+                      "type": "number"
+                    },
+                    "mergedScore": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "keywordScore",
+                    "semanticScore",
+                    "pathScore",
+                    "freshnessScore",
+                    "mergedScore"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "resultId",
+                "filePath",
+                "lineStart",
+                "lineEnd",
+                "snippet",
+                "symbolName",
+                "commitSha",
+                "freshnessStatus",
+                "scoreBreakdown"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "queryAuditId",
+          "rankProfileVersion",
+          "repositoryHealthStatus",
+          "fallbackRankingUsed",
+          "results"
+        ],
+        "additionalProperties": false
+      },
+      "SearchFeedbackRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "queryAuditId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "searchResultId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "off_target"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 280
+          }
+        },
+        "required": [
+          "workspaceId",
+          "queryAuditId",
+          "searchResultId",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "SearchFeedbackResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "feedbackId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "storedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "feedbackId",
+          "storedAt"
         ],
         "additionalProperties": false
       },
@@ -100,6 +1117,180 @@
           "installationId",
           "ingressEventId",
           "canonicalIdempotencyKey"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateRepositorySelectionRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repositoryId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selected": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "repositoryId",
+          "selected"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateRepositorySelectionResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "repository": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "owner": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fullName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "selected": {
+                "type": "boolean"
+              },
+              "defaultBranch": {
+                "type": "string",
+                "minLength": 1
+              },
+              "branchPolicy": {
+                "type": "string",
+                "enum": [
+                  "default_branch_only",
+                  "workspace_selected"
+                ]
+              },
+              "indexHealth": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "needs_setup",
+                      "ready",
+                      "syncing",
+                      "stale",
+                      "error"
+                    ]
+                  },
+                  "staleAfterMinutes": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "lastSyncRequestedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lastCompletedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "activeCommitSha": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "activeVersionId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lastErrorMessage": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "syncStageLabel": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "status",
+                  "staleAfterMinutes",
+                  "lastSyncRequestedAt",
+                  "lastCompletedAt",
+                  "activeCommitSha",
+                  "activeVersionId",
+                  "lastErrorMessage",
+                  "syncStageLabel"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "owner",
+              "name",
+              "fullName",
+              "selected",
+              "defaultBranch",
+              "branchPolicy",
+              "indexHealth"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "repository"
         ],
         "additionalProperties": false
       },
@@ -201,6 +1392,43 @@
                   "analysisId",
                   "repositoryId",
                   "pullRequestNumber"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "payload"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "repository-index"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "syncRequestId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workspaceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "repositoryId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "syncRequestId",
+                  "workspaceId",
+                  "repositoryId"
                 ],
                 "additionalProperties": false
               }

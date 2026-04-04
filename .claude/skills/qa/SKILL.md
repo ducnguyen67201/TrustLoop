@@ -1,1 +1,1 @@
-/Users/ducng/Desktop/workspace/TrustLoop/.skills/gstack/qa/SKILL.md
+/Users/ducng/Desktop/workspace/TrustLoop/.claude/skills/gstack/qa/SKILL.md

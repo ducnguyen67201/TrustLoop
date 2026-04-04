@@ -1,5 +1,31 @@
 # TODOS
 
+## Code Indexing
+
+### Unified Escalation Timeline Panel
+
+**What:** Build a single timeline that stitches Slack messages, Sentry events, Linear updates, Git activity, and index freshness into one chronological view.
+
+**Why:** On-call engineers currently context-switch across tools; this deferred expansion unlocks faster root-cause analysis and safer PR intent decisions.
+
+**Context:** Deferred from `/plan-ceo-review` for GitHub indexing so v1 can focus on core repo connect, indexing, hybrid retrieval, explainability, freshness guardrails, PR intent contract, and relevance feedback. Start by defining a normalized event schema and read model for workspace-scoped escalations.
+
+**Effort:** L
+**Priority:** P2
+**Depends on:** Shipping the v1 indexing/search foundation and event ingestion contracts (Slack/Sentry/Linear/GitHub)
+
+### No-Flag Rollout Runbook + Rollback Drill
+
+**What:** Define and validate an explicit no-feature-flag rollout and rollback runbook for indexing/search deployments.
+
+**Why:** The plan intentionally skips feature flags, so deployment safety depends on strict migration/deploy/smoke-check sequencing and rehearsed rollback steps.
+
+**Context:** Added from `/plan-eng-review` after choosing no flags in architecture decisions. Include: migration-first order, worker dark-run checks, read-only search smoke script, rollback trigger thresholds, and owner/on-call responsibilities.
+
+**Effort:** M
+**Priority:** P1
+**Depends on:** Initial indexing/search implementation branch reaching deployable state
+
 ## Slack Ingestion
 
 ### Projection Replay and Backfill Tooling
@@ -123,5 +149,31 @@
 **Effort:** M
 **Priority:** P1
 **Depends on:** Core inbox UI and interaction states implemented.
+
+## Soft Delete
+
+### Purge Job Scheduling
+
+**What:** Wire `purgeDeletedRecords()` to a Temporal scheduled workflow or cron task.
+
+**Why:** Without scheduling, soft-deleted records accumulate forever. The purge function exists but has no caller.
+
+**Context:** Function exists at `packages/database/src/purge.ts` with 90-day retention and dependency-ordered deletion using `prismaRaw` (non-extended client). Needs a Temporal workflow that calls it on a daily/weekly schedule. The purge deletes in child-first order to respect `onDelete: Restrict` constraints.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** Soft delete implementation landed.
+
+### Document Partial Unique Index / Prisma Schema Divergence
+
+**What:** Add comprehensive documentation explaining that `@@unique` in `schema.prisma` drives TypeScript type generation only, while actual DB constraints are partial unique indexes managed in raw SQL migrations.
+
+**Why:** Prevents accidental full unique index recreation on next `prisma migrate dev`. Prisma 7 schema DSL doesn't support partial indexes. Future schema changes on soft-deletable models must write raw SQL migrations for unique constraint changes.
+
+**Context:** Schema comments have been added to each affected model. CLAUDE.md has a soft delete rules section. This TODO covers creating a dedicated `docs/soft-delete-guide.md` with full operational procedures for adding new soft-deletable models, modifying unique constraints, and running introspection safely.
+
+**Effort:** S
+**Priority:** P1
+**Depends on:** Soft delete migration landed.
 
 ## Completed

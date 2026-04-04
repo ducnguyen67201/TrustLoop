@@ -7,9 +7,55 @@ datasource db {
   provider = "postgresql"
 }
 
+enum GitHubInstallationStatus {
+  connected
+  permission_gap
+}
+
+enum RepositoryBranchPolicy {
+  default_branch_only
+  workspace_selected
+}
+
+enum RepositorySyncTrigger {
+  manual
+  webhook
+}
+
+enum RepositorySyncRequestStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+enum RepositoryIndexVersionStatus {
+  building
+  active
+  failed
+}
+
+enum RepositoryHealthStatus {
+  needs_setup
+  ready
+  syncing
+  stale
+  error
+}
+
+enum SearchFeedbackLabel {
+  useful
+  off_target
+}
+
+enum PrIntentStatus {
+  validated
+}
+
 model Workspace {
   id                       String                     @id @default(cuid())
   name                     String
+  deletedAt                DateTime?
   memberships              WorkspaceMembership[]
   apiKeys                  WorkspaceApiKey[]
   auditLogs                AuditLog[]
@@ -21,14 +67,26 @@ model Workspace {
   supportDeliveryAttempts  SupportDeliveryAttempt[]
   supportDeadLetters       SupportDeadLetter[]
   supportTicketLinks       SupportTicketLink[]
+  githubInstallation       GitHubInstallation?
+  repositories             Repository[]
+  syncRequests             RepositorySyncRequest[]
+  indexVersions            RepositoryIndexVersion[]
+  searchQueries            CodeSearchQuery[]
+  searchFeedback           SearchFeedback[]
+  pullRequestIntents       PullRequestIntent[]
+  groupingAnchors          SupportGroupingAnchor[]
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt
+
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
 model User {
   id                         String                @id @default(cuid())
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
   email                      String                @unique
   passwordHash               String
+  deletedAt                  DateTime?
   sessions                   Session[]
   memberships                WorkspaceMembership[]
   createdApiKeys             WorkspaceApiKey[]     @relation("ApiKeyCreatedBy")
@@ -36,6 +94,8 @@ model User {
   assignedSupportConvos      SupportConversation[] @relation("SupportConversationAssignee")
   createdAt                  DateTime              @default(now())
   updatedAt                  DateTime              @updatedAt
+
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
 model Session {
@@ -61,13 +121,17 @@ model WorkspaceMembership {
   workspaceId String
   userId      String
   role        WorkspaceRole @default(MEMBER)
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deletedAt   DateTime?
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  // Do not use db:push on this model. Use raw SQL migrations for unique constraint changes.
   @@unique([workspaceId, userId])
   @@index([userId])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
 model WorkspaceApiKey {
@@ -79,13 +143,15 @@ model WorkspaceApiKey {
   createdByUserId String
   lastUsedAt      DateTime?
   revokedAt       DateTime?
+  deletedAt       DateTime?
   expiresAt       DateTime
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy       User      @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdBy       User      @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([workspaceId, revokedAt, expiresAt])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
 model AuditLog {
@@ -178,14 +244,17 @@ model SupportInstallation {
   teamId                 String
   botUserId              String?
   metadata               Json?
-  workspace              Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deletedAt              DateTime?
+  workspace              Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   ingressEvents          SupportIngressEvent[]
   conversations          SupportConversation[]
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
 
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
   @@unique([provider, providerInstallationId])
   @@index([workspaceId])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
 model SupportIngressEvent {
@@ -221,20 +290,24 @@ model SupportConversation {
   staleAt                DateTime?
   retryCount             Int                       @default(0)
   lastActivityAt         DateTime                  @default(now())
-  workspace              Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  installation           SupportInstallation       @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  deletedAt              DateTime?
+  workspace              Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  installation           SupportInstallation       @relation(fields: [installationId], references: [id], onDelete: Restrict)
   assignee               User?                     @relation("SupportConversationAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   events                 SupportConversationEvent[]
   deliveryAttempts       SupportDeliveryAttempt[]
   ticketLinks            SupportTicketLink[]
+  groupingAnchors        SupportGroupingAnchor[]
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
 
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
   @@unique([workspaceId, canonicalConversationKey])
   @@index([workspaceId, teamId, channelId, threadTs])
   @@index([workspaceId, status, staleAt, customerWaitingSince, retryCount, lastActivityAt])
   @@index([installationId])
   @@index([assigneeUserId])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
 model SupportConversationEvent {
@@ -265,13 +338,15 @@ model SupportDeliveryAttempt {
   errorCode        String?
   errorMessage     String?
   nextRetryAt      DateTime?
-  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  conversation     SupportConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  deletedAt        DateTime?
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation     SupportConversation  @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
   @@index([workspaceId, state, nextRetryAt])
   @@index([conversationId, createdAt])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
 model SupportDeadLetter {
@@ -300,12 +375,204 @@ model SupportTicketLink {
   externalStatus   String?
   syncState        SupportTicketSyncState @default(PENDING)
   lastSyncedAt     DateTime?
-  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  conversation     SupportConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  deletedAt        DateTime?
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation     SupportConversation   @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
   @@unique([workspaceId, provider, externalTicketId])
   @@index([conversationId])
   @@index([workspaceId, syncState, updatedAt])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+/// Maps standalone messages to conversations for time-window grouping.
+/// An anchor tracks: which author, which channel, and which conversation
+/// their standalone messages should be grouped into. Expires after a
+/// configurable window (default 5 min, max 60 min).
+model SupportGroupingAnchor {
+  id                String              @id @default(cuid())
+  workspaceId       String
+  installationId    String
+  channelId         String
+  authorSlackUserId String
+  conversationId    String
+  anchorMessageTs   String
+  windowStartAt     DateTime
+  windowExpiresAt   DateTime
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation      SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([workspaceId, channelId, authorSlackUserId, anchorMessageTs])
+  @@index([workspaceId, channelId, authorSlackUserId, windowExpiresAt])
+  @@index([conversationId])
+}
+
+model GitHubInstallation {
+  id                 String                   @id @default(cuid())
+  workspaceId        String                   @unique
+  workspace          Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  status             GitHubInstallationStatus @default(connected)
+  installationOwner  String
+  connectedAt        DateTime                 @default(now())
+  missingPermissions String[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+}
+
+model Repository {
+  id                String                 @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner             String
+  name              String
+  fullName          String
+  sourceRoot        String
+  defaultBranch     String                 @default("main")
+  branchPolicy      RepositoryBranchPolicy @default(default_branch_only)
+  selected          Boolean                @default(false)
+  syncRequests      RepositorySyncRequest[]
+  indexVersions     RepositoryIndexVersion[]
+  searchQueries     CodeSearchQuery[]
+  pullRequestIntents PullRequestIntent[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([workspaceId, fullName])
+  @@index([workspaceId, selected])
+}
+
+model RepositorySyncRequest {
+  id           String                      @id @default(cuid())
+  workspaceId  String
+  repositoryId String
+  workspace    Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository   Repository                  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  triggerSource RepositorySyncTrigger      @default(manual)
+  status       RepositorySyncRequestStatus @default(pending)
+  workflowId   String?
+  requestedAt  DateTime                    @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+  errorMessage String?                     @db.Text
+  indexVersion RepositoryIndexVersion?
+
+  @@index([workspaceId, repositoryId, requestedAt])
+  @@index([repositoryId, status])
+}
+
+model RepositoryIndexVersion {
+  id           String                       @id @default(cuid())
+  workspaceId  String
+  repositoryId String
+  syncRequestId String?                     @unique
+  workspace    Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository   Repository                   @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  syncRequest  RepositorySyncRequest?       @relation(fields: [syncRequestId], references: [id], onDelete: SetNull)
+  status       RepositoryIndexVersionStatus @default(building)
+  commitSha    String?
+  active       Boolean                      @default(false)
+  startedAt    DateTime                     @default(now())
+  completedAt  DateTime?
+  activatedAt  DateTime?
+  errorMessage String?                      @db.Text
+  fileCount    Int                          @default(0)
+  chunkCount   Int                          @default(0)
+  chunks       RepositoryIndexChunk[]
+  searchQueries CodeSearchQuery[]
+
+  @@index([workspaceId, repositoryId, active])
+  @@index([repositoryId, status])
+}
+
+model RepositoryIndexChunk {
+  id             String                 @id @default(cuid())
+  indexVersionId String
+  indexVersion   RepositoryIndexVersion @relation(fields: [indexVersionId], references: [id], onDelete: Cascade)
+  filePath       String
+  language       String
+  symbolName     String?
+  lineStart      Int
+  lineEnd        Int
+  contentHash    String
+  content        String                 @db.Text
+  createdAt      DateTime               @default(now())
+  searchResults  CodeSearchResult[]
+
+  @@index([indexVersionId, filePath])
+}
+
+model CodeSearchQuery {
+  id                     String                 @id @default(cuid())
+  workspaceId            String
+  repositoryId           String
+  indexVersionId         String?
+  workspace              Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository             Repository             @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  indexVersion           RepositoryIndexVersion? @relation(fields: [indexVersionId], references: [id], onDelete: SetNull)
+  query                  String                 @db.Text
+  rankProfileVersion     String
+  repositoryHealthStatus RepositoryHealthStatus
+  fallbackRankingUsed    Boolean                @default(false)
+  createdAt              DateTime               @default(now())
+  results                CodeSearchResult[]
+  feedback               SearchFeedback[]
+
+  @@index([workspaceId, repositoryId, createdAt])
+}
+
+model CodeSearchResult {
+  id             String          @id @default(cuid())
+  queryId        String
+  chunkId        String
+  rank           Int
+  query          CodeSearchQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  chunk          RepositoryIndexChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  keywordScore   Float
+  semanticScore  Float
+  pathScore      Float
+  freshnessScore Float
+  mergedScore    Float
+  feedback       SearchFeedback[]
+
+  @@index([queryId, rank])
+  @@index([chunkId])
+}
+
+model SearchFeedback {
+  id             String             @id @default(cuid())
+  workspaceId     String
+  queryId         String
+  searchResultId  String
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  query           CodeSearchQuery   @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  searchResult    CodeSearchResult  @relation(fields: [searchResultId], references: [id], onDelete: Cascade)
+  label           SearchFeedbackLabel
+  note            String?           @db.VarChar(280)
+  createdAt       DateTime          @default(now())
+
+  @@index([workspaceId, queryId, createdAt])
+}
+
+model PullRequestIntent {
+  id                     String                 @id @default(cuid())
+  workspaceId            String
+  repositoryId           String
+  workspace              Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  repository             Repository             @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  title                  String
+  targetBranch           String
+  problemStatement       String                 @db.Text
+  riskSummary            String                 @db.Text
+  validationChecklist    String[]
+  status                 PrIntentStatus         @default(validated)
+  repositoryHealthStatus RepositoryHealthStatus
+  humanApproval          Boolean
+  createdAt              DateTime               @default(now())
+
+  @@index([workspaceId, repositoryId, createdAt])
 }

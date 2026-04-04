@@ -1,30 +1,11 @@
 import { createRequire } from "node:module";
 import * as queueActivities from "@apps/queue/activities";
-import { env } from "@shared/env";
-import { NativeConnection, Worker } from "@temporalio/worker";
+import { startQueueWorkers } from "@apps/queue/runtime/worker-runtime";
 
 const require = createRequire(import.meta.url);
 
 async function startWorker(): Promise<void> {
-  const connection = await NativeConnection.connect({ address: env.TEMPORAL_ADDRESS });
-
-  const supportWorker = await Worker.create({
-    connection,
-    namespace: env.TEMPORAL_NAMESPACE,
-    taskQueue: env.TEMPORAL_TASK_QUEUE,
-    workflowsPath: require.resolve("@apps/queue/workflows"),
-    activities: queueActivities,
-  });
-
-  const codexWorker = await Worker.create({
-    connection,
-    namespace: env.TEMPORAL_NAMESPACE,
-    taskQueue: env.CODEX_TASK_QUEUE,
-    workflowsPath: require.resolve("@apps/queue/workflows"),
-    activities: queueActivities,
-  });
-
-  await Promise.all([supportWorker.run(), codexWorker.run()]);
+  await startQueueWorkers(require.resolve("@apps/queue/workflows"), queueActivities);
 }
 
 startWorker().catch((error: unknown) => {

@@ -4,6 +4,7 @@ import { z } from "zod";
 export const workflowNames = {
   supportInbox: "supportInboxWorkflow",
   fixPr: "fixPrWorkflow",
+  repositoryIndex: "repositoryIndexWorkflow",
 } as const;
 
 export const supportWorkflowInputSchema = z.object({
@@ -32,6 +33,19 @@ export const codexWorkflowResultSchema = z.object({
   queuedAt: z.iso.datetime(),
 });
 
+export const repositoryIndexWorkflowInputSchema = z.object({
+  syncRequestId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  repositoryId: z.string().min(1),
+});
+
+export const repositoryIndexWorkflowResultSchema = z.object({
+  syncRequestId: z.string(),
+  repositoryId: z.string(),
+  status: workflowProcessingStatusSchema,
+  queuedAt: z.iso.datetime(),
+});
+
 export const workflowDispatchSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("support"),
@@ -41,6 +55,10 @@ export const workflowDispatchSchema = z.discriminatedUnion("type", [
     type: z.literal("codex"),
     payload: codexWorkflowInputSchema,
   }),
+  z.object({
+    type: z.literal("repository-index"),
+    payload: repositoryIndexWorkflowInputSchema,
+  }),
 ]);
 
 export type WorkflowNames = typeof workflowNames;
@@ -48,4 +66,6 @@ export type SupportWorkflowInput = z.infer<typeof supportWorkflowInputSchema>;
 export type SupportWorkflowResult = z.infer<typeof supportWorkflowResultSchema>;
 export type CodexWorkflowInput = z.infer<typeof codexWorkflowInputSchema>;
 export type CodexWorkflowResult = z.infer<typeof codexWorkflowResultSchema>;
+export type RepositoryIndexWorkflowInput = z.infer<typeof repositoryIndexWorkflowInputSchema>;
+export type RepositoryIndexWorkflowResult = z.infer<typeof repositoryIndexWorkflowResultSchema>;
 export type WorkflowDispatchRequest = z.infer<typeof workflowDispatchSchema>;

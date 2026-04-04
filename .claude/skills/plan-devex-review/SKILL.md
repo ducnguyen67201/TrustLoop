@@ -1,0 +1,1 @@
+/Users/ducng/Desktop/workspace/TrustLoop/.claude/skills/gstack/plan-devex-review/SKILL.md
