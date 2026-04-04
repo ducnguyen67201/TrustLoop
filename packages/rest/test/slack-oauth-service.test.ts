@@ -6,8 +6,7 @@ import {
 import { ValidationError } from "@shared/types";
 import { describe, expect, it } from "vitest";
 
-const signingKey =
-  process.env.SESSION_SECRET ?? "dev-only-trustloop-session-secret";
+const signingKey = process.env.SESSION_SECRET ?? "dev-only-trustloop-session-secret";
 
 function base64UrlEncode(data: string): string {
   return Buffer.from(data, "utf8").toString("base64url");

@@ -8,7 +8,8 @@ import { TRPCError } from "@trpc/server";
 import { initTRPC } from "@trpc/server";
 
 const t = initTRPC.context<TRPCContext>().create();
-const isTrpcDebugEnabled = env.NODE_ENV === NODE_ENV.DEVELOPMENT || env.TRUSTLOOP_DEBUG_TRPC === "1";
+const isTrpcDebugEnabled =
+  env.NODE_ENV === NODE_ENV.DEVELOPMENT || env.TRUSTLOOP_DEBUG_TRPC === "1";
 
 function resolveProcedureWorkspaceId(ctx: TRPCContext): string | null {
   const derived = ctx as TRPCContext & { workspaceId?: string };
