@@ -38,9 +38,7 @@ export type SupportInstallationSummary = z.infer<typeof supportInstallationSumma
 export const supportInstallationListResponseSchema = z.object({
   installations: z.array(supportInstallationSummarySchema),
 });
-export type SupportInstallationListResponse = z.infer<
-  typeof supportInstallationListResponseSchema
->;
+export type SupportInstallationListResponse = z.infer<typeof supportInstallationListResponseSchema>;
 
 /** Disconnect request. */
 export const supportInstallationDisconnectRequestSchema = z.object({
