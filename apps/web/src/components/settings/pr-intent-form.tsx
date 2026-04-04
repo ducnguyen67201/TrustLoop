@@ -1,4 +1,4 @@
-import { preparePrIntentAction } from "@/app/settings/integrations/actions";
+import { preparePrIntentAction } from "@/app/[workspaceId]/settings/github/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,11 +11,13 @@ type PreparedIntent = Awaited<ReturnType<typeof import("@shared/rest").getPrepar
  * Keep PR prep explicit, human-approved, and blocked when repository freshness falls below the bar.
  */
 export function PrIntentForm({
+  workspaceId,
   repository,
   query,
   queryAuditId,
   preparedIntent,
 }: {
+  workspaceId: string;
   repository: RepositorySummary | null;
   query: string;
   queryAuditId: string | null;
@@ -36,6 +38,7 @@ export function PrIntentForm({
       </CardHeader>
       <CardContent className="space-y-4">
         <form action={preparePrIntentAction} className="space-y-4">
+          <input type="hidden" name="workspaceId" value={workspaceId} />
           <input type="hidden" name="repositoryId" value={repository.id} />
           <input type="hidden" name="query" value={query} />
           <input type="hidden" name="queryAuditId" value={queryAuditId ?? ""} />

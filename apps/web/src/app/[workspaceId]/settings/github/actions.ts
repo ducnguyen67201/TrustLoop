@@ -8,15 +8,19 @@ import {
   searchRepositoryCode,
   updateRepositorySelection,
 } from "@shared/rest";
-import { DEFAULT_WORKSPACE_ID } from "@shared/rest/codex";
 import { ConflictError } from "@shared/types";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 
-const INTEGRATIONS_PATH = "/settings/integrations";
+function githubSettingsPath(workspaceId: string): string {
+  return `/${workspaceId}/settings/github`;
+}
 
-function buildReturnPath(params: Record<string, string | undefined>): string {
+function buildReturnPath(
+  workspaceId: string,
+  params: Record<string, string | undefined>
+): string {
   const searchParams = new URLSearchParams();
 
   for (const [key, value] of Object.entries(params)) {
@@ -25,8 +29,9 @@ function buildReturnPath(params: Record<string, string | undefined>): string {
     }
   }
 
+  const base = githubSettingsPath(workspaceId);
   const query = searchParams.toString();
-  return query ? `${INTEGRATIONS_PATH}?${query}` : INTEGRATIONS_PATH;
+  return query ? `${base}?${query}` : base;
 }
 
 function getString(formData: FormData, key: string): string {
@@ -43,19 +48,23 @@ function getActionErrorMessage(error: unknown): string {
 }
 
 /**
- * Connect the default workspace to the GitHub integration scaffold.
+ * Connect the workspace to the GitHub integration scaffold.
  */
-export async function connectGithubAction(): Promise<never> {
+export async function connectGithubAction(formData: FormData): Promise<never> {
+  const workspaceId = getString(formData, "workspaceId");
+
   try {
     await connectGithubInstallation({
-      workspaceId: DEFAULT_WORKSPACE_ID,
+      workspaceId,
       installationOwner: "ducnguyen67201",
     });
 
-    revalidatePath(INTEGRATIONS_PATH);
-    redirect(buildReturnPath({ flash: "GitHub connected.", tone: "success" }));
+    revalidatePath(githubSettingsPath(workspaceId));
+    redirect(buildReturnPath(workspaceId, { flash: "GitHub connected.", tone: "success" }));
   } catch (error) {
-    redirect(buildReturnPath({ flash: getActionErrorMessage(error), tone: "error" }));
+    redirect(
+      buildReturnPath(workspaceId, { flash: getActionErrorMessage(error), tone: "error" })
+    );
   }
 }
 
@@ -63,19 +72,20 @@ export async function connectGithubAction(): Promise<never> {
  * Toggle whether a repository is part of the indexed scope.
  */
 export async function toggleRepositorySelectionAction(formData: FormData): Promise<never> {
+  const workspaceId = getString(formData, "workspaceId");
   const repositoryId = getString(formData, "repositoryId");
   const selected = getString(formData, "selected") === "true";
 
   try {
     await updateRepositorySelection({
-      workspaceId: DEFAULT_WORKSPACE_ID,
+      workspaceId,
       repositoryId,
       selected,
     });
 
-    revalidatePath(INTEGRATIONS_PATH);
+    revalidatePath(githubSettingsPath(workspaceId));
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         flash: selected ? "Repository added to scope." : "Repository removed from scope.",
         tone: "success",
@@ -83,7 +93,7 @@ export async function toggleRepositorySelectionAction(formData: FormData): Promi
     );
   } catch (error) {
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         flash: getActionErrorMessage(error),
         tone: "error",
@@ -96,18 +106,19 @@ export async function toggleRepositorySelectionAction(formData: FormData): Promi
  * Enqueue a manual repository sync through the unified sync ingress path.
  */
 export async function syncRepositoryAction(formData: FormData): Promise<never> {
+  const workspaceId = getString(formData, "workspaceId");
   const repositoryId = getString(formData, "repositoryId");
 
   try {
     await requestRepositorySync({
-      workspaceId: DEFAULT_WORKSPACE_ID,
+      workspaceId,
       repositoryId,
       triggerSource: "manual",
     });
 
-    revalidatePath(INTEGRATIONS_PATH);
+    revalidatePath(githubSettingsPath(workspaceId));
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         flash: "Sync queued on the codex worker.",
         tone: "success",
@@ -115,7 +126,7 @@ export async function syncRepositoryAction(formData: FormData): Promise<never> {
     );
   } catch (error) {
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         flash: getActionErrorMessage(error),
         tone: "error",
@@ -128,20 +139,21 @@ export async function syncRepositoryAction(formData: FormData): Promise<never> {
  * Run evidence retrieval once and redirect to the persisted query receipt.
  */
 export async function searchEvidenceAction(formData: FormData): Promise<never> {
+  const workspaceId = getString(formData, "workspaceId");
   const repositoryId = getString(formData, "repositoryId");
   const query = getString(formData, "query");
 
   try {
     const result = await searchRepositoryCode({
-      workspaceId: DEFAULT_WORKSPACE_ID,
+      workspaceId,
       repositoryId,
       query,
       limit: 5,
     });
 
-    revalidatePath(INTEGRATIONS_PATH);
+    revalidatePath(githubSettingsPath(workspaceId));
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         query,
         queryAuditId: result.queryAuditId,
@@ -151,7 +163,7 @@ export async function searchEvidenceAction(formData: FormData): Promise<never> {
     );
   } catch (error) {
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         query,
         flash: getActionErrorMessage(error),
@@ -165,22 +177,23 @@ export async function searchEvidenceAction(formData: FormData): Promise<never> {
  * Save operator feedback against a persisted search result.
  */
 export async function submitFeedbackAction(formData: FormData): Promise<never> {
+  const workspaceId = getString(formData, "workspaceId");
   const repositoryId = getString(formData, "repositoryId");
   const query = getString(formData, "query");
   const queryAuditId = getString(formData, "queryAuditId");
 
   try {
     await recordSearchFeedback({
-      workspaceId: DEFAULT_WORKSPACE_ID,
+      workspaceId,
       queryAuditId,
       searchResultId: getString(formData, "searchResultId"),
       label: getString(formData, "label") === "useful" ? "useful" : "off_target",
       note: undefined,
     });
 
-    revalidatePath(INTEGRATIONS_PATH);
+    revalidatePath(githubSettingsPath(workspaceId));
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         query,
         queryAuditId,
@@ -190,7 +203,7 @@ export async function submitFeedbackAction(formData: FormData): Promise<never> {
     );
   } catch (error) {
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         query,
         queryAuditId,
@@ -205,13 +218,14 @@ export async function submitFeedbackAction(formData: FormData): Promise<never> {
  * Validate and persist a PR intent only when the active repository snapshot is fresh.
  */
 export async function preparePrIntentAction(formData: FormData): Promise<never> {
+  const workspaceId = getString(formData, "workspaceId");
   const repositoryId = getString(formData, "repositoryId");
   const query = getString(formData, "query");
   const queryAuditId = getString(formData, "queryAuditId");
 
   try {
     const intent = await preparePullRequestIntent({
-      workspaceId: DEFAULT_WORKSPACE_ID,
+      workspaceId,
       repositoryId,
       title: getString(formData, "title"),
       targetBranch: getString(formData, "targetBranch"),
@@ -224,9 +238,9 @@ export async function preparePrIntentAction(formData: FormData): Promise<never> 
       humanApproval: true,
     });
 
-    revalidatePath(INTEGRATIONS_PATH);
+    revalidatePath(githubSettingsPath(workspaceId));
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         query,
         queryAuditId,
@@ -237,7 +251,7 @@ export async function preparePrIntentAction(formData: FormData): Promise<never> 
     );
   } catch (error) {
     redirect(
-      buildReturnPath({
+      buildReturnPath(workspaceId, {
         repositoryId,
         query,
         queryAuditId,

@@ -1,4 +1,4 @@
-import { toggleRepositorySelectionAction } from "@/app/settings/integrations/actions";
+import { toggleRepositorySelectionAction } from "@/app/[workspaceId]/settings/github/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

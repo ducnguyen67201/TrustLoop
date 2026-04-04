@@ -1,4 +1,4 @@
-import { connectGithubAction } from "@/app/settings/integrations/actions";
+import { connectGithubAction } from "@/app/[workspaceId]/settings/github/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,8 +8,10 @@ import type { GithubConnectionSummary } from "@shared/types";
  * Explain connection state and let the user establish the GitHub installation.
  */
 export function GitHubConnectionSection({
+  workspaceId,
   connection,
 }: {
+  workspaceId: string;
   connection: GithubConnectionSummary;
 }) {
   const connected = connection.status === "connected";
@@ -55,6 +57,7 @@ export function GitHubConnectionSection({
               </p>
             </div>
             <form action={connectGithubAction}>
+              <input type="hidden" name="workspaceId" value={workspaceId} />
               <Button type="submit">Connect GitHub</Button>
             </form>
           </div>

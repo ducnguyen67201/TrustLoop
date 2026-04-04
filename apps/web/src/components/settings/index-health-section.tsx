@@ -1,4 +1,7 @@
-import { searchEvidenceAction, syncRepositoryAction } from "@/app/settings/integrations/actions";
+import {
+  searchEvidenceAction,
+  syncRepositoryAction,
+} from "@/app/[workspaceId]/settings/github/actions";
 import { EvidenceResults } from "@/components/settings/evidence-results";
 import { PrIntentForm } from "@/components/settings/pr-intent-form";
 import { Badge } from "@/components/ui/badge";
@@ -14,12 +17,14 @@ type PreparedIntent = Awaited<ReturnType<typeof import("@shared/rest").getPrepar
  * Combine repository health, sync control, evidence retrieval, and PR gating into one working area.
  */
 export function IndexHealthSection({
+  workspaceId,
   repositories,
   activeRepository,
   query,
   receipt,
   preparedIntent,
 }: {
+  workspaceId: string;
   repositories: RepositorySummary[];
   activeRepository: RepositorySummary | null;
   query: string;
@@ -78,6 +83,7 @@ export function IndexHealthSection({
                   ) : null}
                 </div>
                 <form action={syncRepositoryAction}>
+                  <input type="hidden" name="workspaceId" value={workspaceId} />
                   <input type="hidden" name="repositoryId" value={repository.id} />
                   <Button type="submit" disabled={!repository.selected}>
                     Sync now
@@ -93,6 +99,7 @@ export function IndexHealthSection({
             action={searchEvidenceAction}
             className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end"
           >
+            <input type="hidden" name="workspaceId" value={workspaceId} />
             <label className="grid gap-2 text-sm" htmlFor="search-query">
               <span className="font-medium">Issue or symptom</span>
               <Input
@@ -123,6 +130,7 @@ export function IndexHealthSection({
             </Button>
           </form>
           <EvidenceResults
+            workspaceId={workspaceId}
             repositoryId={activeRepository?.id ?? ""}
             query={query}
             receipt={receipt}
@@ -130,6 +138,7 @@ export function IndexHealthSection({
         </div>
         <Separator />
         <PrIntentForm
+          workspaceId={workspaceId}
           repository={activeRepository}
           query={query}
           queryAuditId={receipt?.queryAuditId ?? null}

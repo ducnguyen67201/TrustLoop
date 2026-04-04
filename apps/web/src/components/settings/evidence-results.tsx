@@ -1,4 +1,4 @@
-import { submitFeedbackAction } from "@/app/settings/integrations/actions";
+import { submitFeedbackAction } from "@/app/[workspaceId]/settings/github/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +8,12 @@ import type { SearchCodeResponse } from "@shared/types";
  * Render persisted search receipts so operators can inspect why a code result ranked highly.
  */
 export function EvidenceResults({
+  workspaceId,
   repositoryId,
   query,
   receipt,
 }: {
+  workspaceId: string;
   repositoryId: string;
   query: string;
   receipt: SearchCodeResponse | null;
@@ -78,6 +80,7 @@ export function EvidenceResults({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <form action={submitFeedbackAction}>
+                    <input type="hidden" name="workspaceId" value={workspaceId} />
                     <input type="hidden" name="repositoryId" value={repositoryId} />
                     <input type="hidden" name="query" value={query} />
                     <input type="hidden" name="queryAuditId" value={receipt.queryAuditId} />
@@ -88,6 +91,7 @@ export function EvidenceResults({
                     </Button>
                   </form>
                   <form action={submitFeedbackAction}>
+                    <input type="hidden" name="workspaceId" value={workspaceId} />
                     <input type="hidden" name="repositoryId" value={repositoryId} />
                     <input type="hidden" name="query" value={query} />
                     <input type="hidden" name="queryAuditId" value={receipt.queryAuditId} />
