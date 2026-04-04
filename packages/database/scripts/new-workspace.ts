@@ -32,9 +32,7 @@ async function createWorkspaceForUser(workspaceName: string, email: string): Pro
   });
 
   if (!user) {
-    throw new Error(
-      `User "${email}" does not exist. Register first, then run this command again.`
-    );
+    throw new Error(`User "${email}" does not exist. Register first, then run this command again.`);
   }
 
   const workspace = await prisma.$transaction(async (tx) => {
