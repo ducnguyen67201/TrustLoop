@@ -36,4 +36,6 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm run test
+        env:
+          SKIP_ENV_VALIDATION: "1"
       - run: npm run build
