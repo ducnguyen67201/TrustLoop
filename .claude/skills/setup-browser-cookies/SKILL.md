@@ -1,1 +1,1 @@
-/Users/ducng/Desktop/workspace/TrustLoop/.claude/skills/gstack/setup-browser-cookies/SKILL.md
+../../../.skills/gstack/setup-browser-cookies/SKILL.md
