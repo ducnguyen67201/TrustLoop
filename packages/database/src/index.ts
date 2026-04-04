@@ -2,6 +2,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@shared/database/generated/prisma/client";
 import { env } from "@shared/env";
 import { NODE_ENV } from "@shared/env/shared";
+import { softDeleteExtension } from "./soft-delete";
 
 const globalForPrisma = globalThis as { prisma?: PrismaClient };
 
@@ -56,10 +57,17 @@ if (cachedPrisma && !hasSupportDelegates(cachedPrisma)) {
   globalForPrisma.prisma = undefined;
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+const baseClient = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== NODE_ENV.PRODUCTION) {
-  globalForPrisma.prisma = prisma;
+  globalForPrisma.prisma = baseClient;
 }
 
+/** Extended client with soft-delete auto-filtering and delete conversion. */
+export const prisma = baseClient.$extends(softDeleteExtension);
+
+/** Raw client without soft-delete extension — for purge hard deletes only. */
+export const prismaRaw = baseClient;
+
 export type { Prisma } from "@shared/database/generated/prisma/client";
+export { SOFT_DELETE_MODELS } from "./soft-delete";

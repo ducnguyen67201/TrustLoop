@@ -1,0 +1,103 @@
+import { Prisma } from "@shared/database/generated/prisma/client";
+
+/**
+ * Models that support soft delete via `deletedAt` field.
+ * Used by the Prisma extension to auto-filter queries and convert deletes.
+ */
+export const SOFT_DELETE_MODELS = [
+  "User",
+  "Workspace",
+  "WorkspaceMembership",
+  "WorkspaceApiKey",
+  "SupportInstallation",
+  "SupportConversation",
+  "SupportDeliveryAttempt",
+  "SupportTicketLink",
+] as const;
+
+type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number];
+
+function isSoftDeleteModel(model: string): model is SoftDeleteModel {
+  return SOFT_DELETE_MODELS.includes(model as SoftDeleteModel);
+}
+
+function lowerFirst(s: string): string {
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
+
+/**
+ * Inject `deletedAt: null` into where clause unless `includeDeleted` is set.
+ * Strips `includeDeleted` from args before forwarding to Prisma engine.
+ */
+function applySoftDeleteFilter<T>(model: string, args: T): T {
+  if (!isSoftDeleteModel(model)) return args;
+
+  const { includeDeleted, ...rest } = args as any;
+  if (includeDeleted) return rest as T;
+
+  rest.where = { ...rest.where, deletedAt: null };
+  return rest as T;
+}
+
+/**
+ * Prisma Client extension that:
+ * 1. Auto-injects `deletedAt: null` filter on read queries (unless includeDeleted: true)
+ * 2. Converts `delete` to `update { deletedAt: now() }` for soft-delete models
+ * 3. Converts `deleteMany` to `updateMany { deletedAt: now() }` for soft-delete models
+ *
+ * Uses the function-form of defineExtension to capture `client` in closure,
+ * which the delete hooks use to call update on the pre-extension client.
+ */
+export const softDeleteExtension = Prisma.defineExtension((client) => {
+  return client.$extends({
+    name: "soft-delete",
+    query: {
+      $allModels: {
+        async findFirst({ model, args, query }) {
+          return query(applySoftDeleteFilter(model, args));
+        },
+        async findFirstOrThrow({ model, args, query }) {
+          return query(applySoftDeleteFilter(model, args));
+        },
+        async findMany({ model, args, query }) {
+          return query(applySoftDeleteFilter(model, args));
+        },
+        async findUnique({ model, args, query }) {
+          return query(applySoftDeleteFilter(model, args));
+        },
+        async findUniqueOrThrow({ model, args, query }) {
+          return query(applySoftDeleteFilter(model, args));
+        },
+        async count({ model, args, query }) {
+          return query(applySoftDeleteFilter(model, args));
+        },
+        async aggregate({ model, args, query }) {
+          return query(applySoftDeleteFilter(model, args));
+        },
+        async groupBy({ model, args, query }) {
+          return query(applySoftDeleteFilter(model, args));
+        },
+        async delete({ model, args, query }) {
+          if (isSoftDeleteModel(model)) {
+            const modelKey = lowerFirst(model) as keyof typeof client;
+            return (client[modelKey] as any).update({
+              ...args,
+              data: { deletedAt: new Date() },
+            });
+          }
+          return query(args);
+        },
+        async deleteMany({ model, args, query }) {
+          if (isSoftDeleteModel(model)) {
+            const modelKey = lowerFirst(model) as keyof typeof client;
+            return (client[modelKey] as any).updateMany({
+              ...args,
+              data: { deletedAt: new Date() },
+            });
+          }
+          return query(args);
+        },
+      },
+    },
+  });
+});

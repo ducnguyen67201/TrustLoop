@@ -138,6 +138,7 @@ export const workspaceRouter = router({
         });
       }
 
+      // Check active membership (auto-filtered by soft-delete extension)
       const existing = await findWorkspaceMembershipId(ctx.workspaceId, targetUser.id);
 
       if (existing) {
@@ -147,21 +148,34 @@ export const workspaceRouter = router({
         });
       }
 
-      const created = await prisma.workspaceMembership.create({
-        data: {
+      // Check for soft-deleted membership to resurrect instead of creating duplicate
+      const softDeleted = await (prisma.workspaceMembership.findFirst as any)({
+        where: {
           workspaceId: ctx.workspaceId,
           userId: targetUser.id,
-          role: input.role,
+          deletedAt: { not: null },
         },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-        },
+        includeDeleted: true,
+        select: { id: true },
       });
+
+      let created;
+      if (softDeleted) {
+        created = await prisma.workspaceMembership.update({
+          where: { id: softDeleted.id },
+          data: { deletedAt: null, role: input.role },
+          include: { user: { select: { id: true, email: true } } },
+        });
+      } else {
+        created = await prisma.workspaceMembership.create({
+          data: {
+            workspaceId: ctx.workspaceId,
+            userId: targetUser.id,
+            role: input.role,
+          },
+          include: { user: { select: { id: true, email: true } } },
+        });
+      }
 
       await writeAuditEvent({
         action: "workspace.member.add",

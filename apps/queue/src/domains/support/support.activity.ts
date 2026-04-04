@@ -93,38 +93,53 @@ export async function runSupportPipeline(
     normalized.threadTs
   );
 
+  const conversationData = {
+    teamId: normalized.teamId,
+    channelId: normalized.channelId,
+    threadTs: normalized.threadTs,
+    status: SUPPORT_CONVERSATION_STATUS.unread,
+    lastCustomerMessageAt: now,
+    customerWaitingSince: now,
+    staleAt: computeUnreadStaleAt(now),
+    lastActivityAt: now,
+  };
+
   const conversation = await prisma.$transaction(async (tx) => {
-    const upsertedConversation = await tx.supportConversation.upsert({
+    // Check for soft-deleted conversation with same canonical key to resurrect
+    const softDeleted = await (tx.supportConversation.findFirst as any)({
       where: {
-        workspaceId_canonicalConversationKey: {
-          workspaceId: input.workspaceId,
-          canonicalConversationKey,
-        },
-      },
-      create: {
         workspaceId: input.workspaceId,
-        installationId: input.installationId,
         canonicalConversationKey,
-        teamId: normalized.teamId,
-        channelId: normalized.channelId,
-        threadTs: normalized.threadTs,
-        status: SUPPORT_CONVERSATION_STATUS.unread,
-        lastCustomerMessageAt: now,
-        customerWaitingSince: now,
-        staleAt: computeUnreadStaleAt(now),
-        lastActivityAt: now,
+        deletedAt: { not: null },
       },
-      update: {
-        teamId: normalized.teamId,
-        channelId: normalized.channelId,
-        threadTs: normalized.threadTs,
-        status: SUPPORT_CONVERSATION_STATUS.unread,
-        lastCustomerMessageAt: now,
-        customerWaitingSince: now,
-        staleAt: computeUnreadStaleAt(now),
-        lastActivityAt: now,
-      },
+      includeDeleted: true,
+      select: { id: true },
     });
+
+    let upsertedConversation;
+    if (softDeleted) {
+      // Resurrect the soft-deleted conversation
+      upsertedConversation = await tx.supportConversation.update({
+        where: { id: softDeleted.id },
+        data: { deletedAt: null, installationId: input.installationId, ...conversationData },
+      });
+    } else {
+      upsertedConversation = await tx.supportConversation.upsert({
+        where: {
+          workspaceId_canonicalConversationKey: {
+            workspaceId: input.workspaceId,
+            canonicalConversationKey,
+          },
+        },
+        create: {
+          workspaceId: input.workspaceId,
+          installationId: input.installationId,
+          canonicalConversationKey,
+          ...conversationData,
+        },
+        update: conversationData,
+      });
+    }
 
     await tx.supportConversationEvent.create({
       data: {
