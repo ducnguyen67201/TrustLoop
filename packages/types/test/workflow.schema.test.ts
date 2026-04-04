@@ -6,9 +6,10 @@ describe("workflowDispatchSchema", () => {
     const parsed = workflowDispatchSchema.parse({
       type: "support",
       payload: {
-        threadId: "thread_123",
         workspaceId: "ws_1",
-        requesterId: "user_1",
+        installationId: "inst_1",
+        ingressEventId: "evt_1",
+        canonicalIdempotencyKey: "key_1",
       },
     });
 

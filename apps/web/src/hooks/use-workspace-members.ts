@@ -5,6 +5,7 @@ import type {
   WorkspaceMemberAddRequest,
   WorkspaceMemberAddResponse,
   WorkspaceMemberListResponse,
+  WorkspaceMemberRemoveResponse,
   WorkspaceMemberUpdateRoleRequest,
   WorkspaceMemberUpdateRoleResponse,
   WorkspaceRole,
@@ -60,6 +61,19 @@ export function useWorkspaceMembers() {
     [refresh]
   );
 
+  const removeMember = useCallback(
+    async (userId: string) => {
+      setError(null);
+      await trpcMutation<{ userId: string }, WorkspaceMemberRemoveResponse>(
+        "workspace.removeMember",
+        { userId },
+        { withCsrf: true }
+      );
+      await refresh();
+    },
+    [refresh]
+  );
+
   useEffect(() => {
     refresh().catch(() => {
       setError("Failed to load workspace members");
@@ -74,5 +88,6 @@ export function useWorkspaceMembers() {
     refresh,
     addMember,
     updateMemberRole,
+    removeMember,
   };
 }

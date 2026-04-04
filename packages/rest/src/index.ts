@@ -2,6 +2,8 @@ export * from "@shared/rest/auth-router";
 export * from "@shared/rest/context";
 export * from "@shared/rest/rest-handlers";
 export * from "@shared/rest/router";
+export * from "@shared/rest/support-inbox-router";
+export * from "@shared/rest/support-installation-router";
 export * from "@shared/rest/trpc";
 export * from "@shared/rest/temporal-dispatcher";
 export * from "@shared/rest/workspace-api-key-router";

@@ -78,23 +78,28 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
-          "threadId": {
-            "type": "string",
-            "minLength": 1
-          },
           "workspaceId": {
             "type": "string",
             "minLength": 1
           },
-          "requesterId": {
+          "installationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ingressEventId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canonicalIdempotencyKey": {
             "type": "string",
             "minLength": 1
           }
         },
         "required": [
-          "threadId",
           "workspaceId",
-          "requesterId"
+          "installationId",
+          "ingressEventId",
+          "canonicalIdempotencyKey"
         ],
         "additionalProperties": false
       },
@@ -136,23 +141,28 @@
               "payload": {
                 "type": "object",
                 "properties": {
-                  "threadId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
                   "workspaceId": {
                     "type": "string",
                     "minLength": 1
                   },
-                  "requesterId": {
+                  "installationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "ingressEventId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "canonicalIdempotencyKey": {
                     "type": "string",
                     "minLength": 1
                   }
                 },
                 "required": [
-                  "threadId",
                   "workspaceId",
-                  "requesterId"
+                  "installationId",
+                  "ingressEventId",
+                  "canonicalIdempotencyKey"
                 ],
                 "additionalProperties": false
               }

@@ -1,4 +1,5 @@
 import { env } from "@shared/env";
+import { NODE_ENV } from "@shared/env/shared";
 import type { TRPCContext } from "@shared/rest/context";
 import { hasRequiredRole } from "@shared/rest/security/rbac";
 import { assertCsrf } from "@shared/rest/security/session";
@@ -7,7 +8,8 @@ import { TRPCError } from "@trpc/server";
 import { initTRPC } from "@trpc/server";
 
 const t = initTRPC.context<TRPCContext>().create();
-const isTrpcDebugEnabled = env.NODE_ENV === "development" || env.TRUSTLOOP_DEBUG_TRPC === "1";
+const isTrpcDebugEnabled =
+  env.NODE_ENV === NODE_ENV.DEVELOPMENT || env.TRUSTLOOP_DEBUG_TRPC === "1";
 
 function resolveProcedureWorkspaceId(ctx: TRPCContext): string | null {
   const derived = ctx as TRPCContext & { workspaceId?: string };

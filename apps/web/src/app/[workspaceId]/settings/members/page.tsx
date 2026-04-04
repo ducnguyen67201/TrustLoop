@@ -14,7 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MemberTable } from "@/components/workspace/member-table";
-import { WorkspaceSwitcher } from "@/components/workspace/workspace-switcher";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useWorkspaceMembers } from "@/hooks/use-workspace-members";
 import { WORKSPACE_ROLE, type WorkspaceRole } from "@shared/types";
@@ -92,14 +91,11 @@ export default function WorkspaceMembersPage() {
     >
       {(memberData) => (
         <main className="space-y-6">
-          <header className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold">Workspace memberships</h1>
-              <p className="text-muted-foreground text-sm">
-                Permission hierarchy: `OWNER` {">"} `ADMIN` {">"} `MEMBER` (view only).
-              </p>
-            </div>
-            <WorkspaceSwitcher />
+          <header>
+            <h1 className="text-2xl font-semibold">Workspace memberships</h1>
+            <p className="text-muted-foreground text-sm">
+              Permission hierarchy: `OWNER` {">"} `ADMIN` {">"} `MEMBER` (view only).
+            </p>
           </header>
 
           {mutationError ? (

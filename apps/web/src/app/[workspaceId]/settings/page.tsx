@@ -1,4 +1,4 @@
-import { workspaceMembersPath } from "@/lib/workspace-paths";
+import { workspaceGeneralPath } from "@/lib/workspace-paths";
 import { redirect } from "next/navigation";
 
 type WorkspaceSettingsPageProps = {
@@ -8,8 +8,8 @@ type WorkspaceSettingsPageProps = {
 };
 
 /**
- * Default settings route redirects to Team settings.
+ * Default settings route redirects to Workspace general settings.
  */
 export default function WorkspaceSettingsPage({ params }: WorkspaceSettingsPageProps) {
-  redirect(workspaceMembersPath(params.workspaceId));
+  redirect(workspaceGeneralPath(params.workspaceId));
 }

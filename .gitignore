@@ -13,3 +13,4 @@ node_modules
 # Prisma generated artifacts
 packages/database/src/generated/
 packages/types/src/prisma-generated/client.ts
+.gstack/

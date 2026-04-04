@@ -1,0 +1,1 @@
+/Users/ducng/Desktop/workspace/TrustLoop/.skills/gstack/ship/SKILL.md

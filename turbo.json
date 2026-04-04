@@ -1,9 +1,26 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": ["SKIP_ENV_VALIDATION"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**"]
+      "outputs": ["dist/**", ".next/**"],
+      "env": [
+        "NODE_ENV",
+        "APP_BASE_URL",
+        "DATABASE_URL",
+        "SESSION_COOKIE_NAME",
+        "SESSION_TTL_HOURS",
+        "SESSION_SECRET",
+        "API_KEY_PEPPER",
+        "SLACK_SIGNING_SECRET",
+        "SLACK_REPLAY_WINDOW_SECONDS",
+        "TEMPORAL_ADDRESS",
+        "TEMPORAL_NAMESPACE",
+        "TEMPORAL_TASK_QUEUE",
+        "CODEX_TASK_QUEUE",
+        "NEXT_PUBLIC_TRUSTLOOP_DEBUG_TRPC"
+      ]
     },
     "dev": {
       "cache": false,
@@ -19,7 +36,22 @@
     },
     "test": {
       "dependsOn": ["^test"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "passThroughEnv": [
+        "NODE_ENV",
+        "APP_BASE_URL",
+        "DATABASE_URL",
+        "SESSION_COOKIE_NAME",
+        "SESSION_TTL_HOURS",
+        "SESSION_SECRET",
+        "API_KEY_PEPPER",
+        "SLACK_SIGNING_SECRET",
+        "SLACK_REPLAY_WINDOW_SECONDS",
+        "TEMPORAL_ADDRESS",
+        "TEMPORAL_NAMESPACE",
+        "TEMPORAL_TASK_QUEUE",
+        "CODEX_TASK_QUEUE"
+      ]
     }
   }
 }

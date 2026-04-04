@@ -1,0 +1,1 @@
+/Users/ducng/Desktop/workspace/TrustLoop/.skills/gstack/setup-deploy/SKILL.md

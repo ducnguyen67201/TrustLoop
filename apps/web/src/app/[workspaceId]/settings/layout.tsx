@@ -2,8 +2,12 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { workspaceApiKeysPath, workspaceMembersPath } from "@/lib/workspace-paths";
-import { RiGroupLine, RiKey2Line } from "@remixicon/react";
+import {
+  workspaceApiKeysPath,
+  workspaceGeneralPath,
+  workspaceIntegrationsPath,
+} from "@/lib/workspace-paths";
+import { RiKey2Line, RiPlugLine, RiSettings3Line } from "@remixicon/react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -15,7 +19,7 @@ type WorkspaceSettingsLayoutProps = {
 type SettingsNavItem = {
   href: string;
   label: string;
-  icon: typeof RiGroupLine;
+  icon: typeof RiSettings3Line;
   isActive: boolean;
 };
 
@@ -30,21 +34,28 @@ export default function WorkspaceSettingsLayout({ children }: WorkspaceSettingsL
     : params.workspaceId;
   const workspaceId = workspaceIdValue ?? "";
 
-  const membersPath = workspaceMembersPath(workspaceId);
+  const generalPath = workspaceGeneralPath(workspaceId);
   const apiKeysPath = workspaceApiKeysPath(workspaceId);
+  const integrationsPath = workspaceIntegrationsPath(workspaceId);
 
   const navItems: SettingsNavItem[] = [
     {
-      href: membersPath,
-      label: "Team",
-      icon: RiGroupLine,
-      isActive: pathname === membersPath,
+      href: generalPath,
+      label: "Workspace",
+      icon: RiSettings3Line,
+      isActive: pathname === generalPath,
     },
     {
       href: apiKeysPath,
       label: "API Keys",
       icon: RiKey2Line,
       isActive: pathname === apiKeysPath,
+    },
+    {
+      href: integrationsPath,
+      label: "Integrations",
+      icon: RiPlugLine,
+      isActive: pathname === integrationsPath,
     },
   ];
 

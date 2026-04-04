@@ -15,12 +15,17 @@ import { workspaceRoleProcedure } from "@shared/rest/trpc";
 import {
   WORKSPACE_ROLE,
   workspaceActiveResponseSchema,
+  workspaceDetailsResponseSchema,
   workspaceMemberAddRequestSchema,
   workspaceMemberAddResponseSchema,
   workspaceMemberListResponseSchema,
+  workspaceMemberRemoveRequestSchema,
+  workspaceMemberRemoveResponseSchema,
   workspaceMemberUpdateRoleRequestSchema,
   workspaceMemberUpdateRoleResponseSchema,
   workspaceMembershipListSchema,
+  workspaceRenameRequestSchema,
+  workspaceRenameResponseSchema,
   workspaceRequestAccessRequestSchema,
   workspaceRequestAccessResponseSchema,
   workspaceSwitchRequestSchema,
@@ -29,6 +34,54 @@ import {
 import { TRPCError } from "@trpc/server";
 
 export const workspaceRouter = router({
+  /** Get workspace details for the current active workspace. */
+  getDetails: workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER).query(async ({ ctx }) => {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: ctx.workspaceId },
+      select: { id: true, name: true, createdAt: true },
+    });
+
+    if (!workspace) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Workspace not found" });
+    }
+
+    return workspaceDetailsResponseSchema.parse({
+      id: workspace.id,
+      name: workspace.name,
+      role: ctx.role,
+      createdAt: workspace.createdAt.toISOString(),
+    });
+  }),
+
+  /** Rename the workspace. OWNER only. */
+  rename: workspaceRoleProcedure(WORKSPACE_ROLE.OWNER)
+    .input(workspaceRenameRequestSchema)
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "User session required" });
+      }
+
+      const updated = await prisma.workspace.update({
+        where: { id: ctx.workspaceId },
+        data: { name: input.name },
+        select: { name: true },
+      });
+
+      await writeAuditEvent({
+        action: "workspace.rename",
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        targetType: "workspace",
+        targetId: ctx.workspaceId,
+        metadata: { newName: updated.name },
+      });
+
+      return workspaceRenameResponseSchema.parse({
+        renamed: true,
+        name: updated.name,
+      });
+    }),
+
   listMyMemberships: authenticatedProcedure.query(async ({ ctx }) => {
     const memberships = await listUserWorkspaceMemberships(ctx.user.id);
 
@@ -211,6 +264,57 @@ export const workspaceRouter = router({
           joinedAt: updated.createdAt.toISOString(),
         },
       });
+    }),
+  removeMember: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+    .input(workspaceMemberRemoveRequestSchema)
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user || !ctx.role) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Removing workspace members requires a user session",
+        });
+      }
+
+      const targetMembership = await findWorkspaceMembershipWithUser(ctx.workspaceId, input.userId);
+
+      if (!targetMembership) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Workspace member not found",
+        });
+      }
+
+      if (
+        !canManageWorkspaceMember(
+          ctx.role,
+          targetMembership.role,
+          targetMembership.userId === ctx.user.id
+        )
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You do not have permission to remove that member",
+        });
+      }
+
+      await prisma.workspaceMembership.delete({
+        where: { id: targetMembership.id },
+      });
+
+      await writeAuditEvent({
+        action: "workspace.member.remove",
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        targetType: "workspace_membership",
+        targetId: targetMembership.id,
+        metadata: {
+          memberUserId: targetMembership.userId,
+          memberEmail: targetMembership.user.email,
+          memberRole: targetMembership.role,
+        },
+      });
+
+      return workspaceMemberRemoveResponseSchema.parse({ removed: true });
     }),
   switchActive: authenticatedProcedure
     .input(workspaceSwitchRequestSchema)

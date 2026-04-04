@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -23,6 +24,7 @@ interface MemberTableProps {
   currentUserId: string;
   currentUserRole: WorkspaceRole;
   onUpdateRole: (input: { userId: string; role: WorkspaceRole }) => Promise<void>;
+  onRemoveMember?: (userId: string) => Promise<void>;
   updatingUserId: string | null;
 }
 
@@ -56,6 +58,7 @@ export function MemberTable({
   currentUserId,
   currentUserRole,
   onUpdateRole,
+  onRemoveMember,
   updatingUserId,
 }: MemberTableProps) {
   return (
@@ -66,6 +69,7 @@ export function MemberTable({
           <TableHead>Role</TableHead>
           <TableHead>Joined</TableHead>
           <TableHead>Permissions</TableHead>
+          <TableHead className="w-[80px]" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -112,6 +116,18 @@ export function MemberTable({
                   : member.role === WORKSPACE_ROLE.ADMIN
                     ? "Manage members and API keys"
                     : "View only"}
+              </TableCell>
+              <TableCell>
+                {canManage && onRemoveMember ? (
+                  <Button
+                    variant="destructive"
+                    size="xs"
+                    onClick={() => onRemoveMember(member.userId)}
+                    disabled={updatingUserId === member.userId}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
               </TableCell>
             </TableRow>
           );

@@ -8,26 +8,34 @@ datasource db {
 }
 
 model Workspace {
-  id             String                @id @default(cuid())
-  name           String
-  memberships    WorkspaceMembership[]
-  apiKeys        WorkspaceApiKey[]
-  auditLogs      AuditLog[]
-  activeSessions Session[]             @relation("SessionActiveWorkspace")
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  id                       String                     @id @default(cuid())
+  name                     String
+  memberships              WorkspaceMembership[]
+  apiKeys                  WorkspaceApiKey[]
+  auditLogs                AuditLog[]
+  activeSessions           Session[]                  @relation("SessionActiveWorkspace")
+  supportInstallations     SupportInstallation[]
+  supportIngressEvents     SupportIngressEvent[]
+  supportConversations     SupportConversation[]
+  supportConversationEvent SupportConversationEvent[]
+  supportDeliveryAttempts  SupportDeliveryAttempt[]
+  supportDeadLetters       SupportDeadLetter[]
+  supportTicketLinks       SupportTicketLink[]
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
 }
 
 model User {
-  id             String                @id @default(cuid())
-  email          String                @unique
-  passwordHash   String
-  sessions       Session[]
-  memberships    WorkspaceMembership[]
-  createdApiKeys WorkspaceApiKey[]     @relation("ApiKeyCreatedBy")
-  auditLogs      AuditLog[]            @relation("AuditActor")
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  id                         String                @id @default(cuid())
+  email                      String                @unique
+  passwordHash               String
+  sessions                   Session[]
+  memberships                WorkspaceMembership[]
+  createdApiKeys             WorkspaceApiKey[]     @relation("ApiKeyCreatedBy")
+  auditLogs                  AuditLog[]            @relation("AuditActor")
+  assignedSupportConvos      SupportConversation[] @relation("SupportConversationAssignee")
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
 }
 
 model Session {
@@ -99,4 +107,205 @@ enum WorkspaceRole {
   OWNER
   ADMIN
   MEMBER
+}
+
+enum SupportProvider {
+  SLACK
+}
+
+enum SupportIngressProcessingState {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+enum SupportConversationStatus {
+  UNREAD
+  IN_PROGRESS
+  STALE
+  DONE
+}
+
+enum SupportConversationEventType {
+  MESSAGE_RECEIVED
+  STATUS_CHANGED
+  ASSIGNEE_CHANGED
+  MERGED
+  SPLIT
+  DELIVERY_ATTEMPTED
+  DELIVERY_FAILED
+  DELIVERY_SUCCEEDED
+  NOTE
+}
+
+enum SupportConversationEventSource {
+  SYSTEM
+  OPERATOR
+  CUSTOMER
+}
+
+enum SupportDeliveryState {
+  PENDING
+  RETRYING
+  SUCCEEDED
+  FAILED
+  DEAD_LETTERED
+}
+
+enum SupportDeadLetterSourceType {
+  INGRESS
+  GROUPING
+  PROJECTION
+  DELIVERY
+  COMMAND
+}
+
+enum SupportTicketProvider {
+  LINEAR
+}
+
+enum SupportTicketSyncState {
+  PENDING
+  SYNCED
+  FAILED
+}
+
+model SupportInstallation {
+  id                     String               @id @default(cuid())
+  workspaceId            String
+  provider               SupportProvider
+  providerInstallationId String
+  teamId                 String
+  botUserId              String?
+  metadata               Json?
+  workspace              Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ingressEvents          SupportIngressEvent[]
+  conversations          SupportConversation[]
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  @@unique([provider, providerInstallationId])
+  @@index([workspaceId])
+}
+
+model SupportIngressEvent {
+  id                     String                       @id @default(cuid())
+  workspaceId            String
+  installationId         String
+  provider               SupportProvider
+  providerEventId        String
+  canonicalIdempotencyKey String                      @unique
+  rawPayloadJson         Json
+  processingState        SupportIngressProcessingState @default(RECEIVED)
+  receivedAt             DateTime                     @default(now())
+  processedAt            DateTime?
+  workspace              Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  installation           SupportInstallation          @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, receivedAt])
+  @@index([installationId])
+}
+
+model SupportConversation {
+  id                     String                    @id @default(cuid())
+  workspaceId            String
+  installationId         String
+  canonicalConversationKey String
+  teamId                 String
+  channelId              String
+  threadTs               String
+  status                 SupportConversationStatus @default(UNREAD)
+  assigneeUserId         String?
+  lastCustomerMessageAt  DateTime?
+  customerWaitingSince   DateTime?
+  staleAt                DateTime?
+  retryCount             Int                       @default(0)
+  lastActivityAt         DateTime                  @default(now())
+  workspace              Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  installation           SupportInstallation       @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  assignee               User?                     @relation("SupportConversationAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  events                 SupportConversationEvent[]
+  deliveryAttempts       SupportDeliveryAttempt[]
+  ticketLinks            SupportTicketLink[]
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+
+  @@unique([workspaceId, canonicalConversationKey])
+  @@index([workspaceId, teamId, channelId, threadTs])
+  @@index([workspaceId, status, staleAt, customerWaitingSince, retryCount, lastActivityAt])
+  @@index([installationId])
+  @@index([assigneeUserId])
+}
+
+model SupportConversationEvent {
+  id           String                         @id @default(cuid())
+  workspaceId  String
+  conversationId String
+  eventType    SupportConversationEventType
+  eventSource  SupportConversationEventSource
+  summary      String?
+  detailsJson  Json?
+  workspace    Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation SupportConversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                       @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+model SupportDeliveryAttempt {
+  id               String               @id @default(cuid())
+  workspaceId      String
+  conversationId   String
+  commandId        String
+  provider         SupportProvider
+  providerMessageId String?
+  attemptNumber    Int                  @default(1)
+  state            SupportDeliveryState @default(PENDING)
+  errorCode        String?
+  errorMessage     String?
+  nextRetryAt      DateTime?
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation     SupportConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([workspaceId, state, nextRetryAt])
+  @@index([conversationId, createdAt])
+}
+
+model SupportDeadLetter {
+  id             String                    @id @default(cuid())
+  workspaceId    String
+  sourceType     SupportDeadLetterSourceType
+  sourceId       String
+  failureClass   String
+  failureReason  String
+  payloadJson    Json
+  firstFailedAt  DateTime                  @default(now())
+  lastFailedAt   DateTime                  @default(now())
+  retryCount     Int                       @default(1)
+  resolvedAt     DateTime?
+  workspace      Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, resolvedAt, lastFailedAt])
+}
+
+model SupportTicketLink {
+  id               String                @id @default(cuid())
+  workspaceId      String
+  conversationId   String
+  provider         SupportTicketProvider
+  externalTicketId String
+  externalStatus   String?
+  syncState        SupportTicketSyncState @default(PENDING)
+  lastSyncedAt     DateTime?
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation     SupportConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@unique([workspaceId, provider, externalTicketId])
+  @@index([conversationId])
+  @@index([workspaceId, syncState, updatedAt])
 }

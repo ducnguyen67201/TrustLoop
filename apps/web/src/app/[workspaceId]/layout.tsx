@@ -18,16 +18,19 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { DarkModeToggle } from "@/components/workspace/dark-mode-toggle";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import {
   workspaceApiKeysPath,
   workspaceRootPath,
   workspaceSettingsPath,
+  workspaceSupportPath,
 } from "@/lib/workspace-paths";
 import {
   RiBook2Line,
   RiBuildingLine,
   RiCheckboxCircleLine,
+  RiCustomerService2Line,
   RiKey2Line,
   RiLineChartLine,
   RiLogoutBoxRLine,
@@ -66,6 +69,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
   const rootPath = workspaceRootPath(workspaceId);
   const settingsPath = workspaceSettingsPath(workspaceId);
   const apiKeysPath = workspaceApiKeysPath(workspaceId);
+  const supportPath = workspaceSupportPath(workspaceId);
 
   const mainNavItems: NavItem[] = [
     {
@@ -73,6 +77,12 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
       label: "Dashboard",
       icon: RiPieChartLine,
       isActive: pathname === rootPath,
+    },
+    {
+      href: supportPath,
+      label: "Support",
+      icon: RiCustomerService2Line,
+      isActive: pathname === supportPath || pathname.startsWith(`${supportPath}/`),
     },
   ];
 
@@ -174,6 +184,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
         <SidebarFooter>
           <Separator className="bg-sidebar-border" />
           <SidebarMenu>
+            <DarkModeToggle />
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild

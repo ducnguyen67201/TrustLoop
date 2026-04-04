@@ -6,10 +6,24 @@ export function workspaceRootPath(workspaceId: string): string {
 }
 
 /**
+ * Returns the support inbox path for a workspace.
+ */
+export function workspaceSupportPath(workspaceId: string): string {
+  return `/${workspaceId}/support`;
+}
+
+/**
  * Returns the settings landing path for a workspace.
  */
 export function workspaceSettingsPath(workspaceId: string): string {
   return `/${workspaceId}/settings`;
+}
+
+/**
+ * Returns the workspace general settings path.
+ */
+export function workspaceGeneralPath(workspaceId: string): string {
+  return `${workspaceSettingsPath(workspaceId)}/workspace`;
 }
 
 /**
@@ -24,6 +38,13 @@ export function workspaceMembersPath(workspaceId: string): string {
  */
 export function workspaceApiKeysPath(workspaceId: string): string {
   return `${workspaceSettingsPath(workspaceId)}/api-keys`;
+}
+
+/**
+ * Returns the integrations settings path for a workspace.
+ */
+export function workspaceIntegrationsPath(workspaceId: string): string {
+  return `${workspaceSettingsPath(workspaceId)}/integrations`;
 }
 
 /**

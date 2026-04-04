@@ -5,7 +5,6 @@ import { AsyncDataGuard } from "@/components/ui/async-data-guard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiKeyTable } from "@/components/workspace/api-key-table";
 import { CreateApiKeyDialog } from "@/components/workspace/create-api-key-dialog";
-import { WorkspaceSwitcher } from "@/components/workspace/workspace-switcher";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useWorkspaceApiKeys } from "@/hooks/use-workspace-api-keys";
 import { WORKSPACE_ROLE } from "@shared/types";
@@ -37,14 +36,11 @@ export default function WorkspaceApiKeysPage() {
     >
       {(apiKeyData) => (
         <main className="space-y-6">
-          <header className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold">Workspace API keys</h1>
-              <p className="text-muted-foreground text-sm">
-                Keys are workspace-bound and require 30/60/90-day expiry on creation.
-              </p>
-            </div>
-            <WorkspaceSwitcher />
+          <header>
+            <h1 className="text-2xl font-semibold">Workspace API keys</h1>
+            <p className="text-muted-foreground text-sm">
+              Keys are workspace-bound and require 30/60/90-day expiry on creation.
+            </p>
           </header>
 
           {!canManage ? (

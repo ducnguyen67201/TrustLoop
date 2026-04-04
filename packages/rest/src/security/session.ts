@@ -1,13 +1,14 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
+import { NODE_ENV } from "@shared/env/shared";
 
 const SESSION_COOKIE_SAME_SITE = "Lax";
 
 function serializeCookie(name: string, value: string, maxAgeSeconds?: number): string {
   const parts = [`${name}=${encodeURIComponent(value)}`, "Path=/", "HttpOnly"];
 
-  if (env.NODE_ENV === "production") {
+  if (env.NODE_ENV === NODE_ENV.PRODUCTION) {
     parts.push("Secure");
   }
 

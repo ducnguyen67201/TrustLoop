@@ -17,6 +17,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@shared/database": "*",
     "@shared/env": "*",
     "@shared/types": "*",
     "@temporalio/workflow": "^1.13.0",

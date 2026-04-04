@@ -28,7 +28,7 @@ async function getClient(): Promise<Client> {
 export const temporalWorkflowDispatcher: WorkflowDispatcher = {
   async startSupportWorkflow(input) {
     const client = await getClient();
-    const workflowId = `support-pipeline-${input.threadId}`;
+    const workflowId = `support-ingress-${input.canonicalIdempotencyKey}`;
     const handle = await client.workflow.start(workflowNames.supportInbox, {
       args: [input],
       taskQueue: env.TEMPORAL_TASK_QUEUE,

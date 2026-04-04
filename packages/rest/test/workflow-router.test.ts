@@ -24,9 +24,10 @@ describe("dispatchWorkflow", () => {
     const result = await dispatchWorkflow(dispatcher, {
       type: "support",
       payload: {
-        threadId: "thread_1",
         workspaceId: "ws_1",
-        requesterId: "user_1",
+        installationId: "inst_1",
+        ingressEventId: "evt_1",
+        canonicalIdempotencyKey: "inst_1:team_1:channel_1:12345.0001:message",
       },
     });
 

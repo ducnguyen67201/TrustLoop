@@ -92,6 +92,7 @@ For workflow-only debugging, local dev can run `npm run dev:queue`.
 - Share workflow input/output payload types via `@shared/types`.
 - Define shared enums/status literals once in `packages/types/src/<topic>/` and reuse them everywhere.
 - Prefer shared enum-style constants (for example `WORKSPACE_ROLE.ADMIN`) across router/service/UI logic; avoid inline string literals for roles/statuses/permissions.
+- When a type has 3+ possible string values, define it as a shared `const` enum object (e.g. `SLACK_OAUTH_STATUS.CONNECTED`) instead of inline string literals. This prevents typos and centralizes state definitions.
 - Validate all ingress boundaries at runtime (API, webhook, workflow input).
 
 ### Contract source of truth order

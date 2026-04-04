@@ -1,4 +1,6 @@
 import { authRouter } from "@shared/rest/auth-router";
+import { supportInboxRouter } from "@shared/rest/support-inbox-router";
+import { supportInstallationRouter } from "@shared/rest/support-installation-router";
 import {
   type WorkflowDispatcher,
   temporalWorkflowDispatcher,
@@ -12,6 +14,8 @@ import { healthResponseSchema, workflowDispatchSchema } from "@shared/types";
 export function createAppRouter(dispatcher: WorkflowDispatcher = temporalWorkflowDispatcher) {
   return router({
     auth: authRouter,
+    supportInbox: supportInboxRouter,
+    supportInstallation: supportInstallationRouter,
     workspace: workspaceRouter,
     workspaceApiKey: workspaceApiKeyRouter,
     health: publicProcedure.query(() =>

@@ -102,3 +102,34 @@ export type WorkspaceSwitchResponse = z.infer<typeof workspaceSwitchResponseSche
 export type WorkspaceActiveResponse = z.infer<typeof workspaceActiveResponseSchema>;
 export type WorkspaceRequestAccessRequest = z.infer<typeof workspaceRequestAccessRequestSchema>;
 export type WorkspaceRequestAccessResponse = z.infer<typeof workspaceRequestAccessResponseSchema>;
+
+export const workspaceMemberRemoveRequestSchema = z.object({
+  userId: z.string().min(1),
+});
+
+export const workspaceMemberRemoveResponseSchema = z.object({
+  removed: z.literal(true),
+});
+
+export type WorkspaceMemberRemoveRequest = z.infer<typeof workspaceMemberRemoveRequestSchema>;
+export type WorkspaceMemberRemoveResponse = z.infer<typeof workspaceMemberRemoveResponseSchema>;
+
+export const workspaceRenameRequestSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+});
+
+export const workspaceRenameResponseSchema = z.object({
+  renamed: z.literal(true),
+  name: z.string(),
+});
+
+export const workspaceDetailsResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: workspaceRoleSchema.nullable(),
+  createdAt: z.string(),
+});
+
+export type WorkspaceRenameRequest = z.infer<typeof workspaceRenameRequestSchema>;
+export type WorkspaceRenameResponse = z.infer<typeof workspaceRenameResponseSchema>;
+export type WorkspaceDetailsResponse = z.infer<typeof workspaceDetailsResponseSchema>;
