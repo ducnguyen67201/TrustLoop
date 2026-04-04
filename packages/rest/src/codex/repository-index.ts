@@ -1,60 +1,21 @@
 import { prisma } from "@shared/database";
 import {
   buildRepositoryHealth,
-  ensureRepositoryCatalog,
-  ensureWorkspace,
-  getCodexSettings,
   requireRepositorySnapshot,
 } from "@shared/rest/codex/shared";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import { temporalWorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
   ConflictError,
-  type ConnectGithubInstallationRequest,
-  type ConnectGithubInstallationResponse,
   type RequestRepositorySyncRequest,
   type RequestRepositorySyncResponse,
   type UpdateRepositorySelectionRequest,
   type UpdateRepositorySelectionResponse,
-  connectGithubInstallationRequestSchema,
-  connectGithubInstallationResponseSchema,
   requestRepositorySyncResponseSchema,
   requestRepositorySyncSchema,
   updateRepositorySelectionRequestSchema,
   updateRepositorySelectionResponseSchema,
 } from "@shared/types";
-
-/**
- * Mark GitHub as connected for the workspace and seed the local repository catalog.
- */
-export async function connectGithubInstallation(
-  input: ConnectGithubInstallationRequest
-): Promise<ConnectGithubInstallationResponse> {
-  const parsed = connectGithubInstallationRequestSchema.parse(input);
-  await ensureWorkspace(parsed.workspaceId);
-
-  await prisma.gitHubInstallation.upsert({
-    where: { workspaceId: parsed.workspaceId },
-    create: {
-      workspaceId: parsed.workspaceId,
-      installationOwner: parsed.installationOwner,
-      missingPermissions: [],
-    },
-    update: {
-      installationOwner: parsed.installationOwner,
-      missingPermissions: [],
-      connectedAt: new Date(),
-    },
-  });
-
-  await ensureRepositoryCatalog(parsed.workspaceId);
-  const settings = await getCodexSettings(parsed.workspaceId);
-
-  return connectGithubInstallationResponseSchema.parse({
-    connection: settings.githubConnection,
-    repositories: settings.repositories,
-  });
-}
 
 /**
  * Toggle whether a repository participates in indexing for the current workspace.

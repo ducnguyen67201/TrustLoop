@@ -1,7 +1,6 @@
 "use server";
 
 import {
-  connectGithubInstallation,
   preparePullRequestIntent,
   recordSearchFeedback,
   requestRepositorySync,
@@ -46,28 +45,6 @@ function getActionErrorMessage(error: unknown): string {
   }
 
   return "Something went wrong while updating codex settings.";
-}
-
-/**
- * Connect the workspace to the GitHub integration scaffold.
- */
-export async function connectGithubAction(formData: FormData): Promise<never> {
-  const workspaceId = getString(formData, "workspaceId");
-
-  try {
-    await connectGithubInstallation({
-      workspaceId,
-      installationOwner: "ducnguyen67201",
-    });
-
-    revalidatePath(githubSettingsPath(workspaceId));
-    redirect(buildReturnPath(workspaceId, { flash: "GitHub connected.", tone: "success" }));
-  } catch (error) {
-    if (isRedirectError(error)) throw error;
-    redirect(
-      buildReturnPath(workspaceId, { flash: getActionErrorMessage(error), tone: "error" })
-    );
-  }
 }
 
 /**

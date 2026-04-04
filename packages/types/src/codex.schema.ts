@@ -130,9 +130,24 @@ export const codexSettingsResponseSchema = z.object({
   repositories: z.array(repositorySummarySchema),
 });
 
+export const GITHUB_OAUTH_STATUS = {
+  CONNECTED: "connected",
+  DENIED: "denied",
+  ERROR: "error",
+} as const;
+export type GithubOAuthStatus = (typeof GITHUB_OAUTH_STATUS)[keyof typeof GITHUB_OAUTH_STATUS];
+
+export const githubOAuthStatePayloadSchema = z.object({
+  workspaceId: z.string(),
+  nonce: z.string(),
+  expiresAt: z.number(),
+});
+export type GithubOAuthStatePayload = z.infer<typeof githubOAuthStatePayloadSchema>;
+
 export const connectGithubInstallationRequestSchema = z.object({
   workspaceId: z.string().min(1),
-  installationOwner: z.string().min(1).default("ducnguyen67201"),
+  githubInstallationId: z.number().int().positive(),
+  installationOwner: z.string().min(1),
 });
 
 export const connectGithubInstallationResponseSchema = z.object({

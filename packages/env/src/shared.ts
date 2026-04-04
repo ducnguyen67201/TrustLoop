@@ -39,6 +39,13 @@ export const serverSchemas = {
   SLACK_REPLAY_WINDOW_SECONDS: z.coerce.number().int().positive().optional().default(300),
   SLACK_BOT_TOKEN: z.string().min(1).optional(),
 
+  // Codex / GitHub App
+  GITHUB_APP_ID: z.coerce.number().int().positive().optional(),
+  GITHUB_APP_SLUG: z.string().min(1).optional(),
+  GITHUB_CLIENT_ID: z.string().min(1).optional(),
+  GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
+  GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
+
   // Debug
   TRUSTLOOP_DEBUG_TRPC: z.enum(["0", "1"]).optional().default("0"),
 };

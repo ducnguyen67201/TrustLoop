@@ -416,8 +416,9 @@ model GitHubInstallation {
   id                 String                   @id @default(cuid())
   workspaceId        String                   @unique
   workspace          Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  status             GitHubInstallationStatus @default(connected)
-  installationOwner  String
+  status               GitHubInstallationStatus @default(connected)
+  githubInstallationId Int?
+  installationOwner    String
   connectedAt        DateTime                 @default(now())
   missingPermissions String[]
   createdAt          DateTime                 @default(now())
@@ -431,7 +432,7 @@ model Repository {
   owner             String
   name              String
   fullName          String
-  sourceRoot        String
+  sourceRoot        String?
   defaultBranch     String                 @default("main")
   branchPolicy      RepositoryBranchPolicy @default(default_branch_only)
   selected          Boolean                @default(false)
