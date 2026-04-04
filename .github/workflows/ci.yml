@@ -12,6 +12,11 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop?schema=public
       APP_BASE_URL: http://localhost:3000
+      NODE_ENV: test
+      SESSION_COOKIE_NAME: trustloop-session
+      SESSION_TTL_HOURS: 24
+      SESSION_SECRET: ci-test-secret-minimum-16
+      API_KEY_PEPPER: ci-test-pepper-minimum-16
       TEMPORAL_ADDRESS: localhost:7233
       TEMPORAL_NAMESPACE: default
       TEMPORAL_TASK_QUEUE: support-general
