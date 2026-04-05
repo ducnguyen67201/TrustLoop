@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/* Dot grid background */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, #d4cfca 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Warm radial glow for hero */
+.bg-hero-glow {
+  background: radial-gradient(
+    ellipse 80% 60% at 20% 40%,
+    rgba(212, 160, 23, 0.06) 0%,
+    transparent 70%
+  );
+}
+
+/* Alternating section shading */
+.bg-section-warm {
+  background-color: rgba(234, 229, 224, 0.35);
+}
+
+/* Subtle top-edge fade for visual rhythm */
+.bg-fade-top {
+  background: linear-gradient(
+    to bottom,
+    rgba(212, 160, 23, 0.04) 0%,
+    transparent 30%
+  );
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-ring {
+  100% {
+    box-shadow: 0 0 0 15px rgba(212, 160, 23, 0);
+  }
+}
+
+@keyframes gentle-pulse {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
+}
+
+.cursor-blink {
+  animation: blink 1s step-start infinite;
+}
+
+.cta-pulse-wrapper {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .cta-pulse-wrapper {
+    width: auto;
+  }
+}
+
+.cta-pulse-wrapper::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #d4a017;
+  z-index: 0;
+  animation: gentle-pulse 3s ease-in-out infinite;
+}
