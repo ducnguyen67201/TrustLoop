@@ -13,6 +13,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { AnalysisPanel } from "@/components/support/analysis-panel";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { RiArrowGoBackLine, RiChat3Line, RiUserSharedLine } from "@remixicon/react";
 import {
@@ -70,6 +71,7 @@ interface SupportConversationSheetProps {
     status: SupportConversation["status"]
   ) => Promise<unknown>;
   timelineError: string | null;
+  workspaceId: string;
 }
 
 /**
@@ -89,6 +91,7 @@ export function SupportConversationSheet({
   onSendReply,
   onUpdateConversationStatus,
   timelineError,
+  workspaceId,
 }: SupportConversationSheetProps) {
   const auth = useAuthSession();
   const [draftReply, setDraftReply] = useState("");
@@ -219,6 +222,28 @@ export function SupportConversationSheet({
                     Mark done
                   </Button>
                 </div>
+              </section>
+
+              <section className="border p-4">
+                <AnalysisPanel
+                  analysis={null}
+                  conversationId={conversation.id}
+                  workspaceId={workspaceId}
+                  isAnalyzing={false}
+                  onTriggerAnalysis={() => {
+                    // TODO: wire to tRPC triggerAnalysis mutation
+                    console.log("TODO: trigger analysis for", conversation.id);
+                  }}
+                  onApproveDraft={(draftId, editedBody) => {
+                    // TODO: wire to tRPC approveDraft mutation
+                    console.log("TODO: approve draft", draftId, editedBody);
+                  }}
+                  onDismissDraft={(draftId, reason) => {
+                    // TODO: wire to tRPC dismissDraft mutation
+                    console.log("TODO: dismiss draft", draftId, reason);
+                  }}
+                  isMutating={isMutating}
+                />
               </section>
 
               <section className="space-y-3 border p-4">

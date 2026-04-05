@@ -1,0 +1,120 @@
+// ── AI Analysis + Draft Generation ──────────────────────────────────
+
+enum AnalysisTriggerMode {
+  AUTO
+  MANUAL
+}
+
+enum SupportAnalysisStatus {
+  ANALYZING
+  ANALYZED
+  NEEDS_CONTEXT
+  FAILED
+}
+
+enum SupportAnalysisSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SupportAnalysisCategory {
+  BUG
+  QUESTION
+  FEATURE_REQUEST
+  CONFIGURATION
+  UNKNOWN
+}
+
+enum SupportAnalysisTriggerType {
+  AUTO
+  MANUAL
+}
+
+enum SupportDraftStatus {
+  AWAITING_APPROVAL
+  APPROVED
+  SENT
+  DISMISSED
+  FAILED
+}
+
+enum AnalysisEvidenceSourceType {
+  CODE_CHUNK
+}
+
+model SupportAnalysis {
+  id                String                      @id @default(cuid())
+  workspaceId       String
+  conversationId    String
+  status            SupportAnalysisStatus       @default(ANALYZING)
+  triggerType        SupportAnalysisTriggerType  @default(MANUAL)
+  threadSnapshot    Json?
+  problemStatement  String?                     @db.Text
+  likelySubsystem   String?
+  severity          SupportAnalysisSeverity?
+  category          SupportAnalysisCategory?
+  confidence        Float?
+  missingInfo       Json?
+  recommendedStance String?                     @db.Text
+  reasoningTrace    String?                     @db.Text
+  toolCallCount     Int?
+  llmModel          String?
+  llmLatencyMs      Int?
+  errorMessage      String?                     @db.Text
+  deletedAt         DateTime?
+  workspace         Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation      SupportConversation         @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  evidence          AnalysisEvidence[]
+  drafts            SupportDraft[]
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@index([conversationId, createdAt])
+  @@index([workspaceId, status])
+}
+
+model AnalysisEvidence {
+  id             String                      @id @default(cuid())
+  analysisId     String
+  sourceType     AnalysisEvidenceSourceType
+  sourceId       String?
+  filePath       String?
+  snippet        String?                     @db.Text
+  relevanceScore Float?
+  citation       String?
+  analysis       SupportAnalysis             @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                    @default(now())
+
+  @@index([analysisId])
+}
+
+model SupportDraft {
+  id             String              @id @default(cuid())
+  analysisId     String
+  conversationId String
+  workspaceId    String
+  status         SupportDraftStatus  @default(AWAITING_APPROVAL)
+  draftBody      String              @db.Text
+  editedBody     String?             @db.Text
+  internalNotes  String?             @db.Text
+  citations      Json?
+  tone           String?
+  llmModel       String?
+  llmLatencyMs   Int?
+  approvedBy     String?
+  approvedAt     DateTime?
+  sentAt         DateTime?
+  errorMessage   String?             @db.Text
+  deletedAt      DateTime?
+  analysis       SupportAnalysis     @relation(fields: [analysisId], references: [id], onDelete: Restrict)
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([analysisId])
+  @@index([conversationId, createdAt])
+  @@index([workspaceId, status])
+}

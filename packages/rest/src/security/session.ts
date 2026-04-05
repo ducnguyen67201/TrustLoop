@@ -95,18 +95,11 @@ export async function createUserSession(
 }
 
 /**
- * Resolve a user session from the inbound cookie header.
+ * Resolve a session from a raw session token value (the cookie content).
  */
-export async function resolveSessionFromRequest(
-  request: Request
+export async function resolveSessionFromToken(
+  rawToken: string
 ): Promise<SessionContextRecord | null> {
-  const cookies = parseCookies(request.headers.get("cookie"));
-  const rawToken = cookies[env.SESSION_COOKIE_NAME];
-
-  if (!rawToken) {
-    return null;
-  }
-
   const tokenHash = hashSessionToken(rawToken);
 
   const session = await prisma.session.findFirst({
@@ -140,6 +133,22 @@ export async function resolveSessionFromRequest(
     expiresAt: session.expiresAt,
     user: session.user,
   };
+}
+
+/**
+ * Resolve a user session from the inbound cookie header.
+ */
+export async function resolveSessionFromRequest(
+  request: Request
+): Promise<SessionContextRecord | null> {
+  const cookies = parseCookies(request.headers.get("cookie"));
+  const rawToken = cookies[env.SESSION_COOKIE_NAME];
+
+  if (!rawToken) {
+    return null;
+  }
+
+  return resolveSessionFromToken(rawToken);
 }
 
 /**

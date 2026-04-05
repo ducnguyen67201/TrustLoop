@@ -14,6 +14,7 @@
     "dev:web": "npm --workspace @trustloop/web run dev",
     "dev:web:debug": "TRUSTLOOP_DEBUG_TRPC=1 NEXT_PUBLIC_TRUSTLOOP_DEBUG_TRPC=1 npm --workspace @trustloop/web run dev",
     "dev:queue": "npm --workspace @apps/queue run dev",
+    "dev:agents": "npm --workspace @trustloop/agents run dev",
     "dev:marketing": "npm --workspace @trustloop/marketing run dev",
     "doppler:dev": "doppler run -- turbo run dev --parallel",
     "doppler:dev:web": "doppler run -- npm --workspace @trustloop/web run dev",

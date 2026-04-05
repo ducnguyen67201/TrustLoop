@@ -39,6 +39,10 @@ export const serverSchemas = {
   SLACK_REPLAY_WINDOW_SECONDS: z.coerce.number().int().positive().optional().default(300),
   SLACK_BOT_TOKEN: z.string().min(1).optional(),
 
+  // AI Analysis (Agent Service)
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  AGENT_SERVICE_URL: z.string().url().optional(),
+
   // Codex / GitHub App
   GITHUB_APP_ID: z.coerce.number().int().positive().optional(),
   GITHUB_APP_SLUG: z.string().min(1).optional(),

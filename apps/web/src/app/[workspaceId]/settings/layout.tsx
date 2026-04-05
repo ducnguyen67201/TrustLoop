@@ -3,12 +3,13 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  workspaceAiAnalysisPath,
   workspaceApiKeysPath,
   workspaceGeneralPath,
   workspaceGithubPath,
   workspaceIntegrationsPath,
 } from "@/lib/workspace-paths";
-import { RiGithubLine, RiKey2Line, RiPlugLine, RiSettings3Line } from "@remixicon/react";
+import { RiGithubLine, RiKey2Line, RiPlugLine, RiRobot2Line, RiSettings3Line } from "@remixicon/react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -39,6 +40,7 @@ export default function WorkspaceSettingsLayout({ children }: WorkspaceSettingsL
   const apiKeysPath = workspaceApiKeysPath(workspaceId);
   const integrationsPath = workspaceIntegrationsPath(workspaceId);
   const githubPath = workspaceGithubPath(workspaceId);
+  const aiAnalysisPath = workspaceAiAnalysisPath(workspaceId);
 
   const navItems: SettingsNavItem[] = [
     {
@@ -64,6 +66,12 @@ export default function WorkspaceSettingsLayout({ children }: WorkspaceSettingsL
       label: "GitHub",
       icon: RiGithubLine,
       isActive: pathname === githubPath,
+    },
+    {
+      href: aiAnalysisPath,
+      label: "AI Analysis",
+      icon: RiRobot2Line,
+      isActive: pathname === aiAnalysisPath,
     },
   ];
 

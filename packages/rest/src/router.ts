@@ -1,4 +1,5 @@
 import { authRouter } from "@shared/rest/auth-router";
+import { createSupportAnalysisRouter } from "@shared/rest/support-analysis-router";
 import { supportInboxRouter } from "@shared/rest/support-inbox-router";
 import { supportInstallationRouter } from "@shared/rest/support-installation-router";
 import {
@@ -14,6 +15,7 @@ import { healthResponseSchema, workflowDispatchSchema } from "@shared/types";
 export function createAppRouter(dispatcher: WorkflowDispatcher = temporalWorkflowDispatcher) {
   return router({
     auth: authRouter,
+    supportAnalysis: createSupportAnalysisRouter(dispatcher),
     supportInbox: supportInboxRouter,
     supportInstallation: supportInstallationRouter,
     workspace: workspaceRouter,

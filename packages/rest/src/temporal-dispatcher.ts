@@ -2,6 +2,7 @@ import { env } from "@shared/env";
 import {
   type CodexWorkflowInput,
   type RepositoryIndexWorkflowInput,
+  type SupportAnalysisWorkflowInput,
   type SupportWorkflowInput,
   type WorkflowDispatchResponse,
   workflowDispatchResponseSchema,
@@ -11,6 +12,9 @@ import { Client, Connection } from "@temporalio/client";
 
 export interface WorkflowDispatcher {
   startSupportWorkflow(input: SupportWorkflowInput): Promise<WorkflowDispatchResponse>;
+  startSupportAnalysisWorkflow(
+    input: SupportAnalysisWorkflowInput
+  ): Promise<WorkflowDispatchResponse>;
   startRepositoryIndexWorkflow(
     input: RepositoryIndexWorkflowInput
   ): Promise<WorkflowDispatchResponse>;
@@ -34,6 +38,21 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
     const client = await getClient();
     const workflowId = `support-ingress-${input.canonicalIdempotencyKey}`;
     const handle = await client.workflow.start(workflowNames.supportInbox, {
+      args: [input],
+      taskQueue: env.TEMPORAL_TASK_QUEUE,
+      workflowId,
+    });
+
+    return workflowDispatchResponseSchema.parse({
+      workflowId,
+      runId: handle.firstExecutionRunId,
+      queue: env.TEMPORAL_TASK_QUEUE,
+    });
+  },
+  async startSupportAnalysisWorkflow(input) {
+    const client = await getClient();
+    const workflowId = `support-analysis-${input.conversationId}-${Date.now()}`;
+    const handle = await client.workflow.start(workflowNames.supportAnalysis, {
       args: [input],
       taskQueue: env.TEMPORAL_TASK_QUEUE,
       workflowId,

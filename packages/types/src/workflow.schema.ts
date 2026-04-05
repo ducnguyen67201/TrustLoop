@@ -1,8 +1,13 @@
 import { workflowProcessingStatusSchema } from "@shared/types/status/workflow-status";
+import {
+  analysisResultStatusSchema,
+  analysisTriggerTypeSchema,
+} from "@shared/types/support/support-analysis.schema";
 import { z } from "zod";
 
 export const workflowNames = {
   supportInbox: "supportInboxWorkflow",
+  supportAnalysis: "supportAnalysisWorkflow",
   fixPr: "fixPrWorkflow",
   repositoryIndex: "repositoryIndexWorkflow",
 } as const;
@@ -46,10 +51,28 @@ export const repositoryIndexWorkflowResultSchema = z.object({
   queuedAt: z.iso.datetime(),
 });
 
+export const supportAnalysisWorkflowInputSchema = z.object({
+  workspaceId: z.string().min(1),
+  conversationId: z.string().min(1),
+  triggerType: analysisTriggerTypeSchema.optional().default("MANUAL"),
+});
+
+export const supportAnalysisWorkflowResultSchema = z.object({
+  analysisId: z.string(),
+  draftId: z.string().nullable(),
+  status: analysisResultStatusSchema,
+  confidence: z.number(),
+  toolCallCount: z.number(),
+});
+
 export const workflowDispatchSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("support"),
     payload: supportWorkflowInputSchema,
+  }),
+  z.object({
+    type: z.literal("support-analysis"),
+    payload: supportAnalysisWorkflowInputSchema,
   }),
   z.object({
     type: z.literal("codex"),
@@ -64,6 +87,8 @@ export const workflowDispatchSchema = z.discriminatedUnion("type", [
 export type WorkflowNames = typeof workflowNames;
 export type SupportWorkflowInput = z.infer<typeof supportWorkflowInputSchema>;
 export type SupportWorkflowResult = z.infer<typeof supportWorkflowResultSchema>;
+export type SupportAnalysisWorkflowInput = z.infer<typeof supportAnalysisWorkflowInputSchema>;
+export type SupportAnalysisWorkflowResult = z.infer<typeof supportAnalysisWorkflowResultSchema>;
 export type CodexWorkflowInput = z.infer<typeof codexWorkflowInputSchema>;
 export type CodexWorkflowResult = z.infer<typeof codexWorkflowResultSchema>;
 export type RepositoryIndexWorkflowInput = z.infer<typeof repositoryIndexWorkflowInputSchema>;

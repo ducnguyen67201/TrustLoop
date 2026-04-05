@@ -6,9 +6,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { useSupportInbox } from "@/hooks/use-support-inbox";
 import { SUPPORT_CONVERSATION_STATUS } from "@shared/types";
-import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const KANBAN_COLUMNS = [
   {
@@ -38,7 +40,33 @@ const KANBAN_COLUMNS = [
  */
 export function SupportInbox() {
   const inbox = useSupportInbox();
+  const { workspaceId } = useActiveWorkspace();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+
+  // Sync ?thread= URL param → selected conversation
+  const threadParam = searchParams.get("thread");
+  useEffect(() => {
+    if (threadParam && threadParam !== inbox.selectedConversationId) {
+      inbox.setSelectedConversationId(threadParam);
+      setIsSheetOpen(true);
+    }
+  }, [threadParam]);
+
+  const updateThreadParam = useCallback(
+    (conversationId: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (conversationId) {
+        params.set("thread", conversationId);
+      } else {
+        params.delete("thread");
+      }
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
   const counts = useMemo(() => {
     const base = {
       total: inbox.listData?.conversations.length ?? 0,
@@ -83,6 +111,14 @@ export function SupportInbox() {
   function handleSelectConversation(conversationId: string) {
     inbox.setSelectedConversationId(conversationId);
     setIsSheetOpen(true);
+    updateThreadParam(conversationId);
+  }
+
+  function handleSheetOpenChange(open: boolean) {
+    setIsSheetOpen(open);
+    if (!open) {
+      updateThreadParam(null);
+    }
   }
 
   const boardColumns = KANBAN_COLUMNS.map((column) => ({
@@ -172,11 +208,12 @@ export function SupportInbox() {
         isTimelineLoading={inbox.isTimelineLoading}
         onAssignConversation={inbox.assignConversation}
         onMarkDoneWithOverrideReason={inbox.markDoneWithOverrideReason}
-        onOpenChange={setIsSheetOpen}
+        onOpenChange={handleSheetOpenChange}
         onRetryDelivery={inbox.retryDelivery}
         onSendReply={inbox.sendReply}
         onUpdateConversationStatus={inbox.updateConversationStatus}
         timelineError={inbox.timelineError}
+        workspaceId={workspaceId ?? ""}
       />
     </main>
   );

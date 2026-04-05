@@ -1,0 +1,241 @@
+enum SupportProvider {
+  SLACK
+}
+
+enum SupportIngressProcessingState {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+enum SupportConversationStatus {
+  UNREAD
+  IN_PROGRESS
+  STALE
+  DONE
+}
+
+enum SupportConversationEventType {
+  MESSAGE_RECEIVED
+  STATUS_CHANGED
+  ASSIGNEE_CHANGED
+  MERGED
+  SPLIT
+  DELIVERY_ATTEMPTED
+  DELIVERY_FAILED
+  DELIVERY_SUCCEEDED
+  NOTE
+  ANALYSIS_COMPLETED
+  DRAFT_APPROVED
+  DRAFT_DISMISSED
+}
+
+enum SupportConversationEventSource {
+  SYSTEM
+  OPERATOR
+  CUSTOMER
+}
+
+enum SupportDeliveryState {
+  PENDING
+  RETRYING
+  SUCCEEDED
+  FAILED
+  DEAD_LETTERED
+}
+
+enum SupportDeadLetterSourceType {
+  INGRESS
+  GROUPING
+  PROJECTION
+  DELIVERY
+  COMMAND
+}
+
+enum SupportTicketProvider {
+  LINEAR
+}
+
+enum SupportTicketSyncState {
+  PENDING
+  SYNCED
+  FAILED
+}
+
+model SupportInstallation {
+  id                     String               @id @default(cuid())
+  workspaceId            String
+  provider               SupportProvider
+  providerInstallationId String
+  teamId                 String
+  botUserId              String?
+  metadata               Json?
+  deletedAt              DateTime?
+  workspace              Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  ingressEvents          SupportIngressEvent[]
+  conversations          SupportConversation[]
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  @@unique([provider, providerInstallationId])
+  @@index([workspaceId])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+model SupportIngressEvent {
+  id                     String                       @id @default(cuid())
+  workspaceId            String
+  installationId         String
+  provider               SupportProvider
+  providerEventId        String
+  canonicalIdempotencyKey String                      @unique
+  rawPayloadJson         Json
+  processingState        SupportIngressProcessingState @default(RECEIVED)
+  receivedAt             DateTime                     @default(now())
+  processedAt            DateTime?
+  workspace              Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  installation           SupportInstallation          @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, receivedAt])
+  @@index([installationId])
+}
+
+model SupportConversation {
+  id                     String                    @id @default(cuid())
+  workspaceId            String
+  installationId         String
+  canonicalConversationKey String
+  teamId                 String
+  channelId              String
+  threadTs               String
+  status                 SupportConversationStatus @default(UNREAD)
+  assigneeUserId         String?
+  lastCustomerMessageAt  DateTime?
+  customerWaitingSince   DateTime?
+  staleAt                DateTime?
+  retryCount             Int                       @default(0)
+  lastActivityAt         DateTime                  @default(now())
+  deletedAt              DateTime?
+  workspace              Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  installation           SupportInstallation       @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  assignee               User?                     @relation("SupportConversationAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  events                 SupportConversationEvent[]
+  deliveryAttempts       SupportDeliveryAttempt[]
+  ticketLinks            SupportTicketLink[]
+  groupingAnchors        SupportGroupingAnchor[]
+  analyses               SupportAnalysis[]
+  drafts                 SupportDraft[]
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  @@unique([workspaceId, canonicalConversationKey])
+  @@index([workspaceId, teamId, channelId, threadTs])
+  @@index([workspaceId, status, staleAt, customerWaitingSince, retryCount, lastActivityAt])
+  @@index([installationId])
+  @@index([assigneeUserId])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+model SupportConversationEvent {
+  id           String                         @id @default(cuid())
+  workspaceId  String
+  conversationId String
+  eventType    SupportConversationEventType
+  eventSource  SupportConversationEventSource
+  summary      String?
+  detailsJson  Json?
+  workspace    Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation SupportConversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                       @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+model SupportDeliveryAttempt {
+  id               String               @id @default(cuid())
+  workspaceId      String
+  conversationId   String
+  commandId        String
+  provider         SupportProvider
+  providerMessageId String?
+  attemptNumber    Int                  @default(1)
+  state            SupportDeliveryState @default(PENDING)
+  errorCode        String?
+  errorMessage     String?
+  nextRetryAt      DateTime?
+  deletedAt        DateTime?
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation     SupportConversation  @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([workspaceId, state, nextRetryAt])
+  @@index([conversationId, createdAt])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+model SupportDeadLetter {
+  id             String                    @id @default(cuid())
+  workspaceId    String
+  sourceType     SupportDeadLetterSourceType
+  sourceId       String
+  failureClass   String
+  failureReason  String
+  payloadJson    Json
+  firstFailedAt  DateTime                  @default(now())
+  lastFailedAt   DateTime                  @default(now())
+  retryCount     Int                       @default(1)
+  resolvedAt     DateTime?
+  workspace      Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, resolvedAt, lastFailedAt])
+}
+
+model SupportTicketLink {
+  id               String                @id @default(cuid())
+  workspaceId      String
+  conversationId   String
+  provider         SupportTicketProvider
+  externalTicketId String
+  externalStatus   String?
+  syncState        SupportTicketSyncState @default(PENDING)
+  lastSyncedAt     DateTime?
+  deletedAt        DateTime?
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation     SupportConversation   @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  @@unique([workspaceId, provider, externalTicketId])
+  @@index([conversationId])
+  @@index([workspaceId, syncState, updatedAt])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+/// Maps standalone messages to conversations for time-window grouping.
+/// An anchor tracks: which author, which channel, and which conversation
+/// their standalone messages should be grouped into. Expires after a
+/// configurable window (default 5 min, max 60 min).
+model SupportGroupingAnchor {
+  id                String              @id @default(cuid())
+  workspaceId       String
+  installationId    String
+  channelId         String
+  authorSlackUserId String
+  conversationId    String
+  anchorMessageTs   String
+  windowStartAt     DateTime
+  windowExpiresAt   DateTime
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation      SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([workspaceId, channelId, authorSlackUserId, anchorMessageTs])
+  @@index([workspaceId, channelId, authorSlackUserId, windowExpiresAt])
+  @@index([conversationId])
+}

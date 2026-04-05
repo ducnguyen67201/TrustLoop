@@ -1,0 +1,125 @@
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Workspace {
+  id                       String                     @id @default(cuid())
+  name                     String
+  deletedAt                DateTime?
+  memberships              WorkspaceMembership[]
+  apiKeys                  WorkspaceApiKey[]
+  auditLogs                AuditLog[]
+  activeSessions           Session[]                  @relation("SessionActiveWorkspace")
+  supportInstallations     SupportInstallation[]
+  supportIngressEvents     SupportIngressEvent[]
+  supportConversations     SupportConversation[]
+  supportConversationEvent SupportConversationEvent[]
+  supportDeliveryAttempts  SupportDeliveryAttempt[]
+  supportDeadLetters       SupportDeadLetter[]
+  supportTicketLinks       SupportTicketLink[]
+  githubInstallation       GitHubInstallation?
+  repositories             Repository[]
+  syncRequests             RepositorySyncRequest[]
+  indexVersions            RepositoryIndexVersion[]
+  searchQueries            CodeSearchQuery[]
+  searchFeedback           SearchFeedback[]
+  pullRequestIntents       PullRequestIntent[]
+  groupingAnchors          SupportGroupingAnchor[]
+  supportAnalyses          SupportAnalysis[]
+  supportDrafts            SupportDraft[]
+  analysisTriggerMode      AnalysisTriggerMode        @default(AUTO)
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+model User {
+  id                         String                @id @default(cuid())
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  email                      String                @unique
+  passwordHash               String
+  deletedAt                  DateTime?
+  sessions                   Session[]
+  memberships                WorkspaceMembership[]
+  createdApiKeys             WorkspaceApiKey[]     @relation("ApiKeyCreatedBy")
+  auditLogs                  AuditLog[]            @relation("AuditActor")
+  assignedSupportConvos      SupportConversation[] @relation("SupportConversationAssignee")
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+model Session {
+  id                String     @id @default(cuid())
+  userId            String
+  tokenHash         String     @unique
+  csrfToken         String
+  activeWorkspaceId String?
+  expiresAt         DateTime
+  ip                String?
+  userAgent         String?
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeWorkspace   Workspace? @relation("SessionActiveWorkspace", fields: [activeWorkspaceId], references: [id], onDelete: SetNull)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model WorkspaceMembership {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  deletedAt   DateTime?
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  // Do not use db:push on this model. Use raw SQL migrations for unique constraint changes.
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+model WorkspaceApiKey {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  name            String
+  keyPrefix       String    @unique
+  secretHash      String
+  createdByUserId String
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  deletedAt       DateTime?
+  expiresAt       DateTime
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdBy       User      @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([workspaceId, revokedAt, expiresAt])
+  // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+model AuditLog {
+  id          String     @id @default(cuid())
+  workspaceId String?
+  actorUserId String?
+  action      String
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actorUser   User?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now())
+
+  @@index([workspaceId, createdAt])
+}

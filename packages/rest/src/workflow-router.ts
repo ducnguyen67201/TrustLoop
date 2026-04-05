@@ -15,6 +15,10 @@ export async function dispatchWorkflow(
     return dispatcher.startSupportWorkflow(parsed.payload);
   }
 
+  if (parsed.type === "support-analysis") {
+    return dispatcher.startSupportAnalysisWorkflow(parsed.payload);
+  }
+
   if (parsed.type === "repository-index") {
     return dispatcher.startRepositoryIndexWorkflow(parsed.payload);
   }

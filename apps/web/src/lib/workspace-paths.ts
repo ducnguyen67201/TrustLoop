@@ -48,6 +48,13 @@ export function workspaceIntegrationsPath(workspaceId: string): string {
 }
 
 /**
+ * Returns the AI analysis settings path for a workspace.
+ */
+export function workspaceAiAnalysisPath(workspaceId: string): string {
+  return `${workspaceSettingsPath(workspaceId)}/ai-analysis`;
+}
+
+/**
  * Returns the GitHub indexing settings path for a workspace.
  */
 export function workspaceGithubPath(workspaceId: string): string {

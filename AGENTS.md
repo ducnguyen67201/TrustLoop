@@ -10,18 +10,25 @@ TrustLoop is a TypeScript monorepo for support automation + codex workflows.
 
 - Product surface: `apps/web`
 - Background orchestration: Temporal workflows
+- AI agent service: `apps/agents`
 - Shared contracts and infra: `packages/*`
 
 ## Deployment Model (Current Default)
 
-Use **2 deployed services**:
+Use **3 deployed services**:
 
 1. `web`
    - Next.js app
    - API/tRPC surface
    - workflow dispatch
+   - SSE streaming for agent progress
 2. `queue`
    - single deployment running both support and codex workers
+   - thin HTTP client for agent service calls
+3. `agents`
+   - AI agent service (HTTP API)
+   - runs agent reasoning loops (OpenAI Agents SDK, migrating to Mastra)
+   - tools call back to TrustLoop search API or shared DB
 
 Use **2 Temporal task queues** (must stay separate):
 
@@ -54,6 +61,14 @@ Queue-level isolation is mandatory even if both are run in one worker runtime.
 - `apps/web/src/app/api/**/route.ts`: thin wrappers that delegate to `src/server/http/*`
 - Use `@/` for local imports inside app runtimes (`apps/web`, `apps/queue`)
 - Use package-root imports inside shared packages (for example `@shared/rest/*`, `@shared/types/*`)
+
+### URL Parameter Conventions
+
+- Use URL query params for non-sensitive page state so views are shareable and bookmarkable.
+- Support inbox: `?thread={conversationId}` opens the conversation sheet directly.
+- Settings: path-based routing (`/settings/ai-analysis`, `/settings/github`, etc.).
+- Never put sensitive data (tokens, secrets, PII) in URL params. IDs (conversationId, workspaceId) are fine.
+- When a sheet/panel closes, clean up the query param.
 
 ## Core Stack
 
