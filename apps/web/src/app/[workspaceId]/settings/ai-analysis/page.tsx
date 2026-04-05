@@ -10,35 +10,47 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useActiveWorkspace } from "@/hooks/use-active-workspace";
-import { ANALYSIS_TRIGGER_MODE } from "@shared/types";
-import { useState } from "react";
+import { trpcMutation, trpcQuery } from "@/lib/trpc-http";
+import {
+  ANALYSIS_TRIGGER_MODE,
+  type AnalysisTriggerMode,
+  type WorkspaceDetailsResponse,
+  type WorkspaceUpdateAnalysisSettingsResponse,
+} from "@shared/types";
+import { useCallback, useEffect, useState } from "react";
 
-/**
- * AI Analysis settings page.
- *
- * Controls how TrustLoop analyzes support conversations:
- * - Trigger mode: AUTO (analyze after grouping window) or MANUAL (click to analyze)
- * - Provider: which LLM to use (future: provider picker)
- */
 export default function AiAnalysisSettingsPage() {
-  const { workspace } = useActiveWorkspace();
-  const [triggerMode, setTriggerMode] = useState(
-    (workspace as Record<string, unknown>)?.analysisTriggerMode ?? ANALYSIS_TRIGGER_MODE.auto
-  );
+  const [triggerMode, setTriggerMode] = useState<AnalysisTriggerMode>(ANALYSIS_TRIGGER_MODE.auto);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  async function handleTriggerModeChange(value: string) {
-    setTriggerMode(value);
+  useEffect(() => {
+    trpcQuery<WorkspaceDetailsResponse>("workspace.getDetails")
+      .then((details) => {
+        setTriggerMode(details.analysisTriggerMode);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleTriggerModeChange = useCallback(async (value: string) => {
+    const mode = value as AnalysisTriggerMode;
+    setTriggerMode(mode);
     setSaving(true);
     try {
-      // TODO: wire to tRPC mutation (updateWorkspaceSettings)
-      // await trpc.workspace.updateAnalysisSettings.mutate({ triggerMode: value });
-      console.log("TODO: save triggerMode", value);
+      await trpcMutation<{ triggerMode: AnalysisTriggerMode }, WorkspaceUpdateAnalysisSettingsResponse>(
+        "workspace.updateAnalysisSettings",
+        { triggerMode: mode },
+        { withCsrf: true },
+      );
+    } catch {
+      // Revert on failure — refetch the real value
+      const details = await trpcQuery<WorkspaceDetailsResponse>("workspace.getDetails");
+      setTriggerMode(details.analysisTriggerMode);
     } finally {
       setSaving(false);
     }
-  }
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -57,7 +69,11 @@ export default function AiAnalysisSettingsPage() {
           <p className="text-xs text-muted-foreground">
             Controls when TrustLoop automatically analyzes incoming conversations.
           </p>
-          <Select value={triggerMode} onValueChange={handleTriggerModeChange} disabled={saving}>
+          <Select
+            value={triggerMode}
+            onValueChange={handleTriggerModeChange}
+            disabled={saving || loading}
+          >
             <SelectTrigger id="trigger-mode" className="w-64">
               <SelectValue />
             </SelectTrigger>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { analysisTriggerModeSchema } from "@shared/types/support/agent-provider.schema";
 
 export const WORKSPACE_ROLE = {
   OWNER: "OWNER",
@@ -127,9 +128,26 @@ export const workspaceDetailsResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
   role: workspaceRoleSchema.nullable(),
+  analysisTriggerMode: analysisTriggerModeSchema,
   createdAt: z.string(),
 });
 
 export type WorkspaceRenameRequest = z.infer<typeof workspaceRenameRequestSchema>;
 export type WorkspaceRenameResponse = z.infer<typeof workspaceRenameResponseSchema>;
 export type WorkspaceDetailsResponse = z.infer<typeof workspaceDetailsResponseSchema>;
+
+export const workspaceUpdateAnalysisSettingsRequestSchema = z.object({
+  triggerMode: analysisTriggerModeSchema,
+});
+
+export const workspaceUpdateAnalysisSettingsResponseSchema = z.object({
+  updated: z.literal(true),
+  triggerMode: analysisTriggerModeSchema,
+});
+
+export type WorkspaceUpdateAnalysisSettingsRequest = z.infer<
+  typeof workspaceUpdateAnalysisSettingsRequestSchema
+>;
+export type WorkspaceUpdateAnalysisSettingsResponse = z.infer<
+  typeof workspaceUpdateAnalysisSettingsResponseSchema
+>;

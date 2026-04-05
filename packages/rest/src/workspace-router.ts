@@ -30,6 +30,8 @@ import {
   workspaceRequestAccessResponseSchema,
   workspaceSwitchRequestSchema,
   workspaceSwitchResponseSchema,
+  workspaceUpdateAnalysisSettingsRequestSchema,
+  workspaceUpdateAnalysisSettingsResponseSchema,
 } from "@shared/types";
 import { TRPCError } from "@trpc/server";
 
@@ -38,7 +40,7 @@ export const workspaceRouter = router({
   getDetails: workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER).query(async ({ ctx }) => {
     const workspace = await prisma.workspace.findUnique({
       where: { id: ctx.workspaceId },
-      select: { id: true, name: true, createdAt: true },
+      select: { id: true, name: true, analysisTriggerMode: true, createdAt: true },
     });
 
     if (!workspace) {
@@ -49,6 +51,7 @@ export const workspaceRouter = router({
       id: workspace.id,
       name: workspace.name,
       role: ctx.role,
+      analysisTriggerMode: workspace.analysisTriggerMode,
       createdAt: workspace.createdAt.toISOString(),
     });
   }),
@@ -346,6 +349,33 @@ export const workspaceRouter = router({
 
       return workspaceRequestAccessResponseSchema.parse({
         requested: true,
+      });
+    }),
+  updateAnalysisSettings: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+    .input(workspaceUpdateAnalysisSettingsRequestSchema)
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "User session required" });
+      }
+
+      const updated = await prisma.workspace.update({
+        where: { id: ctx.workspaceId },
+        data: { analysisTriggerMode: input.triggerMode },
+        select: { analysisTriggerMode: true },
+      });
+
+      await writeAuditEvent({
+        action: "workspace.analysis_settings.update",
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        targetType: "workspace",
+        targetId: ctx.workspaceId,
+        metadata: { triggerMode: updated.analysisTriggerMode },
+      });
+
+      return workspaceUpdateAnalysisSettingsResponseSchema.parse({
+        updated: true,
+        triggerMode: updated.analysisTriggerMode,
       });
     }),
 });
