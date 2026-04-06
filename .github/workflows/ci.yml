@@ -23,6 +23,7 @@ jobs:
       TEMPORAL_TASK_QUEUE: support-general
       CODEX_TASK_QUEUE: codex-intensive
       INTERNAL_SERVICE_KEY: tli_ci_test_service_key_12345
+      COREPACK_ENABLE_STRICT: "0"
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +32,6 @@ jobs:
           node-version: 24
           cache: npm
 
-      - run: corepack disable
       - run: npm install
       - run: npm run db:generate
       - run: git diff --exit-code
