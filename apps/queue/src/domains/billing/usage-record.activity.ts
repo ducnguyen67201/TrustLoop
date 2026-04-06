@@ -1,5 +1,5 @@
 import { prisma } from "@shared/database";
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@shared/database";
 import type { UsageEventType } from "@shared/types";
 
 type RecordUsageEventInput = {
