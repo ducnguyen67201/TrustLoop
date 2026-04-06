@@ -5,6 +5,7 @@ import {
   type UsageBreakdown,
   type WorkspacePlanTier,
 } from "@shared/types";
+import { getStripeClient } from "./stripe-client";
 
 export async function getWorkspaceBillingInfo(workspaceId: string) {
   const plan = await prisma.workspacePlan.findUnique({
@@ -71,6 +72,93 @@ export function computePlanLimits(tier: WorkspacePlanTier, seatCount: number) {
     analysisOverageRateCents: limits.overageRateCents,
     repoLimitTotal: limits.repos,
   };
+}
+
+export async function createCheckoutSession(
+  workspaceId: string,
+  tier: "STARTER" | "PRO",
+  returnUrl: string
+): Promise<string> {
+  const stripe = getStripeClient();
+
+  const plan = await prisma.workspacePlan.findUnique({
+    where: { workspaceId, deletedAt: null },
+  });
+
+  let customerId = plan?.stripeCustomerId;
+
+  // Lazy customer creation
+  if (!customerId) {
+    const workspace = await prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+    });
+    const customer = await stripe.customers.create({
+      name: workspace.name,
+      metadata: { workspaceId },
+    });
+    customerId = customer.id;
+
+    // Persist Stripe customer ID
+    if (plan) {
+      await prisma.workspacePlan.update({
+        where: { id: plan.id },
+        data: { stripeCustomerId: customerId },
+      });
+    }
+  }
+
+  const seatCount = await prisma.workspaceMembership.count({
+    where: { workspaceId, deletedAt: null },
+  });
+
+  const priceId =
+    tier === "STARTER" ? process.env.STRIPE_STARTER_PRICE_ID : process.env.STRIPE_PRO_PRICE_ID;
+
+  if (!priceId) {
+    throw new Error(`Stripe price ID not configured for ${tier} tier`);
+  }
+
+  const session = await stripe.checkout.sessions.create({
+    customer: customerId,
+    mode: "subscription",
+    line_items: [
+      {
+        price: priceId,
+        quantity: Math.max(seatCount, PLAN_LIMITS[tier].seats),
+      },
+    ],
+    subscription_data: {
+      metadata: { workspaceId, tier },
+    },
+    success_url: `${returnUrl}?session_id={CHECKOUT_SESSION_ID}&status=success`,
+    cancel_url: `${returnUrl}?status=canceled`,
+    metadata: { workspaceId, tier },
+  });
+
+  if (!session.url) {
+    throw new Error("Stripe did not return a checkout URL");
+  }
+
+  return session.url;
+}
+
+export async function createPortalSession(workspaceId: string, returnUrl: string): Promise<string> {
+  const stripe = getStripeClient();
+
+  const plan = await prisma.workspacePlan.findUnique({
+    where: { workspaceId, deletedAt: null },
+  });
+
+  if (!plan?.stripeCustomerId) {
+    throw new Error("No Stripe customer found for this workspace");
+  }
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: plan.stripeCustomerId,
+    return_url: returnUrl,
+  });
+
+  return session.url;
 }
 
 export async function ensureWorkspacePlan(workspaceId: string): Promise<void> {

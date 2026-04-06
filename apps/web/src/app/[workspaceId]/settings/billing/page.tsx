@@ -22,8 +22,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { RiArrowRightUpLine, RiCheckLine, RiErrorWarningLine } from "@remixicon/react";
-import { useEffect, useState } from "react";
+import {
+  RiArrowRightUpLine,
+  RiCheckLine,
+  RiErrorWarningLine,
+  RiLoader4Line,
+} from "@remixicon/react";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { startCheckout, startPortalSession } from "./actions";
 
 type PlanInfo = {
   tier: "FREE" | "STARTER" | "PRO";
@@ -89,9 +96,41 @@ const PLANS = [
 ];
 
 export default function BillingSettingsPage() {
+  const params = useParams<{ workspaceId: string | string[] }>();
+  const workspaceId = Array.isArray(params.workspaceId)
+    ? (params.workspaceId[0] ?? "")
+    : (params.workspaceId ?? "");
   const [plan, setPlan] = useState<PlanInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+
+  const handleUpgrade = useCallback(
+    async (tier: "STARTER" | "PRO") => {
+      setCheckoutLoading(tier);
+      const returnUrl = `${window.location.origin}/${workspaceId}/settings/billing`;
+      const result = await startCheckout(workspaceId, tier, returnUrl);
+      if (result.url) {
+        window.location.href = result.url;
+      } else {
+        setError(result.error ?? "Failed to start checkout");
+        setCheckoutLoading(null);
+      }
+    },
+    [workspaceId]
+  );
+
+  const handleManageSubscription = useCallback(async () => {
+    setCheckoutLoading("manage");
+    const returnUrl = `${window.location.origin}/${workspaceId}/settings/billing`;
+    const result = await startPortalSession(workspaceId, returnUrl);
+    if (result.url) {
+      window.location.href = result.url;
+    } else {
+      setError(result.error ?? "Failed to open billing portal");
+      setCheckoutLoading(null);
+    }
+  }, [workspaceId]);
 
   useEffect(() => {
     // TODO: Replace with actual tRPC query when billing router is wired
@@ -235,7 +274,15 @@ export default function BillingSettingsPage() {
           </div>
           <div className="flex gap-2">
             {plan.tier !== "FREE" && (
-              <Button variant="outline" size="sm">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={checkoutLoading === "manage"}
+                onClick={handleManageSubscription}
+              >
+                {checkoutLoading === "manage" ? (
+                  <RiLoader4Line className="mr-1 h-3 w-3 animate-spin" />
+                ) : null}
                 Manage subscription <RiArrowRightUpLine className="ml-1 h-3 w-3" />
               </Button>
             )}
@@ -286,8 +333,20 @@ export default function BillingSettingsPage() {
                           <Button variant="outline" className="w-full" disabled>
                             Current plan
                           </Button>
+                        ) : p.tier === "FREE" ? (
+                          <Button variant="outline" className="w-full" disabled>
+                            Free tier
+                          </Button>
                         ) : (
-                          <Button variant="default" className="w-full">
+                          <Button
+                            variant="default"
+                            className="w-full"
+                            disabled={checkoutLoading === p.tier}
+                            onClick={() => handleUpgrade(p.tier as "STARTER" | "PRO")}
+                          >
+                            {checkoutLoading === p.tier && (
+                              <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
+                            )}
                             {PLANS.findIndex((x) => x.tier === p.tier) >
                             PLANS.findIndex((x) => x.tier === plan.tier)
                               ? `Upgrade to ${p.name}`
