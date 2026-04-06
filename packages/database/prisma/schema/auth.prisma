@@ -30,6 +30,8 @@ model Workspace {
   supportAnalyses          SupportAnalysis[]
   supportDrafts            SupportDraft[]
   analysisTriggerMode      AnalysisTriggerMode        @default(AUTO)
+  plan                     WorkspacePlan?
+  usageEvents              UsageEvent[]
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt
 

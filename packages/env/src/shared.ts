@@ -51,6 +51,10 @@ export const serverSchemas = {
   GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
   GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
 
+  // Stripe / Billing
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+
   // Debug
   TRUSTLOOP_DEBUG_TRPC: z.enum(["0", "1"]).optional().default("0"),
 };
