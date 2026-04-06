@@ -10,8 +10,8 @@ import {
   type SupportWorkflowResult,
   WORKFLOW_PROCESSING_STATUS,
 } from "@shared/types";
-import { SUPPORT_AUTHOR_ROLE_BUCKET } from "@shared/types/support/support-adapter.schema";
 import { ConflictError, ValidationError } from "@shared/types/errors";
+import { SUPPORT_AUTHOR_ROLE_BUCKET } from "@shared/types/support/support-adapter.schema";
 
 function buildCanonicalConversationKey(
   installationId: string,
@@ -99,8 +99,10 @@ export async function runSupportPipeline(
 
   // Read grouping window config from installation metadata
   const installationMeta = ingressEvent.installation.metadata as Record<string, unknown> | null;
-  const windowMinutes = (installationMeta?.groupingWindowMinutes as number) ?? GROUPING_DEFAULTS.windowMinutes;
-  const maxWindowMinutes = (installationMeta?.maxGroupingWindowMinutes as number) ?? GROUPING_DEFAULTS.maxWindowMinutes;
+  const windowMinutes =
+    (installationMeta?.groupingWindowMinutes as number) ?? GROUPING_DEFAULTS.windowMinutes;
+  const maxWindowMinutes =
+    (installationMeta?.maxGroupingWindowMinutes as number) ?? GROUPING_DEFAULTS.maxWindowMinutes;
 
   const conversation = await prisma.$transaction(async (tx) => {
     // Resolve the threadTs for the canonical key. For standalone messages from
@@ -124,7 +126,9 @@ export async function runSupportPipeline(
 
       if (activeAnchor) {
         // Check max window cap: don't extend beyond maxWindowMinutes from start
-        const maxExpiry = new Date(activeAnchor.windowStartAt.getTime() + maxWindowMinutes * 60 * 1000);
+        const maxExpiry = new Date(
+          activeAnchor.windowStartAt.getTime() + maxWindowMinutes * 60 * 1000
+        );
         if (now < maxExpiry) {
           resolvedThreadTs = activeAnchor.anchorMessageTs;
 
@@ -133,7 +137,8 @@ export async function runSupportPipeline(
           await tx.supportGroupingAnchor.update({
             where: { id: activeAnchor.id },
             data: {
-              windowExpiresAt: newExpiry > activeAnchor.windowExpiresAt ? newExpiry : activeAnchor.windowExpiresAt,
+              windowExpiresAt:
+                newExpiry > activeAnchor.windowExpiresAt ? newExpiry : activeAnchor.windowExpiresAt,
             },
           });
         }

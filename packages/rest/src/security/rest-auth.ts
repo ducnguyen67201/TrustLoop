@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { extractApiKeyPrefix, verifyApiKeySecret } from "./api-key";
 import { isServiceKeyFormat, verifyServiceKey } from "./service-key";
 
-interface RouteContext {
+export interface RouteContext {
   params: Promise<Record<string, string>>;
 }
 
@@ -21,10 +21,7 @@ type WorkspaceAuthHandler = (
 ) => Promise<NextResponse>;
 
 function unauthorizedResponse(message = "Invalid or missing API key"): NextResponse {
-  return NextResponse.json(
-    { error: { message, code: "UNAUTHORIZED" } },
-    { status: 401 }
-  );
+  return NextResponse.json({ error: { message, code: "UNAUTHORIZED" } }, { status: 401 });
 }
 
 function extractBearerToken(request: Request): string | null {
@@ -55,9 +52,7 @@ export function withServiceAuth(handler: ServiceAuthHandler): ServiceAuthHandler
   };
 }
 
-export function withWorkspaceApiKeyAuth(
-  handler: WorkspaceAuthHandler
-): ServiceAuthHandler {
+export function withWorkspaceApiKeyAuth(handler: WorkspaceAuthHandler): ServiceAuthHandler {
   return async (req, ctx) => {
     const token = extractBearerToken(req);
     if (!token) {

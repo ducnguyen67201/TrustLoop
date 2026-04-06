@@ -167,10 +167,14 @@ export const workspaceRouter = router({
         }
       }
 
-      const created = await softUpsert(prisma.workspaceMembership, {
+      await softUpsert(prisma.workspaceMembership, {
         where: { workspaceId: ctx.workspaceId, userId: targetUser.id },
         create: { workspaceId: ctx.workspaceId, userId: targetUser.id, role: input.role },
         update: { role: input.role },
+      });
+
+      const created = await prisma.workspaceMembership.findFirstOrThrow({
+        where: { workspaceId: ctx.workspaceId, userId: targetUser.id },
         include: { user: { select: { id: true, email: true } } },
       });
 

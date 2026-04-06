@@ -1,19 +1,19 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createAppAuth } from "@octokit/auth-app";
+import { Octokit } from "@octokit/rest";
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
+import { ensureWorkspace, getCodexSettings } from "@shared/rest/codex/shared";
 import {
   type ConnectGithubInstallationRequest,
   type ConnectGithubInstallationResponse,
+  type GithubOAuthStatePayload,
   REPOSITORY_BRANCH_POLICY,
   ValidationError,
   connectGithubInstallationRequestSchema,
   connectGithubInstallationResponseSchema,
-  type GithubOAuthStatePayload,
   githubOAuthStatePayloadSchema,
 } from "@shared/types";
-import { createAppAuth } from "@octokit/auth-app";
-import { Octokit } from "@octokit/rest";
-import { ensureWorkspace, getCodexSettings } from "@shared/rest/codex/shared";
 
 /** State token expiry: 10 minutes. */
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -147,9 +147,7 @@ async function fetchInstallationOwner(installationId: number): Promise<string> {
 /**
  * Fetch all repositories accessible to a GitHub App installation.
  */
-async function fetchInstallationRepositories(
-  installationId: number
-): Promise<
+async function fetchInstallationRepositories(installationId: number): Promise<
   Array<{
     owner: string;
     name: string;
@@ -245,6 +243,55 @@ export async function connectGithubInstallation(
 }
 
 /**
+ * Remove the GitHub installation and all associated repositories from a workspace.
+ * Called when the user disconnects GitHub or when the installation is deleted on GitHub's side.
+ */
+export async function disconnectGithubInstallation(workspaceId: string): Promise<void> {
+  await prisma.gitHubInstallation.deleteMany({ where: { workspaceId } });
+  await prisma.repository.deleteMany({ where: { workspaceId } });
+}
+
+/**
+ * Re-fetch accessible repos from GitHub API and sync the Repository table.
+ * Use after the user modifies repo access on GitHub (no callback fired).
+ */
+export async function refreshInstallationRepos(workspaceId: string): Promise<void> {
+  const installation = await prisma.gitHubInstallation.findUnique({
+    where: { workspaceId },
+  });
+  if (!installation || !installation.githubInstallationId) {
+    throw new ValidationError("No GitHub installation found for this workspace.");
+  }
+
+  const githubRepos = await fetchInstallationRepositories(installation.githubInstallationId);
+
+  for (const repo of githubRepos) {
+    await prisma.repository.upsert({
+      where: {
+        workspaceId_fullName: {
+          workspaceId,
+          fullName: repo.fullName,
+        },
+      },
+      create: {
+        workspaceId,
+        owner: repo.owner,
+        name: repo.name,
+        fullName: repo.fullName,
+        defaultBranch: repo.defaultBranch,
+        branchPolicy: REPOSITORY_BRANCH_POLICY.defaultBranchOnly,
+        selected: false,
+      },
+      update: {
+        owner: repo.owner,
+        name: repo.name,
+        defaultBranch: repo.defaultBranch,
+      },
+    });
+  }
+}
+
+/**
  * Handle the GitHub App callback: verify state, fetch installation metadata,
  * connect the installation, and return the workspaceId for redirect.
  */
@@ -262,4 +309,110 @@ export async function handleGithubInstallationCallback(
   });
 
   return { workspaceId };
+}
+
+// ---------------------------------------------------------------------------
+// Repository file reading (GitHub API, no local clone)
+// ---------------------------------------------------------------------------
+
+const MAX_FILE_SIZE = 100_000;
+const CONTENT_FETCH_CONCURRENCY = 20;
+
+export type RepoTreeEntry = {
+  path: string;
+  sha: string;
+  size: number;
+};
+
+export async function fetchRepoTree(
+  installationId: number,
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<RepoTreeEntry[]> {
+  const octokit = createInstallationOctokit(installationId);
+  const { data } = await octokit.git.getTree({
+    owner,
+    repo,
+    tree_sha: branch,
+    recursive: "1",
+  });
+
+  return (data.tree ?? [])
+    .filter(
+      (entry): entry is typeof entry & { path: string; sha: string; size: number } =>
+        entry.type === "blob" &&
+        typeof entry.path === "string" &&
+        typeof entry.sha === "string" &&
+        typeof entry.size === "number" &&
+        entry.size <= MAX_FILE_SIZE
+    )
+    .map((entry) => ({
+      path: entry.path,
+      sha: entry.sha,
+      size: entry.size,
+    }));
+}
+
+export async function fetchFileContents(
+  installationId: number,
+  owner: string,
+  repo: string,
+  ref: string,
+  paths: string[]
+): Promise<Array<{ path: string; content: string }>> {
+  const octokit = createInstallationOctokit(installationId);
+  const results: Array<{ path: string; content: string }> = [];
+
+  for (let i = 0; i < paths.length; i += CONTENT_FETCH_CONCURRENCY) {
+    const batch = paths.slice(i, i + CONTENT_FETCH_CONCURRENCY);
+    const fetched = await Promise.all(
+      batch.map(async (path) => {
+        try {
+          const { data } = await octokit.repos.getContent({
+            owner,
+            repo,
+            path,
+            ref,
+          });
+
+          if ("content" in data && typeof data.content === "string") {
+            return {
+              path,
+              content: Buffer.from(data.content, "base64").toString("utf8"),
+            };
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    for (const file of fetched) {
+      if (file) results.push(file);
+    }
+  }
+
+  return results;
+}
+
+export async function fetchLatestCommitSha(
+  installationId: number,
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<string | null> {
+  try {
+    const octokit = createInstallationOctokit(installationId);
+    const { data } = await octokit.repos.listCommits({
+      owner,
+      repo,
+      sha: branch,
+      per_page: 1,
+    });
+    return data[0]?.sha?.substring(0, 7) ?? null;
+  } catch {
+    return null;
+  }
 }

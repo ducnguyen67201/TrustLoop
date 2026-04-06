@@ -1,6 +1,6 @@
 import { prisma } from "@shared/database";
-import { ANALYSIS_STATUS, ANALYSIS_TRIGGER_MODE } from "@shared/types";
 import { temporalWorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
+import { ANALYSIS_STATUS, ANALYSIS_TRIGGER_MODE } from "@shared/types";
 
 /**
  * Check if the workspace has auto-analysis enabled.
@@ -23,9 +23,7 @@ export async function shouldAutoTrigger(workspaceId: string): Promise<boolean> {
  * - No SupportAnalysis exists with status ANALYZING or ANALYZED
  * - Conversation status is not DONE (no point analyzing closed threads)
  */
-export async function findConversationsReadyForAnalysis(
-  workspaceId: string
-): Promise<string[]> {
+export async function findConversationsReadyForAnalysis(workspaceId: string): Promise<string[]> {
   const now = new Date();
 
   // Find conversations with expired grouping windows
@@ -63,9 +61,7 @@ export async function findConversationsReadyForAnalysis(
     select: { id: true },
   });
 
-  return activeConversations
-    .filter((c) => !analyzedSet.has(c.id))
-    .map((c) => c.id);
+  return activeConversations.filter((c) => !analyzedSet.has(c.id)).map((c) => c.id);
 }
 
 /**
@@ -80,6 +76,7 @@ export async function dispatchAnalysis(input: {
     await temporalWorkflowDispatcher.startSupportAnalysisWorkflow({
       workspaceId: input.workspaceId,
       conversationId: input.conversationId,
+      triggerType: "AUTO",
     });
   } catch {
     // Workflow already running or completed for this conversation. Fine.

@@ -105,7 +105,9 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
       setIsAnalyzing(true);
 
       if (result.alreadyInProgress && result.analysisId) {
-        setAnalysis((prev) => prev ?? { id: result.analysisId!, status: "ANALYZING" } as AnalysisData);
+        setAnalysis(
+          (prev) => prev ?? ({ id: result.analysisId!, status: "ANALYZING" } as AnalysisData)
+        );
       }
 
       startPolling();
@@ -141,11 +143,7 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
       setError(null);
       setIsMutating(true);
       try {
-        await trpcMutation(
-          "supportAnalysis.dismissDraft",
-          { draftId, reason },
-          { withCsrf: true }
-        );
+        await trpcMutation("supportAnalysis.dismissDraft", { draftId, reason }, { withCsrf: true });
         await fetchLatest();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to dismiss draft");

@@ -10,6 +10,8 @@ function CodeIcon() {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
+      role="img"
+      aria-label="Code icon"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -40,7 +42,7 @@ export function Pipeline() {
           observer.disconnect();
         }
       },
-      { threshold: 0.15 },
+      { threshold: 0.15 }
     );
 
     observer.observe(el);
@@ -66,15 +68,13 @@ export function Pipeline() {
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-[#EAE5E0] shrink-0" />
             <div className="flex flex-col">
-              <span className="text-xs font-semibold text-[#1C1917]">
-                sarah.chen
-              </span>
+              <span className="text-xs font-semibold text-[#1C1917]">sarah.chen</span>
               <span className="text-[10px] text-[#8B7E74]">2:34 PM</span>
             </div>
           </div>
           <p className="text-xs text-[#1C1917] leading-relaxed">
-            Hey, the /api/webhooks endpoint is returning 502s again. Started
-            about 20 min ago. Customers are noticing.
+            Hey, the /api/webhooks endpoint is returning 502s again. Started about 20 min ago.
+            Customers are noticing.
           </p>
         </div>
 
@@ -115,11 +115,12 @@ export function Pipeline() {
             <span className="text-[#8B7E74]">Sent</span>
           </div>
           <p className="text-xs text-[#1C1917] leading-relaxed">
-            Found the issue — the webhook handler at webhooks.ts:47 is timing
-            out on payload validation when the request body exceeds 1MB.
-            Pushing a fix now with streaming validation. ETA: 30 min.
+            Found the issue — the webhook handler at webhooks.ts:47 is timing out on payload
+            validation when the request body exceeds 1MB. Pushing a fix now with streaming
+            validation. ETA: 30 min.
           </p>
           <button
+            type="button"
             className="mt-2 w-full py-2.5 text-xs font-semibold flex items-center justify-center bg-[#D4A017] border border-[#D4A017] text-[#1C1917]"
           >
             &#10003; Sent to Slack

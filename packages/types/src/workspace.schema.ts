@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { analysisTriggerModeSchema } from "@shared/types/support/agent-provider.schema";
+import { z } from "zod";
 
 export const WORKSPACE_ROLE = {
   OWNER: "OWNER",

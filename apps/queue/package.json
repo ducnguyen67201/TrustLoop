@@ -17,6 +17,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@octokit/auth-app": "^8.2.0",
     "@shared/database": "*",
     "@shared/env": "*",
     "@shared/types": "*",

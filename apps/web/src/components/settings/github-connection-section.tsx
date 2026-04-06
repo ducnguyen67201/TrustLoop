@@ -10,8 +10,8 @@ import { AddRepositoryCombobox } from "@/components/settings/add-repository-comb
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { RiDeleteBinLine, RiExternalLinkLine, RiGithubLine, RiRefreshLine } from "@remixicon/react";
 import type { GithubConnectionSummary, RepositorySummary } from "@shared/types";
-import { RiGithubLine, RiRefreshLine, RiDeleteBinLine, RiExternalLinkLine } from "@remixicon/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -42,13 +42,19 @@ function openGitHubPopup(url: string, onClose: () => void) {
 function StatusBadge({ repo }: { repo: RepositorySummary }) {
   const s = repo.indexHealth.status;
   if (s === "ready")
-    return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800">Synced</Badge>;
-  if (s === "syncing")
-    return <Badge variant="secondary">Syncing...</Badge>;
+    return (
+      <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800">
+        Synced
+      </Badge>
+    );
+  if (s === "syncing") return <Badge variant="secondary">Syncing...</Badge>;
   if (s === "stale")
-    return <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">Outdated</Badge>;
-  if (s === "error")
-    return <Badge variant="destructive">Error</Badge>;
+    return (
+      <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800">
+        Outdated
+      </Badge>
+    );
+  if (s === "error") return <Badge variant="destructive">Error</Badge>;
   return <Badge variant="secondary">Needs sync</Badge>;
 }
 
@@ -126,8 +132,8 @@ export function GitHubConnectionSection({
             <CardTitle>Repositories</CardTitle>
             <CardDescription>
               Connected as{" "}
-              <span className="font-medium text-foreground">{connection.installationOwner}</span>.
-              {" "}Select repositories to index for code search and PR prep.
+              <span className="font-medium text-foreground">{connection.installationOwner}</span>.{" "}
+              Select repositories to index for code search and PR prep.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -184,7 +190,13 @@ export function GitHubConnectionSection({
                     <form action={syncRepositoryAction}>
                       <input type="hidden" name="workspaceId" value={workspaceId} />
                       <input type="hidden" name="repositoryId" value={repo.id} />
-                      <Button type="submit" variant="ghost" size="sm" disabled={syncing} title="Sync now">
+                      <Button
+                        type="submit"
+                        variant="ghost"
+                        size="sm"
+                        disabled={syncing}
+                        title="Sync now"
+                      >
                         <RiRefreshLine className={`size-4 ${syncing ? "animate-spin" : ""}`} />
                       </Button>
                     </form>

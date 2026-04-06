@@ -18,13 +18,16 @@
  *   └───────────────────────┘        └──────────────────────────┘
  */
 
+import { createOpenAI } from "@ai-sdk/openai";
 import {
   AGENT_PROVIDER,
   AGENT_PROVIDER_DEFAULTS,
   type AgentProviderConfig,
   type AgentProviderInfo,
+  MODEL_CONFIG,
 } from "@shared/types";
-import { openai } from "@mastra/openai";
+
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
  * Resolve a Mastra model instance from the shared provider config.
@@ -35,9 +38,9 @@ import { openai } from "@mastra/openai";
  * 3. Add a case to the switch below
  * 4. Set available: true in AGENT_PROVIDER_DEFAULTS
  */
-export function resolveModel(config: AgentProviderConfig) {
+export function resolveModel(config: AgentProviderConfig): ReturnType<typeof openai> {
   const defaults = AGENT_PROVIDER_DEFAULTS[config.provider];
-  const modelName = config.model ?? defaults?.model ?? "gpt-4o";
+  const modelName = config.model ?? defaults?.model ?? MODEL_CONFIG.agent;
 
   switch (config.provider) {
     case AGENT_PROVIDER.openai:

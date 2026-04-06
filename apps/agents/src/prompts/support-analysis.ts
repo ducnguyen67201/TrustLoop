@@ -1,3 +1,5 @@
+import { POSITIONAL_ANALYSIS_FORMAT_INSTRUCTIONS } from "@shared/types";
+
 /**
  * System prompt for the TrustLoop support analysis agent.
  *
@@ -42,4 +44,9 @@ When writing the draft response:
 
 - You have a limited number of tool calls. Be efficient with your searches.
 - Produce your final output even if you haven't found everything. Partial analysis with honest uncertainty is better than no analysis.
-- Set confidence between 0 and 1 based on how much relevant code you found and how well you understand the problem.`;
+- Set confidence between 0 and 1 based on how much relevant code you found and how well you understand the problem.
+
+## CRITICAL: Output format
+
+Respond with ONLY a compressed JSON object. No markdown, no text outside the JSON.
+${POSITIONAL_ANALYSIS_FORMAT_INSTRUCTIONS}`;

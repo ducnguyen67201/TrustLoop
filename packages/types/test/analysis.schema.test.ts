@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import {
   ANALYSIS_CATEGORY,
   ANALYSIS_SEVERITY,
@@ -15,6 +14,7 @@ import {
   supportAnalysisWorkflowResultSchema,
   triggerAnalysisInputSchema,
 } from "@shared/types";
+import { describe, expect, it } from "vitest";
 
 describe("analysis const enums", () => {
   it("ANALYSIS_STATUS has all expected values", () => {
@@ -184,15 +184,17 @@ describe("tRPC input schemas", () => {
 
   it("approveDraftInputSchema accepts optional editedBody", () => {
     expect(approveDraftInputSchema.parse({ draftId: "dr_1" })).toEqual({ draftId: "dr_1" });
-    expect(
-      approveDraftInputSchema.parse({ draftId: "dr_1", editedBody: "edited text" })
-    ).toEqual({ draftId: "dr_1", editedBody: "edited text" });
+    expect(approveDraftInputSchema.parse({ draftId: "dr_1", editedBody: "edited text" })).toEqual({
+      draftId: "dr_1",
+      editedBody: "edited text",
+    });
   });
 
   it("dismissDraftInputSchema accepts optional reason", () => {
     expect(dismissDraftInputSchema.parse({ draftId: "dr_1" })).toEqual({ draftId: "dr_1" });
-    expect(
-      dismissDraftInputSchema.parse({ draftId: "dr_1", reason: "Not relevant" })
-    ).toEqual({ draftId: "dr_1", reason: "Not relevant" });
+    expect(dismissDraftInputSchema.parse({ draftId: "dr_1", reason: "Not relevant" })).toEqual({
+      draftId: "dr_1",
+      reason: "Not relevant",
+    });
   });
 });

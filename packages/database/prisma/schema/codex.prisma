@@ -132,6 +132,10 @@ model RepositoryIndexChunk {
   lineEnd        Int
   contentHash    String
   content        String                 @db.Text
+  embedding      Unsupported("vector(1536)")?
+  tsv            Unsupported("tsvector")?
+  qualityScore   Float                  @default(0.5)
+  embeddingModel String?
   createdAt      DateTime               @default(now())
   searchResults  CodeSearchResult[]
 
@@ -169,6 +173,8 @@ model CodeSearchResult {
   pathScore      Float
   freshnessScore Float
   mergedScore    Float
+  rerankerScore  Float?
+  rerankerReason String?
   feedback       SearchFeedback[]
 
   @@index([queryId, rank])

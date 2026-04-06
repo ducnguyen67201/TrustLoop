@@ -38,11 +38,10 @@ export default function AiAnalysisSettingsPage() {
     setTriggerMode(mode);
     setSaving(true);
     try {
-      await trpcMutation<{ triggerMode: AnalysisTriggerMode }, WorkspaceUpdateAnalysisSettingsResponse>(
-        "workspace.updateAnalysisSettings",
-        { triggerMode: mode },
-        { withCsrf: true },
-      );
+      await trpcMutation<
+        { triggerMode: AnalysisTriggerMode },
+        WorkspaceUpdateAnalysisSettingsResponse
+      >("workspace.updateAnalysisSettings", { triggerMode: mode }, { withCsrf: true });
     } catch {
       // Revert on failure — refetch the real value
       const details = await trpcQuery<WorkspaceDetailsResponse>("workspace.getDetails");
@@ -81,14 +80,15 @@ export default function AiAnalysisSettingsPage() {
               <SelectItem value={ANALYSIS_TRIGGER_MODE.auto}>
                 <div className="flex items-center gap-2">
                   Automatic
-                  <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">
+                  <Badge
+                    variant="outline"
+                    className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200"
+                  >
                     recommended
                   </Badge>
                 </div>
               </SelectItem>
-              <SelectItem value={ANALYSIS_TRIGGER_MODE.manual}>
-                Manual
-              </SelectItem>
+              <SelectItem value={ANALYSIS_TRIGGER_MODE.manual}>Manual</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -98,18 +98,18 @@ export default function AiAnalysisSettingsPage() {
             <>
               <p className="font-medium">Automatic mode</p>
               <p className="text-muted-foreground">
-                TrustLoop waits for the customer to stop sending messages (5 minute window),
-                then automatically analyzes the conversation and generates a draft response.
-                The draft appears in the inbox for your review.
+                TrustLoop waits for the customer to stop sending messages (5 minute window), then
+                automatically analyzes the conversation and generates a draft response. The draft
+                appears in the inbox for your review.
               </p>
             </>
           ) : (
             <>
               <p className="font-medium">Manual mode</p>
               <p className="text-muted-foreground">
-                Click the "Analyze" button on each conversation to trigger analysis.
-                No automatic analysis runs. Useful when you want full control over
-                which conversations get analyzed.
+                Click the "Analyze" button on each conversation to trigger analysis. No automatic
+                analysis runs. Useful when you want full control over which conversations get
+                analyzed.
               </p>
             </>
           )}
@@ -130,8 +130,12 @@ export default function AiAnalysisSettingsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="openai">OpenAI (GPT-4o)</SelectItem>
-              <SelectItem value="anthropic" disabled>Anthropic (Claude) — coming soon</SelectItem>
-              <SelectItem value="google" disabled>Google (Gemini) — coming soon</SelectItem>
+              <SelectItem value="anthropic" disabled>
+                Anthropic (Claude) — coming soon
+              </SelectItem>
+              <SelectItem value="google" disabled>
+                Google (Gemini) — coming soon
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -4,10 +4,10 @@ import {
   ANALYSIS_RESULT_STATUS,
   ANALYSIS_STATUS,
   ANALYSIS_TRIGGER_TYPE,
-  DRAFT_STATUS,
-  analyzeResponseSchema,
   type AnalysisTriggerType,
+  DRAFT_STATUS,
   type SupportAnalysisWorkflowResult,
+  analyzeResponseSchema,
 } from "@shared/types";
 import { heartbeat } from "@temporalio/activity";
 

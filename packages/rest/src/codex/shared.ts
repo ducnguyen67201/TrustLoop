@@ -168,13 +168,13 @@ export function buildRepositoryHealth(args: {
   } else if (latestSyncRequest?.status === REPOSITORY_SYNC_REQUEST_STATUS.running) {
     status = REPOSITORY_HEALTH_STATUS.syncing;
     syncStageLabel = "Indexing";
+  } else if (latestSyncRequest?.status === REPOSITORY_SYNC_REQUEST_STATUS.failed) {
+    status = REPOSITORY_HEALTH_STATUS.error;
   } else if (activeVersion) {
     status =
       ageMinutes <= DEFAULT_REPOSITORY_FRESHNESS_SLA_MINUTES
         ? REPOSITORY_HEALTH_STATUS.ready
         : REPOSITORY_HEALTH_STATUS.stale;
-  } else if (latestSyncRequest?.status === REPOSITORY_SYNC_REQUEST_STATUS.failed) {
-    status = REPOSITORY_HEALTH_STATUS.error;
   }
 
   return repositoryIndexHealthSchema.parse({

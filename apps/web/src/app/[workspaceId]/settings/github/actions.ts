@@ -19,10 +19,7 @@ function githubSettingsPath(workspaceId: string): string {
   return `/${workspaceId}/settings/github`;
 }
 
-function buildReturnPath(
-  workspaceId: string,
-  params: Record<string, string | undefined>
-): string {
+function buildReturnPath(workspaceId: string, params: Record<string, string | undefined>): string {
   const searchParams = new URLSearchParams();
 
   for (const [key, value] of Object.entries(params)) {

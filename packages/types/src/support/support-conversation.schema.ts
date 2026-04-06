@@ -8,11 +8,7 @@ export const GROUPING_DEFAULTS = {
 } as const;
 
 /** Conversation statuses eligible for standalone message grouping. */
-export const GROUPING_ELIGIBLE_STATUSES = [
-  "UNREAD",
-  "IN_PROGRESS",
-  "STALE",
-] as const;
+export const GROUPING_ELIGIBLE_STATUSES = ["UNREAD", "IN_PROGRESS", "STALE"] as const;
 
 export const SUPPORT_CONVERSATION_STATUS = {
   unread: "UNREAD",

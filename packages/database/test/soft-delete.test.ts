@@ -15,11 +15,7 @@ describe("SOFT_DELETE_MODELS", () => {
 
   const tier2Models = ["Session", "SupportIngressEvent"];
 
-  const tier3Models = [
-    "AuditLog",
-    "SupportConversationEvent",
-    "SupportDeadLetter",
-  ];
+  const tier3Models = ["AuditLog", "SupportConversationEvent", "SupportDeadLetter"];
 
   it("includes all Tier 1 models", () => {
     for (const model of tier1Models) {

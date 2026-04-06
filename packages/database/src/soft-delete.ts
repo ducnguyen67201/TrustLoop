@@ -32,11 +32,14 @@ function lowerFirst(s: string): string {
 function applySoftDeleteFilter<T>(model: string, args: T): T {
   if (!isSoftDeleteModel(model)) return args;
 
-  const { includeDeleted, ...rest } = args as any;
-  if (includeDeleted) return rest as T;
+  const extended = args as T & { includeDeleted?: boolean; where?: Record<string, unknown> };
+  if (extended.includeDeleted) {
+    const { includeDeleted: _, ...rest } = extended;
+    return rest as T;
+  }
 
-  rest.where = { ...rest.where, deletedAt: null };
-  return rest as T;
+  const filtered = { ...extended, where: { ...extended.where, deletedAt: null } };
+  return filtered as T;
 }
 
 /**
@@ -93,18 +96,19 @@ export const softDeleteExtension = Prisma.defineExtension((client) => {
         },
         async delete({ model, args, query }) {
           if (isSoftDeleteModel(model)) {
-            const modelKey = lowerFirst(model) as keyof typeof client;
-            return (client[modelKey] as any).update({
-              ...args,
-              data: { deletedAt: new Date() },
-            });
+            const delegate = client[lowerFirst(model) as keyof typeof client] as {
+              update: (args: Record<string, unknown>) => Promise<unknown>;
+            };
+            return delegate.update({ ...args, data: { deletedAt: new Date() } });
           }
           return query(args);
         },
         async deleteMany({ model, args, query }) {
           if (isSoftDeleteModel(model)) {
-            const modelKey = lowerFirst(model) as keyof typeof client;
-            return (client[modelKey] as any).updateMany({
+            const delegate = client[lowerFirst(model) as keyof typeof client] as {
+              updateMany: (args: Record<string, unknown>) => Promise<unknown>;
+            };
+            return delegate.updateMany({
               ...args,
               data: { deletedAt: new Date() },
             });

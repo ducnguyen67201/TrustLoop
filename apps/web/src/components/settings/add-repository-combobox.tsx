@@ -10,8 +10,8 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { RepositorySummary } from "@shared/types";
 import { RiAddLine, RiGithubLine } from "@remixicon/react";
+import type { RepositorySummary } from "@shared/types";
 import { useRef, useState } from "react";
 
 /**

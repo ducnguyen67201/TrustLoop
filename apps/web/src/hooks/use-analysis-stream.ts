@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ANALYSIS_STREAM_EVENT_TYPE,
   type AnalysisStreamEventType,
 } from "@shared/types/support/support-analysis.schema";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface StreamEvent {
   analysisId: string;

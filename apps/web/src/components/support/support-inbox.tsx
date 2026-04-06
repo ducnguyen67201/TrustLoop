@@ -40,7 +40,8 @@ const KANBAN_COLUMNS = [
  */
 export function SupportInbox() {
   const inbox = useSupportInbox();
-  const { workspaceId } = useActiveWorkspace();
+  const { data: workspaceData } = useActiveWorkspace();
+  const workspaceId = workspaceData?.activeWorkspaceId;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -53,7 +54,7 @@ export function SupportInbox() {
       inbox.setSelectedConversationId(threadParam);
       setIsSheetOpen(true);
     }
-  }, [threadParam]);
+  }, [threadParam, inbox.selectedConversationId, inbox.setSelectedConversationId]);
 
   const updateThreadParam = useCallback(
     (conversationId: string | null) => {

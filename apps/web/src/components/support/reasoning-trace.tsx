@@ -23,7 +23,12 @@ interface ReasoningTraceProps {
  * Collapsible monospace timeline showing the agent's investigation steps.
  * Collapsed by default — the user expands to verify how the agent reached its conclusion.
  */
-export function ReasoningTrace({ evidence, reasoningTrace, toolCallCount, durationMs }: ReasoningTraceProps) {
+export function ReasoningTrace({
+  evidence,
+  reasoningTrace,
+  toolCallCount,
+  durationMs,
+}: ReasoningTraceProps) {
   const [expanded, setExpanded] = useState(false);
 
   const durationLabel = durationMs ? `${(durationMs / 1000).toFixed(1)}s` : "?s";
@@ -39,13 +44,13 @@ export function ReasoningTrace({ evidence, reasoningTrace, toolCallCount, durati
         aria-expanded={expanded}
         aria-controls="reasoning-trace-content"
       >
-        {expanded ? "▾" : "▸"} Agent investigated {fileCount} file{fileCount !== 1 ? "s" : ""} ({durationLabel})
+        {expanded ? "▾" : "▸"} Agent investigated {fileCount} file{fileCount !== 1 ? "s" : ""} (
+        {durationLabel})
       </Button>
 
       {expanded && (
-        <div
+        <section
           id="reasoning-trace-content"
-          role="region"
           aria-label="Agent reasoning trace"
           className="ml-4 mt-1 font-mono text-xs text-muted-foreground space-y-0.5"
         >
@@ -54,9 +59,7 @@ export function ReasoningTrace({ evidence, reasoningTrace, toolCallCount, durati
               <span className="text-muted-foreground/50 select-none">
                 {index === evidence.length - 1 ? "└" : "├"}
               </span>
-              <span>
-                {item.citation ?? `Found ${item.filePath ?? "unknown"}`}
-              </span>
+              <span>{item.citation ?? `Found ${item.filePath ?? "unknown"}`}</span>
             </div>
           ))}
 
@@ -71,7 +74,7 @@ export function ReasoningTrace({ evidence, reasoningTrace, toolCallCount, durati
               {toolCallCount} tool call{toolCallCount !== 1 ? "s" : ""}
             </div>
           )}
-        </div>
+        </section>
       )}
     </div>
   );

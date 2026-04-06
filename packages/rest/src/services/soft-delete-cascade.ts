@@ -1,16 +1,25 @@
-import type { prisma } from "@shared/database";
+// biome-ignore lint/suspicious/noExplicitAny: Prisma delegate methods have model-specific generic args
+type DelegateFn = (args: any) => Promise<any>;
 
-/**
- * Transaction client type derived from the extended prisma client.
- * Using Parameters<> to match the actual tx type from $transaction callbacks.
- */
-type Tx = Parameters<Parameters<(typeof prisma)["$transaction"]>[0]>[0];
+type WritableDelegate = { updateMany: DelegateFn };
+type DeletableDelegate = { deleteMany: DelegateFn };
+type ReadableDelegate = { findMany: DelegateFn };
+
+export interface CascadeTx {
+  supportTicketLink: WritableDelegate;
+  supportDeliveryAttempt: WritableDelegate;
+  supportConversation: WritableDelegate & ReadableDelegate;
+  supportInstallation: WritableDelegate;
+  workspaceApiKey: WritableDelegate;
+  workspaceMembership: WritableDelegate;
+  user: WritableDelegate;
+  session: DeletableDelegate;
+}
 
 /**
  * Cascade soft delete all Tier 1 children of a workspace.
- * Also hard-deletes sessions (Tier 2) for the workspace.
  */
-export async function cascadeSoftDeleteWorkspace(workspaceId: string, tx: Tx) {
+export async function cascadeSoftDeleteWorkspace(workspaceId: string, tx: CascadeTx) {
   const now = new Date();
 
   await Promise.all([
@@ -47,11 +56,11 @@ export async function cascadeSoftDeleteWorkspace(workspaceId: string, tx: Tx) {
 export async function cascadeSoftDeleteInstallation(
   installationId: string,
   workspaceId: string,
-  tx: Tx
+  tx: CascadeTx
 ) {
   const now = new Date();
 
-  const conversations = await tx.supportConversation.findMany({
+  const conversations: Array<{ id: string }> = await tx.supportConversation.findMany({
     where: { installationId, workspaceId, deletedAt: null },
     select: { id: true },
   });
@@ -79,10 +88,8 @@ export async function cascadeSoftDeleteInstallation(
 
 /**
  * Deactivate a user: soft-delete the user record and hard-delete their sessions.
- * Sessions are Tier 2 (hard delete) and won't be cleaned up by the SQL cascade
- * since user deletion is now a soft delete (UPDATE, not DELETE).
  */
-export async function cascadeDeactivateUser(userId: string, tx: Tx) {
+export async function cascadeDeactivateUser(userId: string, tx: CascadeTx) {
   const now = new Date();
 
   await Promise.all([
@@ -90,11 +97,9 @@ export async function cascadeDeactivateUser(userId: string, tx: Tx) {
       where: { id: userId, deletedAt: null },
       data: { deletedAt: now },
     }),
-    // Hard-delete sessions (Tier 2) — SQL cascade doesn't fire on soft delete
     tx.session.deleteMany({
       where: { userId },
     }),
-    // Soft-delete memberships
     tx.workspaceMembership.updateMany({
       where: { userId, deletedAt: null },
       data: { deletedAt: now },
@@ -105,7 +110,7 @@ export async function cascadeDeactivateUser(userId: string, tx: Tx) {
 /**
  * Cascade soft delete a conversation's delivery attempts and ticket links.
  */
-export async function cascadeSoftDeleteConversation(conversationId: string, tx: Tx) {
+export async function cascadeSoftDeleteConversation(conversationId: string, tx: CascadeTx) {
   const now = new Date();
 
   await Promise.all([

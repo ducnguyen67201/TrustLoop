@@ -23,6 +23,7 @@
     "@shared/types": "*",
     "@temporalio/client": "^1.13.0",
     "@trpc/server": "^11.0.0",
+    "openai": "^6.33.0",
     "zod": "^4.0.0"
   }
 }

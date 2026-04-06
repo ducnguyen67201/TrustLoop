@@ -1,12 +1,12 @@
-import { Nav } from "@/components/nav";
-import { Hero } from "@/components/hero";
-import { Pipeline } from "@/components/pipeline";
-import { HowItWorks } from "@/components/how-it-works";
-import { WhatChanges } from "@/components/what-changes";
-import { TrustSection } from "@/components/trust-section";
-import { Metrics } from "@/components/metrics";
 import { CtaSection } from "@/components/cta-section";
 import { Footer } from "@/components/footer";
+import { Hero } from "@/components/hero";
+import { HowItWorks } from "@/components/how-it-works";
+import { Metrics } from "@/components/metrics";
+import { Nav } from "@/components/nav";
+import { Pipeline } from "@/components/pipeline";
+import { TrustSection } from "@/components/trust-section";
+import { WhatChanges } from "@/components/what-changes";
 
 export default function Page() {
   return (

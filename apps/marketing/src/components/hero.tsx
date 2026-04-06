@@ -45,8 +45,8 @@ export function Hero() {
         <span className="cursor-blink text-[#D4A017] font-normal">|</span>
       </h1>
       <p className="text-lg md:text-xl text-[#8B7E74] mb-12 max-w-2xl mx-auto leading-relaxed">
-        Chat messages become tickets. AI drafts responses using your actual
-        code. Engineers review and send. Hours saved, every week.
+        Chat messages become tickets. AI drafts responses using your actual code. Engineers review
+        and send. Hours saved, every week.
       </p>
       <div className="flex flex-col sm:flex-row gap-4 mb-24 justify-center">
         <a

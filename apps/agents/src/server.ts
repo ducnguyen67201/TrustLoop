@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
 import { analyzeRequestSchema } from "@shared/types";
+import { Hono } from "hono";
 
 import { runAnalysis } from "./agent";
 import { listProviders } from "./providers";
@@ -18,7 +18,9 @@ app.post("/analyze", async (c) => {
     return c.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
     console.error("[agents] Analysis failed:", message);
+    if (stack) console.error("[agents] Stack:", stack);
     return c.json({ error: message }, 500);
   }
 });

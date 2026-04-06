@@ -85,6 +85,7 @@ describe("dispatchWorkflow", () => {
       payload: {
         workspaceId: "ws_1",
         conversationId: "conv_1",
+        triggerType: "MANUAL" as const,
       },
     });
 

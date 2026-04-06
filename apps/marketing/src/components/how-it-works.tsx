@@ -50,7 +50,7 @@ function AnimatedNumber({ target }: { target: number }) {
           requestAnimationFrame(step);
         }
       },
-      { threshold: 0.2, rootMargin: "0px 0px -50px 0px" },
+      { threshold: 0.2, rootMargin: "0px 0px -50px 0px" }
     );
 
     observer.observe(el);
@@ -73,27 +73,20 @@ function AnimatedNumber({ target }: { target: number }) {
 
 export function HowItWorks() {
   return (
-    <section
-      id="how-it-works"
-      className="w-full py-32 border-t border-[#EAE5E0] bg-section-warm"
-    >
+    <section id="how-it-works" className="w-full py-32 border-t border-[#EAE5E0] bg-section-warm">
       <div className="max-w-6xl mx-auto px-6 md:px-8">
-      <p className="text-xs uppercase tracking-widest text-[#8B7E74] mb-20">
-        How It Works
-      </p>
-      <div className="max-w-4xl flex flex-col gap-16 md:gap-24">
-        {STEPS.map((step) => (
-          <div
-            key={step.num}
-            className="flex flex-col md:flex-row gap-6 md:gap-12 items-start group"
-          >
-            <AnimatedNumber target={step.num} />
-            <div className="text-xl md:text-3xl text-[#1C1917] leading-snug">
-              {step.text}
+        <p className="text-xs uppercase tracking-widest text-[#8B7E74] mb-20">How It Works</p>
+        <div className="max-w-4xl flex flex-col gap-16 md:gap-24">
+          {STEPS.map((step) => (
+            <div
+              key={step.num}
+              className="flex flex-col md:flex-row gap-6 md:gap-12 items-start group"
+            >
+              <AnimatedNumber target={step.num} />
+              <div className="text-xl md:text-3xl text-[#1C1917] leading-snug">{step.text}</div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
       </div>
     </section>
   );

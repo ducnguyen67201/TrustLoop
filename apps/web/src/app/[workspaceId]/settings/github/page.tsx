@@ -1,9 +1,6 @@
 import { FlashBanner } from "@/components/settings/flash-banner";
 import { GitHubConnectionSection } from "@/components/settings/github-connection-section";
-import {
-  generateGithubInstallUrl,
-  getCodexSettings,
-} from "@shared/rest";
+import { generateGithubInstallUrl, getCodexSettings } from "@shared/rest";
 
 type PageParams = Promise<{ workspaceId: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -60,7 +57,10 @@ export default async function GitHubSettingsPage({
         <FlashBanner message="GitHub connected. Your repositories are ready." tone="success" />
       ) : null}
       {githubStatus === "error" ? (
-        <FlashBanner message="Something went wrong connecting GitHub. Please try again." tone="error" />
+        <FlashBanner
+          message="Something went wrong connecting GitHub. Please try again."
+          tone="error"
+        />
       ) : null}
       {githubStatus === "denied" ? (
         <FlashBanner message="GitHub installation was cancelled." tone="success" />

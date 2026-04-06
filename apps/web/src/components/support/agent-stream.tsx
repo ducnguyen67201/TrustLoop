@@ -1,7 +1,7 @@
 "use client";
 
-import { ANALYSIS_STREAM_EVENT_TYPE } from "@shared/types/support/support-analysis.schema";
 import type { StreamEvent } from "@/hooks/use-analysis-stream";
+import { ANALYSIS_STREAM_EVENT_TYPE } from "@shared/types/support/support-analysis.schema";
 
 interface AgentStreamProps {
   events: StreamEvent[];
@@ -41,9 +41,7 @@ export function AgentStream({ events, isStreaming }: AgentStreamProps) {
       aria-live="polite"
     >
       {events.length === 0 && isStreaming && (
-        <div className="text-muted-foreground/50 animate-pulse">
-          Starting analysis...
-        </div>
+        <div className="text-muted-foreground/50 animate-pulse">Starting analysis...</div>
       )}
 
       {events.map((event, index) => (
@@ -58,16 +56,18 @@ export function AgentStream({ events, isStreaming }: AgentStreamProps) {
           }`}
         >
           <span className="text-muted-foreground/40 select-none shrink-0">
-            {event.type === ANALYSIS_STREAM_EVENT_TYPE.complete ? "✓" : event.type === ANALYSIS_STREAM_EVENT_TYPE.error ? "✗" : "›"}
+            {event.type === ANALYSIS_STREAM_EVENT_TYPE.complete
+              ? "✓"
+              : event.type === ANALYSIS_STREAM_EVENT_TYPE.error
+                ? "✗"
+                : "›"}
           </span>
           <span>{formatEvent(event)}</span>
         </div>
       ))}
 
       {isStreaming && events.length > 0 && (
-        <div className="text-muted-foreground/50 animate-pulse">
-          › ...
-        </div>
+        <div className="text-muted-foreground/50 animate-pulse">› ...</div>
       )}
     </div>
   );

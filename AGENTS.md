@@ -62,6 +62,29 @@ Queue-level isolation is mandatory even if both are run in one worker runtime.
 - Use `@/` for local imports inside app runtimes (`apps/web`, `apps/queue`)
 - Use package-root imports inside shared packages (for example `@shared/rest/*`, `@shared/types/*`)
 
+### REST API Classification
+
+REST endpoints fall into two categories with different auth requirements:
+
+**Internal endpoints** (`/api/rest/codex/*`, `/api/rest/workflows/dispatch`):
+- Protected by `withServiceAuth` (service key, `tli_` prefix)
+- Called by internal services and admin tooling
+- Validated against `INTERNAL_SERVICE_KEY` env var (no DB lookup)
+- New internal endpoints must use `withServiceAuth`
+
+**Public/customer-facing endpoints** (as built):
+- Protected by `withWorkspaceApiKeyAuth` (workspace API key, `tlk_` prefix)
+- Resolves workspace context from the API key (DB lookup + HMAC verification)
+- New customer-facing endpoints must use `withWorkspaceApiKeyAuth`
+
+**Unprotected endpoints** (by design):
+- `/api/health`, `/api/rest/health` (health checks)
+- `/api/slack/*` (Slack signature verification or OAuth flow)
+- `/api/github/callback` (OAuth flow)
+- `/api/trpc/*` (own tRPC middleware)
+
+Auth guards live in `packages/rest/src/security/rest-auth.ts`. See `docs/spec-rest-api-key-auth.md` for full details.
+
 ### URL Parameter Conventions
 
 - Use URL query params for non-sensitive page state so views are shareable and bookmarkable.
@@ -99,6 +122,8 @@ npm run dev:queue
 
 ## Type Safety Rules (Non-Negotiable)
 
+- **No `any` types. No `as unknown as` casts.** Every variable, parameter, and return value must have an explicit or inferred type. If a helper function loses type information (e.g. generic returns `Record<string, unknown>`), fix the helper's generics or use a follow-up query with proper includes instead of casting. Type assertions (`as`) are a last resort for third-party library boundaries only — never for internal code.
+- **All apps must pass `tsc --noEmit` and `biome check`** before merge. This includes `apps/web`, `apps/queue`, and `apps/agents`.
 - Define request/response schemas in shared contracts (`packages/types`) with Zod.
 - Infer TypeScript types from Zod; do not duplicate DTOs per app.
 - Share workflow input/output payload types via `@shared/types`.
@@ -106,6 +131,20 @@ npm run dev:queue
 - Prefer shared enum-style constants (for example `WORKSPACE_ROLE.ADMIN`) across router/service/UI logic; avoid inline string literals for roles/statuses/permissions.
 - When a type has 3+ possible string values, define it as a shared `const` enum object (e.g. `SLACK_OAUTH_STATUS.CONNECTED`) instead of inline string literals. This prevents typos and centralizes state definitions.
 - Validate all ingress boundaries at runtime (API, webhook, workflow input).
+- For raw SQL queries (`prisma.$queryRawUnsafe`), use parameterized values (`$1`, `$2`) instead of string interpolation. Never use `escapeSql` or manual string escaping.
+
+### LLM Output: Positional JSON Format (Non-Negotiable)
+
+All LLM-generated structured output must use Positional JSON — compressed field names + numeric enum codes. This reduces output tokens by 70-80%.
+
+- Positional format schemas live in `packages/types/src/positional-format/`.
+- Every format exports: Zod schema, reconstruction function, prompt instructions constant.
+- Reconstruction runs immediately after `JSON.parse()` — compressed format never leaks beyond the LLM call boundary.
+- Every format must have Zod validation before reconstruction. If the LLM returns invalid output, Zod catches it.
+- Every positional format must include at least two examples in its prompt instructions (one with all fields, one minimal/null case).
+- Never ask LLMs to return verbose JSON. Always use the compressed format with reconstruction.
+- **Max nesting depth: 2 levels.** LLMs produce unreliable output beyond 2 levels of JSON nesting. If a field needs deeper structure, flatten it (e.g. `"filepath:line|snippet"` instead of `{"f":"filepath","l":line,"t":"snippet"}`). Arrays of primitives (strings, numbers) are fine. Arrays of objects are a smell — prefer flat encoded strings.
+- See `docs/spec-positional-json-format.md` for the full spec, reliability layers, and extension guide.
 
 ### Contract source of truth order
 

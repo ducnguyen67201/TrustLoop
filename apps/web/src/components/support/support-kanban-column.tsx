@@ -76,7 +76,9 @@ export function SupportKanbanColumn({
               isDragOver && "border-primary/30 text-primary"
             )}
           >
-            {isDragOver ? `Drop here to mark as ${title.toLowerCase()}` : `No ${title.toLowerCase()} threads.`}
+            {isDragOver
+              ? `Drop here to mark as ${title.toLowerCase()}`
+              : `No ${title.toLowerCase()} threads.`}
           </div>
         ) : null}
 

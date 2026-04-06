@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { findIncludingDeleted, softUpsert } from "../src/soft-delete-helpers";
 
-function createMockDelegate(findFirstResult: any = null) {
+type MockResult = Record<string, unknown> | null;
+
+function createMockDelegate(findFirstResult: MockResult = null) {
   return {
     findFirst: vi.fn().mockResolvedValue(findFirstResult),
-    update: vi.fn().mockImplementation(async (args: any) => ({
-      id: findFirstResult?.id ?? "new_id",
-      ...args.data,
+    update: vi.fn().mockImplementation(async (args: Record<string, unknown>) => ({
+      id: (findFirstResult as Record<string, unknown>)?.id ?? "new_id",
+      ...(args.data as Record<string, unknown>),
     })),
-    create: vi.fn().mockImplementation(async (args: any) => ({
+    create: vi.fn().mockImplementation(async (args: Record<string, unknown>) => ({
       id: "created_id",
-      ...args.data,
+      ...(args.data as Record<string, unknown>),
     })),
   };
 }
@@ -18,132 +20,124 @@ function createMockDelegate(findFirstResult: any = null) {
 describe("findIncludingDeleted", () => {
   it("passes includeDeleted: true to findFirst", async () => {
     const delegate = createMockDelegate();
-    await findIncludingDeleted(delegate, {
-      where: { provider: "SLACK", providerInstallationId: "app_1" },
-    });
 
-    expect(delegate.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ includeDeleted: true })
-    );
+    await findIncludingDeleted(delegate, { where: { id: "test" } });
+
+    expect(delegate.findFirst).toHaveBeenCalledWith({
+      where: { id: "test" },
+      includeDeleted: true,
+    });
   });
 
-  it("forwards where clause and select", async () => {
-    const delegate = createMockDelegate();
-    await findIncludingDeleted(delegate, {
-      where: { id: "test_id" },
-      select: { id: true },
-    });
+  it("returns the record if found", async () => {
+    const record = { id: "found_id", deletedAt: new Date() };
+    const delegate = createMockDelegate(record);
 
-    expect(delegate.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "test_id" },
-        select: { id: true },
-      })
-    );
+    const result = await findIncludingDeleted(delegate, { where: { id: "found_id" } });
+    expect(result).toEqual(record);
   });
 
-  it("returns null when no record found", async () => {
+  it("returns null if no record found", async () => {
     const delegate = createMockDelegate(null);
+
     const result = await findIncludingDeleted(delegate, { where: { id: "missing" } });
     expect(result).toBeNull();
   });
 
-  it("returns the soft-deleted record when found", async () => {
-    const deleted = { id: "del_1", deletedAt: new Date() };
-    const delegate = createMockDelegate(deleted);
-    const result = await findIncludingDeleted(delegate, { where: { id: "del_1" } });
-    expect(result).toEqual(deleted);
+  it("passes select option to findFirst", async () => {
+    const delegate = createMockDelegate();
+
+    await findIncludingDeleted(delegate, {
+      where: { id: "test" },
+      select: { id: true },
+    });
+
+    expect(delegate.findFirst).toHaveBeenCalledWith({
+      where: { id: "test" },
+      select: { id: true },
+      includeDeleted: true,
+    });
   });
 });
 
 describe("softUpsert", () => {
   it("updates existing active record", async () => {
-    const active = { id: "active_1", name: "test" };
-    const delegate = createMockDelegate(active);
+    const existing = { id: "active_id", name: "old" };
+    const delegate = createMockDelegate(existing);
 
     await softUpsert(delegate, {
-      where: { workspaceId: "ws_1", canonicalKey: "key_1" },
-      create: { workspaceId: "ws_1", canonicalKey: "key_1", name: "new" },
+      where: { id: "active_id" },
+      create: { id: "active_id", name: "new" },
       update: { name: "updated" },
     });
 
-    expect(delegate.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "active_1" },
-        data: { name: "updated" },
-      })
-    );
-    expect(delegate.create).not.toHaveBeenCalled();
-  });
-
-  it("resurrects soft-deleted record when no active record exists", async () => {
-    const delegate = createMockDelegate(null);
-    // First findFirst returns null (no active), second returns deleted
-    const softDeleted = { id: "del_1" };
-    delegate.findFirst
-      .mockResolvedValueOnce(null) // active check
-      .mockResolvedValueOnce(softDeleted); // includeDeleted check
-
-    await softUpsert(delegate, {
-      where: { workspaceId: "ws_1", userId: "u_1" },
-      create: { workspaceId: "ws_1", userId: "u_1", role: "MEMBER" },
-      update: { role: "MEMBER" },
+    expect(delegate.update).toHaveBeenCalledWith({
+      where: { id: "active_id" },
+      data: { name: "updated" },
     });
-
-    expect(delegate.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "del_1" },
-        data: expect.objectContaining({ deletedAt: null, workspaceId: "ws_1" }),
-      })
-    );
     expect(delegate.create).not.toHaveBeenCalled();
   });
 
   it("creates new record when nothing exists", async () => {
     const delegate = createMockDelegate(null);
-    // Both findFirst calls return null
-    delegate.findFirst.mockResolvedValue(null);
 
-    const result = await softUpsert(delegate, {
-      where: { provider: "SLACK", providerInstallationId: "app_1" },
-      create: { provider: "SLACK", providerInstallationId: "app_1", teamId: "T123" },
-      update: { teamId: "T123" },
+    await softUpsert(delegate, {
+      where: { id: "test" },
+      create: { id: "test", name: "new" },
+      update: { name: "updated" },
     });
 
-    expect(delegate.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ provider: "SLACK", teamId: "T123" }),
-      })
-    );
-    expect(result).toEqual(expect.objectContaining({ id: "created_id" }));
+    expect(delegate.create).toHaveBeenCalledWith({
+      data: { id: "test", name: "new" },
+    });
+  });
+
+  it("resurrects soft-deleted record", async () => {
+    const delegate = createMockDelegate(null);
+    // First findFirst returns null (no active), second returns soft-deleted
+    delegate.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "deleted_id", deletedAt: new Date() });
+
+    await softUpsert(delegate, {
+      where: { id: "test" },
+      create: { id: "test", name: "resurrected" },
+      update: { name: "updated" },
+    });
+
+    expect(delegate.update).toHaveBeenCalledWith({
+      where: { id: "deleted_id" },
+      data: { deletedAt: null, id: "test", name: "resurrected" },
+    });
   });
 
   it("passes include option through to all operations", async () => {
-    const active = { id: "active_1" };
-    const delegate = createMockDelegate(active);
+    const existing = { id: "active_id", name: "old" };
+    const delegate = createMockDelegate(existing);
 
     await softUpsert(delegate, {
-      where: { workspaceId: "ws_1", userId: "u_1" },
-      create: { workspaceId: "ws_1", userId: "u_1", role: "MEMBER" },
-      update: { role: "ADMIN" },
-      include: { user: { select: { id: true, email: true } } },
+      where: { id: "active_id" },
+      create: { id: "active_id", name: "new" },
+      update: { name: "updated" },
+      include: { user: true },
     });
 
-    expect(delegate.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        include: { user: { select: { id: true, email: true } } },
-      })
-    );
-    expect(delegate.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        include: { user: { select: { id: true, email: true } } },
-      })
-    );
+    expect(delegate.findFirst).toHaveBeenCalledWith({
+      where: { id: "active_id" },
+      include: { user: true },
+    });
+    expect(delegate.update).toHaveBeenCalledWith({
+      where: { id: "active_id" },
+      data: { name: "updated" },
+      include: { user: true },
+    });
   });
 
   it("never calls Prisma upsert", async () => {
-    const delegate = createMockDelegate(null) as any;
-    delegate.upsert = vi.fn();
+    const delegate = {
+      ...createMockDelegate(null),
+      upsert: vi.fn(),
+    };
 
     await softUpsert(delegate, {
       where: { id: "test" },

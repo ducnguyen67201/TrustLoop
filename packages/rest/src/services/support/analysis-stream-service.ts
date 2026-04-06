@@ -89,7 +89,10 @@ export async function* listenAnalysisEvents(
 
     // Emit status change events
     if (analysis.status !== lastStatus) {
-      if (analysis.status === ANALYSIS_RESULT_STATUS.analyzed || analysis.status === ANALYSIS_RESULT_STATUS.needsContext) {
+      if (
+        analysis.status === ANALYSIS_RESULT_STATUS.analyzed ||
+        analysis.status === ANALYSIS_RESULT_STATUS.needsContext
+      ) {
         yield {
           analysisId,
           type: ANALYSIS_STREAM_EVENT_TYPE.complete,

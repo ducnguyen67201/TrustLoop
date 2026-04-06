@@ -84,9 +84,7 @@ export const EVIDENCE_SOURCE_TYPE = {
   codeChunk: "CODE_CHUNK",
 } as const;
 
-export const evidenceSourceTypeValues = [
-  EVIDENCE_SOURCE_TYPE.codeChunk,
-] as const;
+export const evidenceSourceTypeValues = [EVIDENCE_SOURCE_TYPE.codeChunk] as const;
 
 export const evidenceSourceTypeSchema = z.enum(evidenceSourceTypeValues);
 
@@ -172,7 +170,7 @@ export const analyzeRequestSchema = z.object({
 
 export const toolCallRecordSchema = z.object({
   tool: z.string(),
-  input: z.record(z.unknown()),
+  input: z.record(z.string(), z.unknown()),
   output: z.string(),
   durationMs: z.number(),
 });

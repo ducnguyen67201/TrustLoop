@@ -1,18 +1,19 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "types": ["node"],
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../../packages/*/src"]
+      "@shared/types": ["../../packages/types/src/index.ts"],
+      "@shared/types/*": ["../../packages/types/src/*"],
+      "@shared/rest": ["../../packages/rest/src/index.ts"],
+      "@shared/rest/*": ["../../packages/rest/src/*"],
+      "@shared/database": ["../../packages/database/src/index.ts"],
+      "@shared/database/*": ["../../packages/database/src/*"],
+      "@shared/env": ["../../packages/env/src/index.ts"],
+      "@shared/env/*": ["../../packages/env/src/*"]
     }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src"]
 }

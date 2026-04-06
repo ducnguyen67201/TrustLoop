@@ -47,7 +47,7 @@ function TrustItem({
           observer.disconnect();
         }
       },
-      { threshold: 0.2, rootMargin: "0px 0px -50px 0px" },
+      { threshold: 0.2, rootMargin: "0px 0px -50px 0px" }
     );
 
     observer.observe(el);
@@ -64,9 +64,7 @@ function TrustItem({
         transition: "opacity 0.8s ease-out, transform 0.8s ease-out",
       }}
     >
-      <h3 className="text-lg font-semibold text-[#1C1917] mb-4 tracking-tight">
-        {title}
-      </h3>
+      <h3 className="text-lg font-semibold text-[#1C1917] mb-4 tracking-tight">{title}</h3>
       <p className="text-sm text-[#8B7E74] leading-relaxed">{desc}</p>
     </div>
   );
@@ -76,16 +74,14 @@ export function TrustSection() {
   return (
     <section className="w-full py-32 border-t border-[#EAE5E0] bg-section-warm bg-fade-top">
       <div className="max-w-6xl mx-auto px-6 md:px-8">
-      <p className="text-xs uppercase tracking-widest text-[#8B7E74] mb-20">
-        Trust By Default
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#EAE5E0] border-y border-[#EAE5E0]">
-        {ITEMS.map((item, i) => (
-          <div key={item.title} className={PADDING[i]}>
-            <TrustItem title={item.title} desc={item.desc} delay={i * 200} />
-          </div>
-        ))}
-      </div>
+        <p className="text-xs uppercase tracking-widest text-[#8B7E74] mb-20">Trust By Default</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#EAE5E0] border-y border-[#EAE5E0]">
+          {ITEMS.map((item, i) => (
+            <div key={item.title} className={PADDING[i]}>
+              <TrustItem title={item.title} desc={item.desc} delay={i * 200} />
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

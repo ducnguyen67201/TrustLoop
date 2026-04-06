@@ -70,7 +70,7 @@ export function AnalysisPanel({
 
   const { events, isStreaming } = useAnalysisStream({
     workspaceId,
-    analysisId: isAnalyzing ? analysis?.id ?? null : null,
+    analysisId: isAnalyzing ? (analysis?.id ?? null) : null,
     enabled: isAnalyzing,
   });
 
@@ -88,22 +88,22 @@ export function AnalysisPanel({
   // State: analyzing (streaming)
   if (isAnalyzing || analysis?.status === "ANALYZING") {
     return (
-      <div className="py-3 space-y-2" role="region" aria-label="AI analysis">
+      <section className="py-3 space-y-2" aria-label="AI analysis">
         <div className="text-xs text-muted-foreground font-mono">Analyzing...</div>
         <AgentStream events={events} isStreaming={isStreaming} />
-      </div>
+      </section>
     );
   }
 
   // State: analysis failed
   if (analysis?.status === "FAILED") {
     return (
-      <div className="py-3 space-y-2" role="region" aria-label="AI analysis">
+      <section className="py-3 space-y-2" aria-label="AI analysis">
         <div className="text-sm text-destructive">Analysis failed</div>
         <Button variant="outline" size="sm" onClick={onTriggerAnalysis} disabled={isMutating}>
           Retry
         </Button>
-      </div>
+      </section>
     );
   }
 
@@ -112,7 +112,7 @@ export function AnalysisPanel({
   const confidence = analysis?.confidence ?? 0;
 
   return (
-    <div className="py-3 space-y-3" role="region" aria-label="AI analysis">
+    <section className="py-3 space-y-3" aria-label="AI analysis">
       {/* ① Confidence + status line */}
       <div className="flex items-center gap-2 flex-wrap">
         <ConfidenceBadge confidence={confidence} />
@@ -126,9 +126,7 @@ export function AnalysisPanel({
             {analysis.likelySubsystem}
           </span>
         )}
-        <span className="text-xs text-muted-foreground">
-          {Math.round(confidence * 100)}%
-        </span>
+        <span className="text-xs text-muted-foreground">{Math.round(confidence * 100)}%</span>
       </div>
 
       {/* Problem statement */}
@@ -220,7 +218,7 @@ export function AnalysisPanel({
           {analysis.missingInfo && analysis.missingInfo.length > 0 && (
             <ul className="text-xs text-muted-foreground list-disc ml-4 space-y-0.5">
               {(analysis.missingInfo as string[]).map((info, i) => (
-                <li key={i}>{info}</li>
+                <li key={info}>{info}</li>
               ))}
             </ul>
           )}
@@ -236,6 +234,6 @@ export function AnalysisPanel({
           durationMs={analysis.llmLatencyMs}
         />
       )}
-    </div>
+    </section>
   );
 }

@@ -1,17 +1,17 @@
 import { prisma } from "@shared/database";
+import { env } from "@shared/env";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
   ANALYSIS_STATUS,
-  DRAFT_STATUS,
   type ApproveDraftInput,
+  ConflictError,
+  DRAFT_STATUS,
   type DismissDraftInput,
   type TriggerAnalysisInput,
-  ConflictError,
   ValidationError,
 } from "@shared/types";
-import { env } from "@shared/env";
 
-interface TriggerAnalysisResult {
+export interface TriggerAnalysisResult {
   analysisId: string | null;
   workflowId: string;
   alreadyInProgress: boolean;
@@ -65,6 +65,7 @@ export async function triggerSupportAnalysis(
   const dispatchResult = await dispatcher.startSupportAnalysisWorkflow({
     workspaceId: input.workspaceId,
     conversationId: input.conversationId,
+    triggerType: "MANUAL",
   });
 
   return {

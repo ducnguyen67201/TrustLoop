@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MODEL_CONFIG } from "../model-config";
 
 export const AGENT_PROVIDER = {
   openai: "openai",
@@ -15,7 +16,7 @@ export const agentProviderValues = [
 export const agentProviderSchema = z.enum(agentProviderValues);
 
 export const AGENT_PROVIDER_DEFAULTS: Record<string, { model: string; available: boolean }> = {
-  [AGENT_PROVIDER.openai]: { model: "gpt-4o", available: true },
+  [AGENT_PROVIDER.openai]: { model: MODEL_CONFIG.agent, available: true },
   [AGENT_PROVIDER.anthropic]: { model: "claude-sonnet-4-20250514", available: false },
   [AGENT_PROVIDER.google]: { model: "gemini-2.0-flash", available: false },
 };

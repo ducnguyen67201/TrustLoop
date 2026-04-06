@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "type-check": "tsc --noEmit",
+    "lint": "biome check src/",
+    "test": "echo 'No tests yet'"
   },
   "dependencies": {
     "@mastra/core": "latest",
-    "@mastra/openai": "latest",
+    "@ai-sdk/openai": "^2.0.89",
     "@shared/database": "*",
     "@shared/env": "*",
     "@shared/types": "*",

@@ -1,8 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma } from "@shared/database";
+import { softUpsert } from "@shared/database";
 import { env } from "@shared/env";
 import { writeAuditEvent } from "@shared/rest/security/audit";
-import { softUpsert } from "@shared/database";
 import { cascadeSoftDeleteInstallation } from "@shared/rest/services/soft-delete-cascade";
 import {
   type SlackOAuthStatePayload,

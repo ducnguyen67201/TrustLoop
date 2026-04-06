@@ -19,6 +19,7 @@
     "doppler:dev": "doppler run -- turbo run dev --parallel",
     "doppler:dev:web": "doppler run -- npm --workspace @trustloop/web run dev",
     "doppler:dev:queue": "doppler run -- npm --workspace @apps/queue run dev",
+    "doppler:dev:agents": "doppler run -- npm --workspace @trustloop/agents run dev",
     "check": "npm run type-check && npm run lint && npm run test && npm run build && npm run openapi:check && npm run db:generate",
     "check:clean": "npm run check && npm run clean:artifacts",
     "type-check": "turbo run type-check",

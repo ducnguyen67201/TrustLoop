@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { ConfidenceBadge } from "../confidence-badge";
 
 describe("ConfidenceBadge", () => {
+  afterEach(() => cleanup());
   it("renders green for high confidence (>0.7)", () => {
     render(<ConfidenceBadge confidence={0.85} />);
     const badge = screen.getByText("High confidence");

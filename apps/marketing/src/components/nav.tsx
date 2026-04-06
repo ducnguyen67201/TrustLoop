@@ -14,13 +14,10 @@ export function Nav() {
 
         {/* Links */}
         <div className="hidden md:flex items-center gap-10 text-xs uppercase tracking-widest text-[#8B7E74]">
-          <a
-            href="#how-it-works"
-            className="hover:text-[#1C1917] transition-colors"
-          >
+          <a href="#how-it-works" className="hover:text-[#1C1917] transition-colors">
             Product
           </a>
-          <a href="#" className="hover:text-[#1C1917] transition-colors">
+          <a href="#features" className="hover:text-[#1C1917] transition-colors">
             Features
           </a>
         </div>
@@ -28,7 +25,7 @@ export function Nav() {
         {/* Actions */}
         <div className="flex items-center gap-4 md:gap-6">
           <a
-            href="#"
+            href="/login"
             className="text-xs uppercase tracking-widest text-[#1C1917] hover:text-[#8B7E74] transition-colors hidden sm:block"
           >
             Sign In

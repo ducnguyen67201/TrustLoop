@@ -9,10 +9,7 @@ export async function workspaceExists(workspaceId: string): Promise<boolean> {
   return workspace !== null;
 }
 
-export async function canAccessWorkspace(
-  userId: string,
-  workspaceId: string
-): Promise<boolean> {
+export async function canAccessWorkspace(userId: string, workspaceId: string): Promise<boolean> {
   if (!(await workspaceExists(workspaceId))) {
     return false;
   }

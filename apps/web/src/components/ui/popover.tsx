@@ -1,20 +1,16 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Popover as PopoverPrimitive } from "radix-ui"
+import { Popover as PopoverPrimitive } from "radix-ui";
+import type * as React from "react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
-function Popover({
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
+  return <PopoverPrimitive.Root data-slot="popover" {...props} />;
 }
 
-function PopoverTrigger({
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
+function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
+  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
 }
 
 function PopoverContent({
@@ -36,13 +32,11 @@ function PopoverContent({
         {...props}
       />
     </PopoverPrimitive.Portal>
-  )
+  );
 }
 
-function PopoverAnchor({
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
-  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />
+function PopoverAnchor({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
+  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />;
 }
 
 function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
@@ -52,7 +46,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
       className={cn("flex flex-col gap-1 text-xs", className)}
       {...props}
     />
-  )
+  );
 }
 
 function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
@@ -62,20 +56,17 @@ function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
       className={cn("font-heading text-sm font-medium", className)}
       {...props}
     />
-  )
+  );
 }
 
-function PopoverDescription({
-  className,
-  ...props
-}: React.ComponentProps<"p">) {
+function PopoverDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
       data-slot="popover-description"
       className={cn("text-xs/relaxed text-muted-foreground", className)}
       {...props}
     />
-  )
+  );
 }
 
 export {
@@ -86,4 +77,4 @@ export {
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
-}
+};

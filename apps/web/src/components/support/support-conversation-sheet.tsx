@@ -1,5 +1,6 @@
 "use client";
 
+import { AnalysisPanel } from "@/components/support/analysis-panel";
 import { SupportStatusBadge } from "@/components/support/support-status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { AnalysisPanel } from "@/components/support/analysis-panel";
 import { useAnalysis } from "@/hooks/use-analysis";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { RiArrowGoBackLine, RiChat3Line, RiUserSharedLine } from "@remixicon/react";

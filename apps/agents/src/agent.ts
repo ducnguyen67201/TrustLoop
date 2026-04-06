@@ -1,12 +1,13 @@
-import { Agent } from "@mastra/core";
+import { Agent } from "@mastra/core/agent";
 import {
   AGENT_PROVIDER,
   AGENT_PROVIDER_DEFAULTS,
-  agentOutputSchema,
-  agentProviderConfigSchema,
   type AgentProviderConfig,
   type AnalyzeRequest,
   type AnalyzeResponse,
+  agentProviderConfigSchema,
+  compressedAnalysisOutputSchema,
+  reconstructAnalysisOutput,
 } from "@shared/types";
 
 import { SUPPORT_AGENT_SYSTEM_PROMPT } from "./prompts/support-analysis";
@@ -30,6 +31,7 @@ const DEFAULT_MAX_STEPS = 8;
 
 function createSupportAgent(providerConfig: AgentProviderConfig) {
   return new Agent({
+    id: "trustloop-support-agent",
     name: "TrustLoop Support Agent",
     instructions: SUPPORT_AGENT_SYSTEM_PROMPT,
     model: resolveModel(providerConfig),
@@ -54,6 +56,13 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     model: request.config?.model,
   });
 
+  console.log("[agents] Starting analysis", {
+    conversationId: request.conversationId,
+    provider: providerConfig.provider,
+    model: providerConfig.model ?? getDefaultModel(providerConfig.provider),
+    maxSteps,
+  });
+
   const agent = createSupportAgent(providerConfig);
 
   const result = await agent.generate(request.threadSnapshot, {
@@ -62,19 +71,61 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
   });
 
   const rawOutput = result.text;
+  console.log("[agents] Raw LLM output:", rawOutput?.slice(0, 500));
+
   if (!rawOutput) {
     throw new Error("Agent produced no output after completing the loop");
   }
 
-  const parsed = JSON.parse(rawOutput);
-  const output = agentOutputSchema.parse(parsed);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawOutput);
+  } catch {
+    console.error("[agents] LLM returned non-JSON output:", rawOutput.slice(0, 1000));
+    throw new Error(`Agent returned non-JSON response: ${rawOutput.slice(0, 200)}`);
+  }
 
-  const toolCalls = (result.toolResults ?? []).map((tc) => ({
-    tool: tc.toolName ?? "unknown",
-    input: (tc.args as Record<string, unknown>) ?? {},
-    output: typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result),
+  const compressed = compressedAnalysisOutputSchema.parse(parsed);
+  const output = reconstructAnalysisOutput(compressed);
+  console.log("[agents] Reconstructed output from positional JSON");
+
+  type ToolResultEntry = {
+    toolName?: string;
+    name?: string;
+    args?: Record<string, unknown>;
+    input?: Record<string, unknown>;
+    result?: unknown;
+    output?: unknown;
+  };
+
+  const rawToolResults =
+    (result as unknown as { toolResults?: ToolResultEntry[] }).toolResults ?? [];
+
+  console.log("[agents] Tool calls:", rawToolResults.length);
+  const toolCalls = rawToolResults.map((tc) => ({
+    tool: tc.toolName ?? tc.name ?? "unknown",
+    input: (tc.args ?? tc.input ?? {}) as Record<string, unknown>,
+    output: typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result ?? tc.output),
     durationMs: 0,
   }));
+
+  const durationMs = Date.now() - startTime;
+  const usage = (
+    result as unknown as {
+      usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+    }
+  ).usage;
+  console.log("[agents] Analysis complete", {
+    conversationId: request.conversationId,
+    durationMs,
+    toolCalls: toolCalls.length,
+    steps: result.steps?.length ?? 0,
+    confidence: output.analysis.confidence,
+    severity: output.analysis.severity,
+    tokens: usage
+      ? { prompt: usage.promptTokens, completion: usage.completionTokens, total: usage.totalTokens }
+      : "unavailable",
+  });
 
   return {
     analysis: output.analysis,

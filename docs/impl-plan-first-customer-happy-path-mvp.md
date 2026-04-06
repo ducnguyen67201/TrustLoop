@@ -88,7 +88,7 @@ Definition of done:
 
 - [x] Repository connection setup + sync trigger (manual first, webhook optional).
 - [x] Parser/chunker pipeline and metadata extraction.
-- [ ] Embedding + keyword index generation.
+- [x] Embedding + keyword index generation.
 - [x] Search endpoint (semantic + keyword + rerank).
 - [x] Basic relevance QA set from real support tickets.
 - [x] Index freshness status visible per repo.
