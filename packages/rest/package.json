@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "type-check": "tsgo --noEmit",
     "lint": "biome check .",
-    "test": "vitest run",
+    "test": "SKIP_ENV_VALIDATION=1 SESSION_SECRET=test-secret-minimum-16 API_KEY_PEPPER=test-pepper-minimum-16 INTERNAL_SERVICE_KEY=tli_test_key_1234567890 SLACK_SIGNING_SECRET=test-slack-secret-min16 SLACK_REPLAY_WINDOW_SECONDS=300 vitest run",
     "openapi:generate": "tsx ./scripts/generate-openapi.ts",
     "openapi:check": "tsx ./scripts/generate-openapi.ts --check"
   },
