@@ -4,16 +4,14 @@ export const WORKSPACE_PLAN_TIER = {
   PRO: "PRO",
 } as const;
 
-export type WorkspacePlanTier =
-  (typeof WORKSPACE_PLAN_TIER)[keyof typeof WORKSPACE_PLAN_TIER];
+export type WorkspacePlanTier = (typeof WORKSPACE_PLAN_TIER)[keyof typeof WORKSPACE_PLAN_TIER];
 
 export const BILLING_PERIOD = {
   MONTHLY: "MONTHLY",
   ANNUAL: "ANNUAL",
 } as const;
 
-export type BillingPeriod =
-  (typeof BILLING_PERIOD)[keyof typeof BILLING_PERIOD];
+export type BillingPeriod = (typeof BILLING_PERIOD)[keyof typeof BILLING_PERIOD];
 
 export const USAGE_EVENT_TYPE = {
   ANALYSIS_RUN: "ANALYSIS_RUN",
@@ -21,8 +19,7 @@ export const USAGE_EVENT_TYPE = {
   REPO_INDEXED: "REPO_INDEXED",
 } as const;
 
-export type UsageEventType =
-  (typeof USAGE_EVENT_TYPE)[keyof typeof USAGE_EVENT_TYPE];
+export type UsageEventType = (typeof USAGE_EVENT_TYPE)[keyof typeof USAGE_EVENT_TYPE];
 
 export const SUBSCRIPTION_STATUS = {
   ACTIVE: "ACTIVE",
@@ -32,8 +29,7 @@ export const SUBSCRIPTION_STATUS = {
   UNPAID: "UNPAID",
 } as const;
 
-export type SubscriptionStatus =
-  (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS];
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS];
 
 export const PLAN_LIMITS = {
   FREE: { seats: 1, analysisPerSeat: 25, repos: 2, overageRateCents: null },

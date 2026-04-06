@@ -1,5 +1,5 @@
 import { prisma } from "@shared/database";
-import { USAGE_EVENT_TYPE, type QuotaCheckResult } from "@shared/types";
+import { type QuotaCheckResult, USAGE_EVENT_TYPE } from "@shared/types";
 
 export async function checkWorkspaceQuota(workspaceId: string): Promise<QuotaCheckResult> {
   try {

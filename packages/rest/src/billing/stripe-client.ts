@@ -1,5 +1,5 @@
-import Stripe from "stripe";
 import { env } from "@shared/env";
+import Stripe from "stripe";
 
 let stripeInstance: Stripe | null = null;
 

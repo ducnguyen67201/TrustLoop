@@ -23,7 +23,8 @@ export async function syncUsageEventsToStripe(): Promise<{ synced: number }> {
   }
 
   // Group by workspace for batch processing
-  const byWorkspace = new Map<string, typeof unsyncedEvents>();
+  type UsageEventWithWorkspace = (typeof unsyncedEvents)[number];
+  const byWorkspace = new Map<string, UsageEventWithWorkspace[]>();
   for (const event of unsyncedEvents) {
     const existing = byWorkspace.get(event.workspaceId) ?? [];
     existing.push(event);
@@ -37,7 +38,7 @@ export async function syncUsageEventsToStripe(): Promise<{ synced: number }> {
     if (!plan?.stripeSubscriptionId) {
       // No Stripe subscription, mark as synced (nothing to report)
       await prisma.usageEvent.updateMany({
-        where: { id: { in: events.map((e) => e.id) } },
+        where: { id: { in: events.map((e: UsageEventWithWorkspace) => e.id) } },
         data: { stripeSynced: true, stripeSyncedAt: new Date() },
       });
       synced += events.length;
@@ -46,7 +47,11 @@ export async function syncUsageEventsToStripe(): Promise<{ synced: number }> {
 
     // Count overage events only (events beyond included quota)
     const overageEvents = events.filter(
-      (e) => e.metadata && typeof e.metadata === "object" && "overage" in e.metadata && e.metadata.overage === true
+      (e: UsageEventWithWorkspace) =>
+        e.metadata &&
+        typeof e.metadata === "object" &&
+        "overage" in (e.metadata as Record<string, unknown>) &&
+        (e.metadata as Record<string, unknown>).overage === true
     );
 
     if (overageEvents.length > 0) {
@@ -57,12 +62,14 @@ export async function syncUsageEventsToStripe(): Promise<{ synced: number }> {
       //   timestamp: Math.floor(Date.now() / 1000),
       //   action: "increment",
       // });
-      console.log(`[stripe-sync] Would report ${overageEvents.length} overage events for workspace ${workspaceId}`);
+      console.log(
+        `[stripe-sync] Would report ${overageEvents.length} overage events for workspace ${workspaceId}`
+      );
     }
 
     // Mark all events as synced
     await prisma.usageEvent.updateMany({
-      where: { id: { in: events.map((e) => e.id) } },
+      where: { id: { in: events.map((e: UsageEventWithWorkspace) => e.id) } },
       data: { stripeSynced: true, stripeSyncedAt: new Date() },
     });
     synced += events.length;

@@ -1,6 +1,6 @@
 import type * as billingActivities from "@/domains/billing/quota-check.activity";
-import type * as analysisActivities from "@/domains/support/analysis.activity";
 import type * as usageActivities from "@/domains/billing/usage-record.activity";
+import type * as analysisActivities from "@/domains/support/analysis.activity";
 import type { SupportAnalysisWorkflowInput, SupportAnalysisWorkflowResult } from "@shared/types";
 import { ApplicationFailure, proxyActivities } from "@temporalio/workflow";
 
@@ -26,7 +26,10 @@ export async function supportAnalysisWorkflow(
   // Quota check before any LLM calls
   const quota = await billing.checkWorkspaceQuota(input.workspaceId);
   if (!quota.allowed) {
-    throw ApplicationFailure.nonRetryable("QUOTA_EXCEEDED", "Analysis quota exceeded for this billing period");
+    throw ApplicationFailure.nonRetryable(
+      "QUOTA_EXCEEDED",
+      "Analysis quota exceeded for this billing period"
+    );
   }
 
   const snapshot = await fastActivities.buildThreadSnapshot({

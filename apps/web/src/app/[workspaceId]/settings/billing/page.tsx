@@ -1,5 +1,6 @@
 "use client";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -13,9 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useEffect, useState } from "react";
 import { RiArrowRightUpLine, RiErrorWarningLine } from "@remixicon/react";
+import { useEffect, useState } from "react";
 
 type PlanInfo = {
   tier: "FREE" | "STARTER" | "PRO";
@@ -108,19 +108,16 @@ export default function BillingSettingsPage() {
     );
   }
 
-  const usagePercent = plan.analysisIncludedMonthly > 0
-    ? Math.min((plan.analysisUsed / plan.analysisIncludedMonthly) * 100, 100)
-    : 0;
+  const usagePercent =
+    plan.analysisIncludedMonthly > 0
+      ? Math.min((plan.analysisUsed / plan.analysisIncludedMonthly) * 100, 100)
+      : 0;
   const isOverage = plan.analysisUsed > plan.analysisIncludedMonthly;
   const overageRuns = isOverage ? plan.analysisUsed - plan.analysisIncludedMonthly : 0;
   const overageCostCents = overageRuns * (plan.analysisOverageRateCents ?? 0);
   const isPastDue = plan.subscriptionStatus === "PAST_DUE";
 
-  const usageColor = isOverage
-    ? "bg-orange-500"
-    : usagePercent >= 80
-      ? "bg-yellow-500"
-      : undefined;
+  const usageColor = isOverage ? "bg-orange-500" : usagePercent >= 80 ? "bg-yellow-500" : undefined;
 
   return (
     <div className="space-y-6">
@@ -181,7 +178,8 @@ export default function BillingSettingsPage() {
             </p>
             {plan.currentPeriodEnd && (
               <p className="text-xs text-muted-foreground">
-                Renews {new Date(plan.currentPeriodEnd).toLocaleDateString("en-US", {
+                Renews{" "}
+                {new Date(plan.currentPeriodEnd).toLocaleDateString("en-US", {
                   month: "long",
                   day: "numeric",
                   year: "numeric",

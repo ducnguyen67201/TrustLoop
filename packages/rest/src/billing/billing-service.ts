@@ -1,5 +1,10 @@
 import { prisma } from "@shared/database";
-import { PLAN_LIMITS, USAGE_EVENT_TYPE, type UsageBreakdown, type WorkspacePlanTier } from "@shared/types";
+import {
+  PLAN_LIMITS,
+  USAGE_EVENT_TYPE,
+  type UsageBreakdown,
+  type WorkspacePlanTier,
+} from "@shared/types";
 
 export async function getWorkspaceBillingInfo(workspaceId: string) {
   const plan = await prisma.workspacePlan.findUnique({

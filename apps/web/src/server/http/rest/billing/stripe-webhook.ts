@@ -21,7 +21,11 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
   // const event = stripe.webhooks.constructEvent(rawBody, signature, env.STRIPE_WEBHOOK_SECRET);
 
   try {
-    const event = JSON.parse(rawBody) as { id: string; type: string; data: { object: Record<string, unknown> } };
+    const event = JSON.parse(rawBody) as {
+      id: string;
+      type: string;
+      data: { object: Record<string, unknown> };
+    };
 
     // Idempotency check
     try {
@@ -94,10 +98,19 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
         await prisma.workspacePlan.update({
           where: { id: plan.id },
           data: {
-            subscriptionStatus: sub.status === "active" ? "ACTIVE" : sub.status === "past_due" ? "PAST_DUE" : sub.status === "canceled" ? "CANCELED" : "ACTIVE",
+            subscriptionStatus:
+              sub.status === "active"
+                ? "ACTIVE"
+                : sub.status === "past_due"
+                  ? "PAST_DUE"
+                  : sub.status === "canceled"
+                    ? "CANCELED"
+                    : "ACTIVE",
             cancelAtPeriodEnd: sub.cancel_at_period_end,
             seatLimit: quantity,
-            analysisIncludedMonthly: quantity * (PLAN_LIMITS[plan.tier as keyof typeof PLAN_LIMITS]?.analysisPerSeat ?? 200),
+            analysisIncludedMonthly:
+              quantity *
+              (PLAN_LIMITS[plan.tier as keyof typeof PLAN_LIMITS]?.analysisPerSeat ?? 200),
             currentPeriodStart: new Date(sub.current_period_start * 1000),
             currentPeriodEnd: new Date(sub.current_period_end * 1000),
           },
@@ -166,7 +179,10 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
           const seatCount = await prisma.workspaceMembership.count({
             where: { workspaceId: plan.workspaceId, deletedAt: null },
           });
-          const newLimits = computePlanLimits(plan.pendingTier as "FREE" | "STARTER" | "PRO", seatCount);
+          const newLimits = computePlanLimits(
+            plan.pendingTier as "FREE" | "STARTER" | "PRO",
+            seatCount
+          );
           updateData.tier = plan.pendingTier;
           updateData.pendingTier = null;
           Object.assign(updateData, newLimits);
