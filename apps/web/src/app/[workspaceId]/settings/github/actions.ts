@@ -1,8 +1,10 @@
 "use server";
 
 import {
+  disconnectGithubInstallation,
   preparePullRequestIntent,
   recordSearchFeedback,
+  refreshInstallationRepos,
   requestRepositorySync,
   searchRepositoryCode,
   updateRepositorySelection,
@@ -45,6 +47,45 @@ function getActionErrorMessage(error: unknown): string {
   }
 
   return "Something went wrong while updating codex settings.";
+}
+
+/**
+ * Re-fetch repos from GitHub after the user modifies installation access.
+ */
+export async function refreshGitHubReposAction(workspaceId: string): Promise<{ error?: string }> {
+  try {
+    await refreshInstallationRepos(workspaceId);
+    revalidatePath(githubSettingsPath(workspaceId));
+    return {};
+  } catch (error) {
+    return { error: getActionErrorMessage(error) };
+  }
+}
+
+/**
+ * Remove GitHub installation and all repository records from the workspace.
+ */
+export async function disconnectGitHubAction(formData: FormData): Promise<never> {
+  const workspaceId = getString(formData, "workspaceId");
+
+  try {
+    await disconnectGithubInstallation(workspaceId);
+    revalidatePath(githubSettingsPath(workspaceId));
+    redirect(
+      buildReturnPath(workspaceId, {
+        flash: "GitHub disconnected. All repositories removed.",
+        tone: "success",
+      })
+    );
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    redirect(
+      buildReturnPath(workspaceId, {
+        flash: getActionErrorMessage(error),
+        tone: "error",
+      })
+    );
+  }
 }
 
 /**

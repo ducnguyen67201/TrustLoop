@@ -22,6 +22,7 @@ export const serverSchemas = {
 
   // Security
   API_KEY_PEPPER: z.string().min(16),
+  INTERNAL_SERVICE_KEY: z.string().startsWith("tli_").min(20),
 
   // Database
   DATABASE_URL: z.string().min(1),

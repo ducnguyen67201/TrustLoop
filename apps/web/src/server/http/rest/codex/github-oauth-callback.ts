@@ -1,3 +1,4 @@
+import { oauthPopupCloseHtml } from "@/server/http/templates/oauth-popup-close";
 import { env } from "@shared/env";
 import {
   handleGithubInstallationCallback,
@@ -54,5 +55,15 @@ export async function handleGithubOAuthCallback(request: Request): Promise<NextR
 function redirectToSettings(workspaceId: string | null, status: GithubOAuthStatus): NextResponse {
   const base = env.APP_BASE_URL;
   const path = workspaceId ? `/${workspaceId}/settings/github` : "/login";
-  return NextResponse.redirect(new URL(`${path}?github=${status}`, base));
+  const redirectUrl = new URL(`${path}?github=${status}`, base).toString();
+
+  const html = oauthPopupCloseHtml({
+    title: "Connecting GitHub...",
+    redirectUrl,
+  });
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
 }

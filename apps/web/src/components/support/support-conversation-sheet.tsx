@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { AnalysisPanel } from "@/components/support/analysis-panel";
+import { useAnalysis } from "@/hooks/use-analysis";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { RiArrowGoBackLine, RiChat3Line, RiUserSharedLine } from "@remixicon/react";
 import {
@@ -96,6 +97,8 @@ export function SupportConversationSheet({
   const auth = useAuthSession();
   const [draftReply, setDraftReply] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
+
+  const analysisHook = useAnalysis(conversation?.id ?? null, workspaceId);
 
   async function handleSendReply() {
     if (!conversation || draftReply.trim().length === 0) {
@@ -226,24 +229,22 @@ export function SupportConversationSheet({
 
               <section className="border p-4">
                 <AnalysisPanel
-                  analysis={null}
+                  analysis={analysisHook.analysis}
                   conversationId={conversation.id}
                   workspaceId={workspaceId}
-                  isAnalyzing={false}
-                  onTriggerAnalysis={() => {
-                    // TODO: wire to tRPC triggerAnalysis mutation
-                    console.log("TODO: trigger analysis for", conversation.id);
-                  }}
-                  onApproveDraft={(draftId, editedBody) => {
-                    // TODO: wire to tRPC approveDraft mutation
-                    console.log("TODO: approve draft", draftId, editedBody);
-                  }}
-                  onDismissDraft={(draftId, reason) => {
-                    // TODO: wire to tRPC dismissDraft mutation
-                    console.log("TODO: dismiss draft", draftId, reason);
-                  }}
-                  isMutating={isMutating}
+                  isAnalyzing={analysisHook.isAnalyzing}
+                  onTriggerAnalysis={() => void analysisHook.triggerAnalysis()}
+                  onApproveDraft={(draftId, editedBody) =>
+                    void analysisHook.approveDraft(draftId, editedBody)
+                  }
+                  onDismissDraft={(draftId, reason) =>
+                    void analysisHook.dismissDraft(draftId, reason)
+                  }
+                  isMutating={isMutating || analysisHook.isMutating}
                 />
+                {analysisHook.error && (
+                  <p className="mt-2 text-sm text-destructive">{analysisHook.error}</p>
+                )}
               </section>
 
               <section className="space-y-3 border p-4">

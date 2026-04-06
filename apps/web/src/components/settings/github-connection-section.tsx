@@ -1,4 +1,8 @@
+"use client";
+
 import {
+  disconnectGitHubAction,
+  refreshGitHubReposAction,
   syncRepositoryAction,
   toggleRepositorySelectionAction,
 } from "@/app/[workspaceId]/settings/github/actions";
@@ -7,8 +11,32 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GithubConnectionSummary, RepositorySummary } from "@shared/types";
-import { RiGithubLine, RiRefreshLine, RiDeleteBinLine } from "@remixicon/react";
-import Link from "next/link";
+import { RiGithubLine, RiRefreshLine, RiDeleteBinLine, RiExternalLinkLine } from "@remixicon/react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+const POPUP_WIDTH = 620;
+const POPUP_HEIGHT = 700;
+const POPUP_POLL_MS = 500;
+
+function openGitHubPopup(url: string, onClose: () => void) {
+  const left = Math.round(window.screenX + (window.outerWidth - POPUP_WIDTH) / 2);
+  const top = Math.round(window.screenY + (window.outerHeight - POPUP_HEIGHT) / 2);
+  const features = `width=${POPUP_WIDTH},height=${POPUP_HEIGHT},left=${left},top=${top},popup=yes`;
+
+  const popup = window.open(url, "github_install", features);
+  if (!popup) {
+    window.location.href = url;
+    return;
+  }
+
+  const timer = setInterval(() => {
+    if (popup.closed) {
+      clearInterval(timer);
+      onClose();
+    }
+  }, POPUP_POLL_MS);
+}
 
 /** Status badge for indexed repos. */
 function StatusBadge({ repo }: { repo: RepositorySummary }) {
@@ -38,9 +66,21 @@ export function GitHubConnectionSection({
   installUrl: string | null;
   repositories: RepositorySummary[];
 }) {
+  const router = useRouter();
+  const [popupOpen, setPopupOpen] = useState(false);
   const connected = connection.status === "connected";
   const indexed = repositories.filter((r) => r.selected);
   const available = repositories.filter((r) => !r.selected);
+
+  function handleOpenGitHub() {
+    if (!installUrl) return;
+    setPopupOpen(true);
+    openGitHubPopup(installUrl, async () => {
+      setPopupOpen(false);
+      await refreshGitHubReposAction(workspaceId);
+      router.refresh();
+    });
+  }
 
   if (!connected) {
     return (
@@ -55,12 +95,15 @@ export function GitHubConnectionSection({
               Choose which repositories TrustLoop can read to index code and prepare fixes.
             </p>
           </div>
+          {popupOpen && (
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              Finish on GitHub, then close the popup. We'll refresh automatically.
+            </p>
+          )}
           {installUrl ? (
-            <Button asChild>
-              <Link href={installUrl}>
-                <RiGithubLine className="size-4" />
-                Connect GitHub
-              </Link>
+            <Button onClick={handleOpenGitHub} disabled={popupOpen}>
+              <RiGithubLine className="size-4" />
+              Connect GitHub
             </Button>
           ) : (
             <>
@@ -87,10 +130,26 @@ export function GitHubConnectionSection({
               {" "}Select repositories to index for code search and PR prep.
             </CardDescription>
           </div>
-          <Badge variant="default">Connected</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="default">Connected</Badge>
+            <form action={disconnectGitHubAction}>
+              <input type="hidden" name="workspaceId" value={workspaceId} />
+              <Button type="submit" variant="ghost" size="sm" className="text-xs text-destructive">
+                Disconnect
+              </Button>
+            </form>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
+        {popupOpen && (
+          <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950">
+            <span className="text-amber-800 dark:text-amber-300">
+              Finish on GitHub, then close the popup. We'll refresh automatically.
+            </span>
+          </div>
+        )}
+
         {/* Indexed repositories */}
         {indexed.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">
@@ -150,10 +209,14 @@ export function GitHubConnectionSection({
             <AddRepositoryCombobox workspaceId={workspaceId} available={available} />
           ) : null}
           {installUrl ? (
-            <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild>
-              <Link href={installUrl}>
-                {available.length > 0 ? "Manage access" : "Add repos from GitHub"}
-              </Link>
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              onClick={handleOpenGitHub}
+            >
+              <RiExternalLinkLine className="size-3" />
+              {available.length > 0 ? "Manage access" : "Add repos from GitHub"}
             </Button>
           ) : null}
         </div>
