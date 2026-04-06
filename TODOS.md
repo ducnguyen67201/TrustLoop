@@ -176,4 +176,18 @@
 **Priority:** P1
 **Depends on:** Soft delete migration landed.
 
+## Billing
+
+### Stripe Reconciliation Job
+
+**What:** A periodic (daily) job that compares local `WorkspacePlan` state (`seatLimit`, `tier`, `subscriptionStatus`) against Stripe's subscription API and flags/fixes drift.
+
+**Why:** The billing system uses fail-open decisions (quota check, seat updates) to prioritize UX over strict consistency. Brief inconsistencies are possible during Stripe outages or webhook delivery delays. A reconciliation job catches drift before it compounds into billing errors.
+
+**Context:** Added during `/plan-eng-review` for billing feature. The fail-open pattern means: quota checks allow analysis on DB error, member invites proceed with queued Stripe updates. The reconciliation job reads every active `WorkspacePlan` with a `stripeSubscriptionId`, fetches the Stripe subscription, and compares `quantity`, `status`, `current_period_start/end`, and `plan`. Discrepancies are logged and optionally auto-fixed.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** Wave 1 billing implementation (WorkspacePlan + Stripe integration).
+
 ## Completed
