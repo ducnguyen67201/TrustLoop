@@ -245,7 +245,7 @@ export default function BillingSettingsPage() {
                   View Plans
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-5xl w-[95vw]">
+              <DialogContent className="sm:max-w-4xl w-[95vw] p-8">
                 <DialogHeader>
                   <DialogTitle className="font-mono text-lg">Choose a plan</DialogTitle>
                   <DialogDescription>
