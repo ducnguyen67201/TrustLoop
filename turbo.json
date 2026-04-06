@@ -19,6 +19,7 @@
         "TEMPORAL_NAMESPACE",
         "TEMPORAL_TASK_QUEUE",
         "CODEX_TASK_QUEUE",
+        "INTERNAL_SERVICE_KEY",
         "NEXT_PUBLIC_TRUSTLOOP_DEBUG_TRPC"
       ]
     },
