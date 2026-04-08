@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import {
   workspaceAiAnalysisPath,
   workspaceApiKeysPath,
+  workspaceBillingPath,
   workspaceGeneralPath,
   workspaceGithubPath,
   workspaceIntegrationsPath,
@@ -12,6 +13,7 @@ import {
 import {
   RiGithubLine,
   RiKey2Line,
+  RiMoneyDollarCircleLine,
   RiPlugLine,
   RiRobot2Line,
   RiSettings3Line,
@@ -47,6 +49,7 @@ export default function WorkspaceSettingsLayout({ children }: WorkspaceSettingsL
   const integrationsPath = workspaceIntegrationsPath(workspaceId);
   const githubPath = workspaceGithubPath(workspaceId);
   const aiAnalysisPath = workspaceAiAnalysisPath(workspaceId);
+  const billingPath = workspaceBillingPath(workspaceId);
 
   const navItems: SettingsNavItem[] = [
     {
@@ -78,6 +81,12 @@ export default function WorkspaceSettingsLayout({ children }: WorkspaceSettingsL
       label: "AI Analysis",
       icon: RiRobot2Line,
       isActive: pathname === aiAnalysisPath,
+    },
+    {
+      href: billingPath,
+      label: "Billing",
+      icon: RiMoneyDollarCircleLine,
+      isActive: pathname === billingPath,
     },
   ];
 

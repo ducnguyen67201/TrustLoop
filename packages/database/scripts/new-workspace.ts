@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import { prisma, softUpsert } from "@shared/database";
+import { ensureWorkspacePlan } from "@shared/rest/billing/billing-service";
 
 /**
  * Parse and validate CLI arguments for workspace bootstrap.
@@ -56,6 +57,8 @@ async function createWorkspaceForUser(workspaceName: string, email: string): Pro
 
     return targetWorkspace;
   });
+
+  await ensureWorkspacePlan(workspace.id);
 
   console.log(`Workspace ready: ${workspace.name} (${workspace.id})`);
   console.log(`Owner member: ${user.email}`);

@@ -62,6 +62,13 @@ export function workspaceGithubPath(workspaceId: string): string {
 }
 
 /**
+ * Returns the billing settings path for a workspace.
+ */
+export function workspaceBillingPath(workspaceId: string): string {
+  return `${workspaceSettingsPath(workspaceId)}/billing`;
+}
+
+/**
  * Rewrites the current app path so it points to the selected workspace.
  */
 export function replaceWorkspaceInPath(

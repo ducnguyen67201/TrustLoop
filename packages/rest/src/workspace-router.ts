@@ -151,6 +151,26 @@ export const workspaceRouter = router({
         });
       }
 
+      // Seat limit enforcement via PlanCatalog
+      const plan = await prisma.workspacePlan.findUnique({
+        where: { workspaceId: ctx.workspaceId, deletedAt: null },
+        include: { planCatalog: true },
+      });
+      if (plan?.planCatalog) {
+        const maxSeats = plan.planCatalog.maxSeats;
+        if (maxSeats > 0) {
+          const activeMemberCount = await prisma.workspaceMembership.count({
+            where: { workspaceId: ctx.workspaceId, deletedAt: null },
+          });
+          if (activeMemberCount >= maxSeats) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: `Seat limit reached (${maxSeats}). Upgrade your plan to add more team members.`,
+            });
+          }
+        }
+      }
+
       await softUpsert(prisma.workspaceMembership, {
         where: { workspaceId: ctx.workspaceId, userId: targetUser.id },
         create: { workspaceId: ctx.workspaceId, userId: targetUser.id, role: input.role },

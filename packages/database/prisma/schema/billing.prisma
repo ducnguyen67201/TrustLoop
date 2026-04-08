@@ -1,0 +1,72 @@
+enum WorkspacePlanTier {
+  FREE
+  STARTER
+  PRO
+}
+
+enum BillingPeriod {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+  UNPAID
+}
+
+model PlanCatalog {
+  id                    String            @id @default(cuid())
+  tier                  WorkspacePlanTier @unique
+  name                  String
+  description           String?
+  platformFeeCents      Int               @default(0)
+  seatFeeCents          Int               @default(0)
+  maxSeats              Int               @default(1)
+  maxRepos              Int               @default(2)
+  stripePlatformPriceId String?
+  stripeSeatPriceId     String?
+  active                Boolean           @default(true)
+  featured              Boolean           @default(false)
+  sortOrder             Int               @default(0)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  workspacePlans        WorkspacePlan[]
+}
+
+model WorkspacePlan {
+  id                      String              @id @default(cuid())
+  workspaceId             String              @unique
+  workspace               Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  tier                    WorkspacePlanTier   @default(FREE)
+  billingPeriod           BillingPeriod       @default(MONTHLY)
+  planCatalogId           String?
+  planCatalog             PlanCatalog?        @relation(fields: [planCatalogId], references: [id])
+  stripeCustomerId        String?             @unique
+  stripeSubscriptionId    String?             @unique
+  subscriptionStatus      SubscriptionStatus  @default(ACTIVE)
+  seatCount               Int                 @default(1)
+  currentPeriodStart      DateTime?
+  currentPeriodEnd        DateTime?
+  cancelAtPeriodEnd       Boolean             @default(false)
+  pendingTier             WorkspacePlanTier?
+  deletedAt               DateTime?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+  @@index([planCatalogId])
+}
+
+model StripeWebhookEvent {
+  id              String    @id @default(cuid())
+  stripeEventId   String    @unique
+  eventType       String
+  processedAt     DateTime  @default(now())
+
+  @@index([stripeEventId])
+}

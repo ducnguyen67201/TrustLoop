@@ -1,4 +1,12 @@
 export * from "@shared/rest/auth-router";
+export {
+  createCheckoutSession,
+  createPortalSession,
+  ensureWorkspacePlan,
+  getWorkspaceBillingInfo,
+  listActivePlans,
+} from "@shared/rest/billing/billing-service";
+export { billingRouter } from "@shared/rest/billing-router";
 export * from "@shared/rest/codex/index";
 export * from "@shared/rest/context";
 export * from "@shared/rest/rest-handlers";
