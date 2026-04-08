@@ -1,5 +1,5 @@
 import { prisma } from "@shared/database";
-import { type QuotaCheckResult, USAGE_EVENT_TYPE } from "@shared/types";
+import { type QuotaCheckResult, USAGE_EVENT_TYPE, currentBillingPeriod } from "@shared/types";
 
 export async function checkWorkspaceQuota(workspaceId: string): Promise<QuotaCheckResult> {
   try {
@@ -11,8 +11,7 @@ export async function checkWorkspaceQuota(workspaceId: string): Promise<QuotaChe
       return { allowed: false, isOverage: false, used: 0, included: 0, overageRateCents: null };
     }
 
-    const now = new Date();
-    const billingPeriod = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+    const billingPeriod = currentBillingPeriod();
 
     const used = await prisma.usageEvent.count({
       where: {

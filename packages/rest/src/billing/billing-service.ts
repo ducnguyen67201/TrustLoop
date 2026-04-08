@@ -2,6 +2,7 @@ import { prisma } from "@shared/database";
 import {
   PLAN_LIMITS,
   USAGE_EVENT_TYPE,
+  currentBillingPeriod,
   type UsageBreakdown,
   type WorkspacePlanTier,
 } from "@shared/types";
@@ -16,8 +17,7 @@ export async function getWorkspaceBillingInfo(workspaceId: string) {
     return null;
   }
 
-  const now = new Date();
-  const billingPeriod = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const billingPeriod = currentBillingPeriod();
 
   const [analysisCount, repoCount, seatCount] = await Promise.all([
     prisma.usageEvent.count({

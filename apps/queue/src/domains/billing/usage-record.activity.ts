@@ -1,6 +1,6 @@
 import { prisma } from "@shared/database";
 import type { Prisma } from "@shared/database";
-import type { UsageEventType } from "@shared/types";
+import { currentBillingPeriod, type UsageEventType } from "@shared/types";
 
 type RecordUsageEventInput = {
   workspaceId: string;
@@ -10,8 +10,7 @@ type RecordUsageEventInput = {
 };
 
 export async function recordUsageEvent(input: RecordUsageEventInput): Promise<void> {
-  const now = new Date();
-  const billingPeriod = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const billingPeriod = currentBillingPeriod();
 
   await prisma.usageEvent.create({
     data: {

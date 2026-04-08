@@ -52,6 +52,11 @@ export type QuotaCheckResult = {
   overageRateCents: number | null;
 };
 
+/** Returns the current UTC billing period as "YYYY-MM" (e.g. "2026-04"). */
+export function currentBillingPeriod(date: Date = new Date()): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 export type UsageBreakdown = {
   analysisRuns: number;
   analysisIncluded: number;

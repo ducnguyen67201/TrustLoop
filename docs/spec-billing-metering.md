@@ -6,7 +6,9 @@ TrustLoop has zero billing infrastructure. Every workspace gets unlimited AI res
 
 ## Billing Model
 
-Per-seat pricing with AI analysis runs bundled as a workspace-wide pool. AI pool = seats x per-seat allowance. Drafts are included (tracked for audit, not quota-enforced in v1). Resolved threads are tracked via existing `SupportConversation` status, not as usage events.
+**Hybrid seat-based + usage-metered pricing** — the same model used by Claude, Codex, and GitHub Copilot. Seats determine the included usage budget; once exhausted, overage is billed per-run. FREE tier has a hard cap (no overage).
+
+Per-seat pricing with AI analysis runs bundled as a workspace-wide pool. AI pool = seats × per-seat allowance. Drafts are included (tracked for audit, not quota-enforced in v1). Resolved threads are tracked via existing `SupportConversation` status, not as usage events.
 
 | | FREE | STARTER | PRO |
 |---|---|---|---|
@@ -17,7 +19,54 @@ Per-seat pricing with AI analysis runs bundled as a workspace-wide pool. AI pool
 | **Indexed repos** | 2 | 10 | Unlimited |
 | **Drafts** | Included | Included | Included |
 
-`analysisIncludedMonthly` stores the total pool (recomputed as seats x per-seat allowance on plan or seat changes). Quota is always per calendar month regardless of billing cadence. Annual subscribers get the same monthly limit, pay annually at ~20% discount.
+### How the calculation works
+
+**Step 1 — Included quota** is derived from seat count:
+
+```
+analysisIncludedMonthly = seatCount × analysisPerSeat
+```
+
+For example, STARTER with 3 seats → `3 × 200 = 600` included analyses/month.
+
+**Step 2 — Quota gate** runs before every analysis (in the Temporal workflow):
+
+```
+used = COUNT(UsageEvents WHERE type=ANALYSIS_RUN AND period="2026-04")
+
+if used < included       → allowed, no overage
+if used >= included:
+  FREE tier              → BLOCKED (hard cap, no overage)
+  STARTER/PRO            → allowed, flagged as overage
+```
+
+**Step 3 — Usage recorded** only after a successful analysis (status = ANALYZED). Failed analyses are never billed.
+
+**Step 4 — Monthly bill** formula:
+
+```
+monthly cost = (seat count × per-seat price)
+             + max(0, actual runs − included runs) × overage rate
+```
+
+### Concrete example
+
+> STARTER plan, 3 seats, 650 analyses in April 2026:
+>
+> - Included: 3 × 200 = **600 runs**
+> - Overage: 650 − 600 = **50 runs** × $0.50 = **$25.00**
+> - Seat cost: 3 × $39 = **$117.00**
+> - **Total: $142.00**
+
+### Comparison with other billing models
+
+| Model | Examples | How it works |
+|---|---|---|
+| Pure seat-based | Slack, Jira | Pay per seat, unlimited usage |
+| Pure usage-based | AWS Lambda | Pay per invocation, no seat concept |
+| **Hybrid (ours)** | **Claude, Codex, Copilot** | Seats set the included budget, overage is pay-per-use |
+
+`analysisIncludedMonthly` stores the total pool (recomputed as seats × per-seat allowance on plan or seat changes). Quota is always per calendar month regardless of billing cadence. Annual subscribers get the same monthly limit, pay annually at ~20% discount.
 
 ## Data Model
 
