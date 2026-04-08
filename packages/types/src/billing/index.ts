@@ -13,14 +13,6 @@ export const BILLING_PERIOD = {
 
 export type BillingPeriod = (typeof BILLING_PERIOD)[keyof typeof BILLING_PERIOD];
 
-export const USAGE_EVENT_TYPE = {
-  ANALYSIS_RUN: "ANALYSIS_RUN",
-  DRAFT_GENERATED: "DRAFT_GENERATED",
-  REPO_INDEXED: "REPO_INDEXED",
-} as const;
-
-export type UsageEventType = (typeof USAGE_EVENT_TYPE)[keyof typeof USAGE_EVENT_TYPE];
-
 export const SUBSCRIPTION_STATUS = {
   ACTIVE: "ACTIVE",
   PAST_DUE: "PAST_DUE",
@@ -31,39 +23,35 @@ export const SUBSCRIPTION_STATUS = {
 
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS];
 
-export const PLAN_LIMITS = {
-  FREE: { seats: 1, analysisPerSeat: 25, repos: 2, overageRateCents: null },
-  STARTER: {
-    seats: 3,
-    analysisPerSeat: 200,
-    repos: 10,
-    overageRateCents: 50,
-  },
-  PRO: { seats: 3, analysisPerSeat: 500, repos: -1, overageRateCents: 30 },
-} as const;
-
-export type PlanLimits = (typeof PLAN_LIMITS)[WorkspacePlanTier];
-
-export type QuotaCheckResult = {
-  allowed: boolean;
-  isOverage: boolean;
-  used: number;
-  included: number;
-  overageRateCents: number | null;
+export type PlanCatalogEntry = {
+  id: string;
+  tier: WorkspacePlanTier;
+  name: string;
+  description: string | null;
+  platformFeeCents: number;
+  seatFeeCents: number;
+  maxSeats: number;
+  maxRepos: number;
+  active: boolean;
+  featured: boolean;
+  sortOrder: number;
 };
 
-/** Returns the current UTC billing period as "YYYY-MM" (e.g. "2026-04"). */
-export function currentBillingPeriod(date: Date = new Date()): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-export type UsageBreakdown = {
-  analysisRuns: number;
-  analysisIncluded: number;
-  overageRuns: number;
-  overageCostCents: number;
-  repoCount: number;
-  repoLimit: number;
+export type WorkspaceBillingInfo = {
+  tier: WorkspacePlanTier;
+  billingPeriod: BillingPeriod;
+  subscriptionStatus: SubscriptionStatus;
   seatCount: number;
-  seatLimit: number;
+  maxSeats: number;
+  maxRepos: number;
+  repoCount: number;
+  memberCount: number;
+  platformFeeCents: number;
+  seatFeeCents: number;
+  stripeCustomerId: string | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  pendingTier: WorkspacePlanTier | null;
+  plan: PlanCatalogEntry | null;
 };

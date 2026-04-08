@@ -1,6 +1,4 @@
 import { prisma } from "@shared/database";
-import { computePlanLimits } from "@shared/rest/billing/billing-service";
-import { PLAN_LIMITS } from "@shared/types";
 import { NextResponse } from "next/server";
 
 /**
@@ -36,7 +34,6 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
         },
       });
     } catch {
-      // Duplicate event, already processed
       return NextResponse.json({ received: true });
     }
 
@@ -50,29 +47,33 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
         const workspaceId = session.metadata?.workspaceId;
         if (!workspaceId) break;
 
-        const tier = (session.metadata?.tier ?? "STARTER") as "STARTER" | "PRO";
+        const tier = (session.metadata?.tier ?? "STARTER") as "FREE" | "STARTER" | "PRO";
+
+        const catalog = await prisma.planCatalog.findUnique({ where: { tier } });
+
         const seatCount = await prisma.workspaceMembership.count({
           where: { workspaceId, deletedAt: null },
         });
-        const limits = computePlanLimits(tier, seatCount);
 
         await prisma.workspacePlan.upsert({
           where: { workspaceId },
           update: {
             tier,
+            planCatalogId: catalog?.id ?? null,
             stripeCustomerId: session.customer,
             stripeSubscriptionId: session.subscription,
             subscriptionStatus: "ACTIVE",
-            ...limits,
+            seatCount,
           },
           create: {
             workspaceId,
             tier,
+            planCatalogId: catalog?.id ?? null,
             stripeCustomerId: session.customer,
             stripeSubscriptionId: session.subscription,
             subscriptionStatus: "ACTIVE",
             billingPeriod: "MONTHLY",
-            ...limits,
+            seatCount,
           },
         });
         break;
@@ -93,7 +94,7 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
         });
         if (!plan) break;
 
-        const quantity = sub.items?.data?.[0]?.quantity ?? plan.seatLimit;
+        const quantity = sub.items?.data?.[0]?.quantity ?? plan.seatCount;
 
         await prisma.workspacePlan.update({
           where: { id: plan.id },
@@ -107,10 +108,7 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
                     ? "CANCELED"
                     : "ACTIVE",
             cancelAtPeriodEnd: sub.cancel_at_period_end,
-            seatLimit: quantity,
-            analysisIncludedMonthly:
-              quantity *
-              (PLAN_LIMITS[plan.tier as keyof typeof PLAN_LIMITS]?.analysisPerSeat ?? 200),
+            seatCount: quantity,
             currentPeriodStart: new Date(sub.current_period_start * 1000),
             currentPeriodEnd: new Date(sub.current_period_end * 1000),
           },
@@ -125,16 +123,18 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
         });
         if (!plan) break;
 
+        const freeCatalog = await prisma.planCatalog.findUnique({
+          where: { tier: "FREE" },
+        });
+
         await prisma.workspacePlan.update({
           where: { id: plan.id },
           data: {
             tier: "FREE",
+            planCatalogId: freeCatalog?.id ?? null,
             subscriptionStatus: "CANCELED",
             stripeSubscriptionId: null,
-            seatLimit: 1,
-            analysisIncludedMonthly: 25,
-            analysisOverageRateCents: null,
-            repoLimitTotal: 2,
+            seatCount: 1,
             cancelAtPeriodEnd: false,
             pendingTier: null,
           },
@@ -176,16 +176,12 @@ export async function handleStripeWebhook(request: Request): Promise<NextRespons
         }
 
         if (plan.pendingTier) {
-          const seatCount = await prisma.workspaceMembership.count({
-            where: { workspaceId: plan.workspaceId, deletedAt: null },
+          const newCatalog = await prisma.planCatalog.findUnique({
+            where: { tier: plan.pendingTier },
           });
-          const newLimits = computePlanLimits(
-            plan.pendingTier as "FREE" | "STARTER" | "PRO",
-            seatCount
-          );
           updateData.tier = plan.pendingTier;
+          updateData.planCatalogId = newCatalog?.id ?? null;
           updateData.pendingTier = null;
-          Object.assign(updateData, newLimits);
         }
 
         await prisma.workspacePlan.update({

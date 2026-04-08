@@ -1,28 +1,20 @@
 import { prisma } from "@shared/database";
-import {
-  PLAN_LIMITS,
-  USAGE_EVENT_TYPE,
-  currentBillingPeriod,
-  type UsageBreakdown,
-  type WorkspacePlanTier,
-} from "@shared/types";
+import type { PlanCatalogEntry, WorkspaceBillingInfo, WorkspacePlanTier } from "@shared/types";
 import { getStripeClient } from "./stripe-client";
 
-export async function getWorkspaceBillingInfo(workspaceId: string) {
+export async function getWorkspaceBillingInfo(
+  workspaceId: string
+): Promise<WorkspaceBillingInfo | null> {
   const plan = await prisma.workspacePlan.findUnique({
     where: { workspaceId, deletedAt: null },
+    include: { planCatalog: true },
   });
 
   if (!plan) {
     return null;
   }
 
-  const billingPeriod = currentBillingPeriod();
-
-  const [analysisCount, repoCount, seatCount] = await Promise.all([
-    prisma.usageEvent.count({
-      where: { workspaceId, eventType: USAGE_EVENT_TYPE.ANALYSIS_RUN, billingPeriod },
-    }),
+  const [repoCount, memberCount] = await Promise.all([
     prisma.repository.count({
       where: { workspaceId, selected: true },
     }),
@@ -31,47 +23,61 @@ export async function getWorkspaceBillingInfo(workspaceId: string) {
     }),
   ]);
 
-  const included = plan.analysisIncludedMonthly;
-  const overageRuns = Math.max(0, analysisCount - included);
-  const overageCostCents = overageRuns * (plan.analysisOverageRateCents ?? 0);
-
-  const usage: UsageBreakdown = {
-    analysisRuns: analysisCount,
-    analysisIncluded: included,
-    overageRuns,
-    overageCostCents,
-    repoCount,
-    repoLimit: plan.repoLimitTotal,
-    seatCount,
-    seatLimit: plan.seatLimit,
-  };
+  const catalog = plan.planCatalog;
 
   return {
-    tier: plan.tier,
-    billingPeriod: plan.billingPeriod,
+    tier: plan.tier as WorkspacePlanTier,
+    billingPeriod: plan.billingPeriod as WorkspaceBillingInfo["billingPeriod"],
+    subscriptionStatus: plan.subscriptionStatus as WorkspaceBillingInfo["subscriptionStatus"],
+    seatCount: plan.seatCount,
+    maxSeats: catalog?.maxSeats ?? 1,
+    maxRepos: catalog?.maxRepos ?? 2,
+    repoCount,
+    memberCount,
+    platformFeeCents: catalog?.platformFeeCents ?? 0,
+    seatFeeCents: catalog?.seatFeeCents ?? 0,
     stripeCustomerId: plan.stripeCustomerId,
-    stripeSubscriptionId: plan.stripeSubscriptionId,
-    subscriptionStatus: plan.subscriptionStatus,
-    seatLimit: plan.seatLimit,
-    analysisIncludedMonthly: plan.analysisIncludedMonthly,
-    analysisOverageRateCents: plan.analysisOverageRateCents,
-    repoLimitTotal: plan.repoLimitTotal,
     currentPeriodStart: plan.currentPeriodStart?.toISOString() ?? null,
     currentPeriodEnd: plan.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: plan.cancelAtPeriodEnd,
-    pendingTier: plan.pendingTier,
-    usage,
+    pendingTier: plan.pendingTier as WorkspacePlanTier | null,
+    plan: catalog
+      ? {
+          id: catalog.id,
+          tier: catalog.tier as WorkspacePlanTier,
+          name: catalog.name,
+          description: catalog.description,
+          platformFeeCents: catalog.platformFeeCents,
+          seatFeeCents: catalog.seatFeeCents,
+          maxSeats: catalog.maxSeats,
+          maxRepos: catalog.maxRepos,
+          active: catalog.active,
+          featured: catalog.featured,
+          sortOrder: catalog.sortOrder,
+        }
+      : null,
   };
 }
 
-export function computePlanLimits(tier: WorkspacePlanTier, seatCount: number) {
-  const limits = PLAN_LIMITS[tier];
-  return {
-    seatLimit: Math.max(limits.seats, seatCount),
-    analysisIncludedMonthly: seatCount * limits.analysisPerSeat,
-    analysisOverageRateCents: limits.overageRateCents,
-    repoLimitTotal: limits.repos,
-  };
+export async function listActivePlans(): Promise<PlanCatalogEntry[]> {
+  const plans = await prisma.planCatalog.findMany({
+    where: { active: true },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  return plans.map((p) => ({
+    id: p.id,
+    tier: p.tier as WorkspacePlanTier,
+    name: p.name,
+    description: p.description,
+    platformFeeCents: p.platformFeeCents,
+    seatFeeCents: p.seatFeeCents,
+    maxSeats: p.maxSeats,
+    maxRepos: p.maxRepos,
+    active: p.active,
+    featured: p.featured,
+    sortOrder: p.sortOrder,
+  }));
 }
 
 export async function createCheckoutSession(
@@ -81,13 +87,20 @@ export async function createCheckoutSession(
 ): Promise<string> {
   const stripe = getStripeClient();
 
+  const catalog = await prisma.planCatalog.findUniqueOrThrow({
+    where: { tier },
+  });
+
+  if (!catalog.stripeSeatPriceId) {
+    throw new Error(`Stripe seat price ID not configured for ${tier} tier`);
+  }
+
   const plan = await prisma.workspacePlan.findUnique({
     where: { workspaceId, deletedAt: null },
   });
 
   let customerId = plan?.stripeCustomerId;
 
-  // Lazy customer creation
   if (!customerId) {
     const workspace = await prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
@@ -98,7 +111,6 @@ export async function createCheckoutSession(
     });
     customerId = customer.id;
 
-    // Persist Stripe customer ID
     if (plan) {
       await prisma.workspacePlan.update({
         where: { id: plan.id },
@@ -111,22 +123,21 @@ export async function createCheckoutSession(
     where: { workspaceId, deletedAt: null },
   });
 
-  const priceId =
-    tier === "STARTER" ? process.env.STRIPE_STARTER_PRICE_ID : process.env.STRIPE_PRO_PRICE_ID;
+  const lineItems: Array<{ price: string; quantity: number }> = [];
 
-  if (!priceId) {
-    throw new Error(`Stripe price ID not configured for ${tier} tier`);
+  if (catalog.stripePlatformPriceId) {
+    lineItems.push({ price: catalog.stripePlatformPriceId, quantity: 1 });
   }
+
+  lineItems.push({
+    price: catalog.stripeSeatPriceId,
+    quantity: Math.max(seatCount, catalog.maxSeats > 0 ? catalog.maxSeats : seatCount),
+  });
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: "subscription",
-    line_items: [
-      {
-        price: priceId,
-        quantity: Math.max(seatCount, PLAN_LIMITS[tier].seats),
-      },
-    ],
+    line_items: lineItems,
     subscription_data: {
       metadata: { workspaceId, tier },
     },
@@ -166,18 +177,20 @@ export async function ensureWorkspacePlan(workspaceId: string): Promise<void> {
     where: { workspaceId },
   });
 
-  if (!existing) {
-    await prisma.workspacePlan.create({
-      data: {
-        workspaceId,
-        tier: "FREE",
-        billingPeriod: "MONTHLY",
-        subscriptionStatus: "ACTIVE",
-        seatLimit: 1,
-        analysisIncludedMonthly: 25,
-        analysisOverageRateCents: null,
-        repoLimitTotal: 2,
-      },
-    });
-  }
+  if (existing) return;
+
+  const freeCatalog = await prisma.planCatalog.findUnique({
+    where: { tier: "FREE" },
+  });
+
+  await prisma.workspacePlan.create({
+    data: {
+      workspaceId,
+      tier: "FREE",
+      billingPeriod: "MONTHLY",
+      subscriptionStatus: "ACTIVE",
+      seatCount: 1,
+      planCatalogId: freeCatalog?.id ?? null,
+    },
+  });
 }

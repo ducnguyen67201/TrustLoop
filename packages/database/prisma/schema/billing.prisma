@@ -9,12 +9,6 @@ enum BillingPeriod {
   ANNUAL
 }
 
-enum UsageEventType {
-  ANALYSIS_RUN
-  DRAFT_GENERATED
-  REPO_INDEXED
-}
-
 enum SubscriptionStatus {
   ACTIVE
   PAST_DUE
@@ -23,19 +17,38 @@ enum SubscriptionStatus {
   UNPAID
 }
 
+model PlanCatalog {
+  id                    String            @id @default(cuid())
+  tier                  WorkspacePlanTier @unique
+  name                  String
+  description           String?
+  platformFeeCents      Int               @default(0)
+  seatFeeCents          Int               @default(0)
+  maxSeats              Int               @default(1)
+  maxRepos              Int               @default(2)
+  stripePlatformPriceId String?
+  stripeSeatPriceId     String?
+  active                Boolean           @default(true)
+  featured              Boolean           @default(false)
+  sortOrder             Int               @default(0)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  workspacePlans        WorkspacePlan[]
+}
+
 model WorkspacePlan {
   id                      String              @id @default(cuid())
   workspaceId             String              @unique
   workspace               Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   tier                    WorkspacePlanTier   @default(FREE)
   billingPeriod           BillingPeriod       @default(MONTHLY)
+  planCatalogId           String?
+  planCatalog             PlanCatalog?        @relation(fields: [planCatalogId], references: [id])
   stripeCustomerId        String?             @unique
   stripeSubscriptionId    String?             @unique
   subscriptionStatus      SubscriptionStatus  @default(ACTIVE)
-  seatLimit               Int                 @default(1)
-  analysisIncludedMonthly Int                 @default(25)
-  analysisOverageRateCents Int?
-  repoLimitTotal          Int                 @default(2)
+  seatCount               Int                 @default(1)
   currentPeriodStart      DateTime?
   currentPeriodEnd        DateTime?
   cancelAtPeriodEnd       Boolean             @default(false)
@@ -46,22 +59,7 @@ model WorkspacePlan {
 
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
-}
-
-model UsageEvent {
-  id              String          @id @default(cuid())
-  workspaceId     String
-  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
-  eventType       UsageEventType
-  resourceId      String?
-  metadata        Json?
-  billingPeriod   String
-  stripeSynced    Boolean         @default(false)
-  stripeSyncedAt  DateTime?
-  createdAt       DateTime        @default(now())
-
-  @@index([workspaceId, eventType, billingPeriod])
-  @@index([stripeSynced, createdAt])
+  @@index([planCatalogId])
 }
 
 model StripeWebhookEvent {

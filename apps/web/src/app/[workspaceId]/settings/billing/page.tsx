@@ -11,7 +11,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -22,85 +21,68 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { trpcQuery } from "@/lib/trpc-http";
 import {
   RiArrowRightUpLine,
   RiCheckLine,
   RiErrorWarningLine,
   RiLoader4Line,
 } from "@remixicon/react";
+import type { PlanCatalogEntry, WorkspaceBillingInfo } from "@shared/types";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { startCheckout, startPortalSession } from "./actions";
 
-type PlanInfo = {
-  tier: "FREE" | "STARTER" | "PRO";
-  seatLimit: number;
-  seatCount: number;
-  analysisIncludedMonthly: number;
-  analysisUsed: number;
-  analysisOverageRateCents: number | null;
-  repoLimit: number;
-  repoCount: number;
-  currentPeriodEnd: string | null;
-  subscriptionStatus: string;
-  cancelAtPeriodEnd: boolean;
-  pendingTier: string | null;
-};
+function formatPrice(cents: number): string {
+  return `$${(cents / 100).toFixed(0)}`;
+}
 
-const TIER_LABELS: Record<string, string> = {
-  FREE: "Free",
-  STARTER: "Starter",
-  PRO: "Pro",
-};
+function buildFeatureList(plan: PlanCatalogEntry): string[] {
+  const features: string[] = [];
 
-const TIER_PRICES: Record<string, string> = {
-  FREE: "Free",
-  STARTER: "$39/seat/mo",
-  PRO: "$79/seat/mo",
-};
+  if (plan.maxSeats === -1) {
+    features.push("Unlimited seats");
+  } else if (plan.maxSeats === 1) {
+    features.push("1 seat");
+  } else {
+    features.push(`Up to ${plan.maxSeats} seats`);
+  }
 
-const PLANS = [
-  {
-    tier: "FREE" as const,
-    name: "Free",
-    price: "$0",
-    period: "",
-    features: ["1 seat", "25 AI analyses/mo", "2 indexed repos", "Community support"],
-  },
-  {
-    tier: "STARTER" as const,
-    name: "Starter",
-    price: "$39",
-    period: "/seat/mo",
-    features: [
-      "3+ seats",
-      "200 AI analyses/seat/mo",
-      "10 indexed repos",
-      "$0.50/run overage",
-      "Email support",
-    ],
-  },
-  {
-    tier: "PRO" as const,
-    name: "Pro",
-    price: "$79",
-    period: "/seat/mo",
-    features: [
-      "3+ seats",
-      "500 AI analyses/seat/mo",
-      "Unlimited repos",
-      "$0.30/run overage",
-      "Priority support",
-    ],
-  },
-];
+  if (plan.maxRepos === -1) {
+    features.push("Unlimited repos");
+  } else {
+    features.push(`${plan.maxRepos} indexed repos`);
+  }
+
+  if (plan.seatFeeCents > 0) {
+    features.push(`${formatPrice(plan.seatFeeCents)}/seat/mo`);
+  }
+
+  if (plan.tier === "FREE") {
+    features.push("Community support");
+  } else if (plan.tier === "STARTER") {
+    features.push("Email support");
+  } else {
+    features.push("Priority support");
+  }
+
+  return features;
+}
+
+function planDisplayPrice(plan: PlanCatalogEntry): { price: string; period: string } {
+  if (plan.platformFeeCents === 0 && plan.seatFeeCents === 0) {
+    return { price: "$0", period: "" };
+  }
+  return { price: formatPrice(plan.platformFeeCents), period: "/mo" };
+}
 
 export default function BillingSettingsPage() {
   const params = useParams<{ workspaceId: string | string[] }>();
   const workspaceId = Array.isArray(params.workspaceId)
     ? (params.workspaceId[0] ?? "")
     : (params.workspaceId ?? "");
-  const [plan, setPlan] = useState<PlanInfo | null>(null);
+  const [billing, setBilling] = useState<WorkspaceBillingInfo | null>(null);
+  const [plans, setPlans] = useState<PlanCatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
@@ -133,22 +115,19 @@ export default function BillingSettingsPage() {
   }, [workspaceId]);
 
   useEffect(() => {
-    // TODO: Replace with actual tRPC query when billing router is wired
-    setPlan({
-      tier: "FREE",
-      seatLimit: 1,
-      seatCount: 1,
-      analysisIncludedMonthly: 25,
-      analysisUsed: 0,
-      analysisOverageRateCents: null,
-      repoLimit: 2,
-      repoCount: 0,
-      currentPeriodEnd: null,
-      subscriptionStatus: "ACTIVE",
-      cancelAtPeriodEnd: false,
-      pendingTier: null,
-    });
-    setLoading(false);
+    Promise.all([
+      trpcQuery<WorkspaceBillingInfo>("billing.getWorkspacePlan"),
+      trpcQuery<{ plans: PlanCatalogEntry[] }>("billing.listPlans"),
+    ])
+      .then(([billingInfo, catalogResponse]) => {
+        setBilling(billingInfo);
+        setPlans(catalogResponse.plans);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load billing info");
+        setLoading(false);
+      });
   }, []);
 
   if (loading) {
@@ -165,7 +144,7 @@ export default function BillingSettingsPage() {
     );
   }
 
-  if (error || !plan) {
+  if (error || !billing) {
     return (
       <div className="space-y-6">
         <div>
@@ -185,16 +164,9 @@ export default function BillingSettingsPage() {
     );
   }
 
-  const usagePercent =
-    plan.analysisIncludedMonthly > 0
-      ? Math.min((plan.analysisUsed / plan.analysisIncludedMonthly) * 100, 100)
-      : 0;
-  const isOverage = plan.analysisUsed > plan.analysisIncludedMonthly;
-  const overageRuns = isOverage ? plan.analysisUsed - plan.analysisIncludedMonthly : 0;
-  const overageCostCents = overageRuns * (plan.analysisOverageRateCents ?? 0);
-  const isPastDue = plan.subscriptionStatus === "PAST_DUE";
-
-  const usageColor = isOverage ? "bg-orange-500" : usagePercent >= 80 ? "bg-yellow-500" : undefined;
+  const isPastDue = billing.subscriptionStatus === "PAST_DUE";
+  const currentPlan = plans.find((p) => p.tier === billing.tier);
+  const tierLabel = currentPlan?.name ?? billing.tier;
 
   return (
     <div className="space-y-6">
@@ -208,7 +180,7 @@ export default function BillingSettingsPage() {
           <RiErrorWarningLine className="h-4 w-4" />
           <AlertDescription>
             Your last payment failed. Update your payment method to keep your plan active.
-            <Button variant="link" className="h-auto p-0 ml-2">
+            <Button variant="link" className="h-auto p-0 ml-2" onClick={handleManageSubscription}>
               Update payment <RiArrowRightUpLine className="ml-1 h-3 w-3" />
             </Button>
           </AlertDescription>
@@ -219,27 +191,16 @@ export default function BillingSettingsPage() {
       <div className="space-y-2">
         <div className="flex items-center gap-3 text-sm">
           <span>
-            Plan: <Badge variant="outline">{TIER_LABELS[plan.tier]}</Badge>
+            Plan: <Badge variant="outline">{tierLabel}</Badge>
           </span>
           <Separator orientation="vertical" className="h-4" />
           <span className="text-muted-foreground">
-            Seats: {plan.seatCount}/{plan.seatLimit}
+            Seats: {billing.memberCount}/{billing.maxSeats === -1 ? "\u221e" : billing.maxSeats}
           </span>
           <Separator orientation="vertical" className="h-4" />
           <span className="text-muted-foreground">
-            AI: {plan.analysisUsed}/{plan.analysisIncludedMonthly}
+            Repos: {billing.repoCount}/{billing.maxRepos === -1 ? "\u221e" : billing.maxRepos}
           </span>
-        </div>
-        <div className="space-y-1">
-          <Progress
-            value={Math.min(usagePercent, 100)}
-            className={usageColor ? `[&>div]:${usageColor}` : undefined}
-            aria-label={`AI analysis usage: ${plan.analysisUsed} of ${plan.analysisIncludedMonthly}`}
-          />
-          <p className="text-xs text-muted-foreground">
-            {plan.analysisUsed} of {plan.analysisIncludedMonthly} analyses used this month
-            {isOverage && ` (${overageRuns} overage)`}
-          </p>
         </div>
       </div>
 
@@ -250,30 +211,34 @@ export default function BillingSettingsPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium">
-              {TIER_LABELS[plan.tier]} plan · {TIER_PRICES[plan.tier]}
-              {plan.seatLimit > 1 && ` · ${plan.seatLimit} seats`}
+              {tierLabel} plan
+              {billing.platformFeeCents > 0 &&
+                ` \u00b7 ${formatPrice(billing.platformFeeCents)}/mo + ${formatPrice(billing.seatFeeCents)}/seat`}
+              {billing.seatCount > 1 && ` \u00b7 ${billing.seatCount} seats`}
             </p>
-            {plan.currentPeriodEnd && (
+            {billing.currentPeriodEnd && (
               <p className="text-xs text-muted-foreground">
                 Renews{" "}
-                {new Date(plan.currentPeriodEnd).toLocaleDateString("en-US", {
+                {new Date(billing.currentPeriodEnd).toLocaleDateString("en-US", {
                   month: "long",
                   day: "numeric",
                   year: "numeric",
                 })}
               </p>
             )}
-            {plan.pendingTier && (
+            {billing.pendingTier && (
               <p className="text-xs text-yellow-600">
-                Downgrading to {TIER_LABELS[plan.pendingTier]} at period end
+                Downgrading to{" "}
+                {plans.find((p) => p.tier === billing.pendingTier)?.name ?? billing.pendingTier} at
+                period end
               </p>
             )}
-            {plan.cancelAtPeriodEnd && !plan.pendingTier && (
+            {billing.cancelAtPeriodEnd && !billing.pendingTier && (
               <p className="text-xs text-destructive">Canceling at period end</p>
             )}
           </div>
           <div className="flex gap-2">
-            {plan.tier !== "FREE" && (
+            {billing.tier !== "FREE" && (
               <Button
                 variant="outline"
                 size="sm"
@@ -296,12 +261,14 @@ export default function BillingSettingsPage() {
                 <DialogHeader>
                   <DialogTitle className="font-mono text-lg">Choose a plan</DialogTitle>
                   <DialogDescription>
-                    Per-seat pricing with AI analysis included. Upgrade or downgrade anytime.
+                    Platform fee + per-seat pricing. Upgrade or downgrade anytime.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-6">
-                  {PLANS.map((p) => {
-                    const isCurrent = p.tier === plan.tier;
+                  {plans.map((p) => {
+                    const isCurrent = p.tier === billing.tier;
+                    const { price, period } = planDisplayPrice(p);
+                    const features = buildFeatureList(p);
                     return (
                       <div
                         key={p.tier}
@@ -316,13 +283,19 @@ export default function BillingSettingsPage() {
                               </Badge>
                             )}
                           </div>
+                          <p className="mt-1 text-xs text-muted-foreground">{p.description}</p>
                           <p className="mt-2">
-                            <span className="text-4xl font-bold tracking-tight">{p.price}</span>
-                            <span className="text-base text-muted-foreground">{p.period}</span>
+                            <span className="text-4xl font-bold tracking-tight">{price}</span>
+                            <span className="text-base text-muted-foreground">{period}</span>
                           </p>
+                          {p.seatFeeCents > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              + {formatPrice(p.seatFeeCents)}/seat/mo
+                            </p>
+                          )}
                         </div>
                         <ul className="space-y-3 text-sm flex-1">
-                          {p.features.map((f) => (
+                          {features.map((f) => (
                             <li key={f} className="flex items-start gap-2">
                               <RiCheckLine className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
                               <span>{f}</span>
@@ -347,8 +320,8 @@ export default function BillingSettingsPage() {
                             {checkoutLoading === p.tier && (
                               <RiLoader4Line className="mr-2 h-4 w-4 animate-spin" />
                             )}
-                            {PLANS.findIndex((x) => x.tier === p.tier) >
-                            PLANS.findIndex((x) => x.tier === plan.tier)
+                            {plans.findIndex((x) => x.tier === p.tier) >
+                            plans.findIndex((x) => x.tier === billing.tier)
                               ? `Upgrade to ${p.name}`
                               : `Switch to ${p.name}`}
                           </Button>
@@ -367,41 +340,29 @@ export default function BillingSettingsPage() {
 
       {/* Usage breakdown */}
       <div className="space-y-3">
-        <h2 className="text-sm font-medium">Usage this month</h2>
+        <h2 className="text-sm font-medium">Current usage</h2>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Metric</TableHead>
+              <TableHead>Resource</TableHead>
               <TableHead className="text-right">Used</TableHead>
-              <TableHead className="text-right">Included</TableHead>
-              <TableHead className="text-right">Overage</TableHead>
+              <TableHead className="text-right">Limit</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             <TableRow>
-              <TableCell>AI analyses</TableCell>
-              <TableCell className="text-right">{plan.analysisUsed}</TableCell>
-              <TableCell className="text-right">{plan.analysisIncludedMonthly}</TableCell>
-              <TableCell className="text-right text-muted-foreground">—</TableCell>
+              <TableCell>Seats</TableCell>
+              <TableCell className="text-right">{billing.memberCount}</TableCell>
+              <TableCell className="text-right">
+                {billing.maxSeats === -1 ? "Unlimited" : billing.maxSeats}
+              </TableCell>
             </TableRow>
-            {isOverage && plan.analysisOverageRateCents && (
-              <TableRow>
-                <TableCell>Overage charges</TableCell>
-                <TableCell className="text-right">{overageRuns} runs</TableCell>
-                <TableCell className="text-right text-muted-foreground">—</TableCell>
-                <TableCell className="text-right">
-                  {overageRuns} x ${(plan.analysisOverageRateCents / 100).toFixed(2)} = $
-                  {(overageCostCents / 100).toFixed(2)}
-                </TableCell>
-              </TableRow>
-            )}
             <TableRow>
               <TableCell>Indexed repos</TableCell>
-              <TableCell className="text-right">{plan.repoCount}</TableCell>
+              <TableCell className="text-right">{billing.repoCount}</TableCell>
               <TableCell className="text-right">
-                {plan.repoLimit === -1 ? "Unlimited" : plan.repoLimit}
+                {billing.maxRepos === -1 ? "Unlimited" : billing.maxRepos}
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">—</TableCell>
             </TableRow>
           </TableBody>
         </Table>
