@@ -1,0 +1,39 @@
+{
+  "name": "@trustloop/sdk",
+  "version": "0.1.0",
+  "description": "TrustLoop browser SDK for session replay and error context capture",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "rrweb": ">=2.0.0-alpha.4"
+  },
+  "peerDependenciesMeta": {
+    "rrweb": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "happy-dom": "^16.0.0",
+    "rrweb": "2.0.0-alpha.20"
+  }
+}

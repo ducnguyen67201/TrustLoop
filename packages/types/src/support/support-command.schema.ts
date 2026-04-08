@@ -63,6 +63,7 @@ export const supportSendReplyCommandSchema = z.object({
   actorUserId: z.string().min(1),
   messageText: z.string().trim().min(1),
   attachments: z.array(supportAttachmentSchema).default([]),
+  replyToEventId: z.string().min(1).optional(),
 });
 
 export const supportRetryDeliveryCommandSchema = z.object({

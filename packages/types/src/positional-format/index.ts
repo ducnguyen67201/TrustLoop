@@ -8,3 +8,13 @@ export {
   type CompressedAnalysisOutput,
   type ReconstructedAnalysisOutput,
 } from "./support-analysis";
+
+export {
+  compressedSessionDigestSchema,
+  reconstructSessionDigest,
+  POSITIONAL_SESSION_DIGEST_FORMAT_INSTRUCTIONS,
+  SESSION_ERROR_TYPE_CODES,
+  SESSION_ACTION_TYPE_CODES,
+  type CompressedSessionDigest,
+  type ReconstructedSessionDigest,
+} from "./session-digest";

@@ -27,6 +27,7 @@ export async function supportAnalysisWorkflow(
     conversationId: input.conversationId,
     analysisId: snapshot.analysisId,
     threadSnapshot: snapshot.threadSnapshot,
+    sessionDigest: snapshot.sessionDigest,
   });
 
   return result;

@@ -198,6 +198,7 @@ async function sendReplyWithRecordedAttempt(
     commandId: string;
     conversationId: string;
     payload: SupportReplyPayload;
+    replyToEventId?: string;
     workspaceId: string;
   },
   sender: SupportDeliverySender,
@@ -251,6 +252,7 @@ async function sendReplyWithRecordedAttempt(
           commandId: params.commandId,
           deliveryAttemptId: attempt.id,
           messageText: params.payload.messageText,
+          ...(params.replyToEventId ? { replyToEventId: params.replyToEventId } : {}),
         },
       },
     });
@@ -439,6 +441,7 @@ export async function sendSupportConversationReply(
         messageText: input.messageText,
         attachments: input.attachments,
       },
+      replyToEventId: input.replyToEventId,
       workspaceId: input.workspaceId,
     },
     sender

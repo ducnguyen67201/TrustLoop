@@ -1,4 +1,5 @@
 import { authRouter } from "@shared/rest/auth-router";
+import { sessionReplayRouter } from "@shared/rest/session-replay-router";
 import { createSupportAnalysisRouter } from "@shared/rest/support-analysis-router";
 import { supportInboxRouter } from "@shared/rest/support-inbox-router";
 import { supportInstallationRouter } from "@shared/rest/support-installation-router";
@@ -16,6 +17,7 @@ export function createAppRouter(dispatcher: WorkflowDispatcher = temporalWorkflo
   return router({
     auth: authRouter,
     supportAnalysis: createSupportAnalysisRouter(dispatcher),
+    sessionReplay: sessionReplayRouter,
     supportInbox: supportInboxRouter,
     supportInstallation: supportInstallationRouter,
     workspace: workspaceRouter,

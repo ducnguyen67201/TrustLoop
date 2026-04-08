@@ -1,0 +1,65 @@
+// ── Session Replay ──────────────────────────────────────────────────
+
+enum SessionEventType {
+  CLICK
+  ROUTE
+  NETWORK_ERROR
+  CONSOLE_ERROR
+  EXCEPTION
+}
+
+model SessionRecord {
+  id            String               @id @default(cuid())
+  workspaceId   String
+  sessionId     String
+  userId        String?
+  userEmail     String?
+  release       String?
+  userAgent     String?
+  startedAt     DateTime
+  lastEventAt   DateTime
+  eventCount    Int                  @default(0)
+  hasReplayData Boolean              @default(false)
+  metadata      Json?
+  deletedAt     DateTime?
+  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  events        SessionEvent[]
+  replayChunks  SessionReplayChunk[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([workspaceId, sessionId])
+  @@index([workspaceId, userEmail, lastEventAt])
+  @@index([workspaceId, userId, lastEventAt])
+}
+
+model SessionEvent {
+  id              String           @id @default(cuid())
+  workspaceId     String
+  sessionRecordId String
+  eventType       SessionEventType
+  timestamp       DateTime
+  url             String?
+  payload         Json
+  sessionRecord   SessionRecord    @relation(fields: [sessionRecordId], references: [id], onDelete: Cascade)
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdAt       DateTime         @default(now())
+
+  @@index([sessionRecordId, timestamp])
+}
+
+model SessionReplayChunk {
+  id              String        @id @default(cuid())
+  workspaceId     String
+  sessionRecordId String
+  sequenceNumber  Int
+  compressedData  Bytes
+  eventCount      Int
+  startTimestamp  DateTime
+  endTimestamp    DateTime
+  sessionRecord   SessionRecord @relation(fields: [sessionRecordId], references: [id], onDelete: Cascade)
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdAt       DateTime      @default(now())
+
+  @@index([sessionRecordId, sequenceNumber])
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { SessionTab } from "@/components/session-replay/session-tab";
 import { AnalysisPanel } from "@/components/support/analysis-panel";
 import { SupportStatusBadge } from "@/components/support/support-status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,9 +14,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAnalysis } from "@/hooks/use-analysis";
 import { useAuthSession } from "@/hooks/use-auth-session";
+import { useSessionReplay } from "@/hooks/use-session-replay";
 import { RiArrowGoBackLine, RiChat3Line, RiUserSharedLine } from "@remixicon/react";
 import {
   SUPPORT_CONVERSATION_STATUS,
@@ -99,6 +102,7 @@ export function SupportConversationSheet({
   const [overrideReason, setOverrideReason] = useState("");
 
   const analysisHook = useAnalysis(conversation?.id ?? null, workspaceId);
+  const sessionReplay = useSessionReplay(conversation?.id ?? null, workspaceId);
 
   async function handleSendReply() {
     if (!conversation || draftReply.trim().length === 0) {
@@ -227,129 +231,168 @@ export function SupportConversationSheet({
                 </div>
               </section>
 
-              <section className="border p-4">
-                <AnalysisPanel
-                  analysis={analysisHook.analysis}
-                  conversationId={conversation.id}
-                  workspaceId={workspaceId}
-                  isAnalyzing={analysisHook.isAnalyzing}
-                  onTriggerAnalysis={() => void analysisHook.triggerAnalysis()}
-                  onApproveDraft={(draftId, editedBody) =>
-                    void analysisHook.approveDraft(draftId, editedBody)
-                  }
-                  onDismissDraft={(draftId, reason) =>
-                    void analysisHook.dismissDraft(draftId, reason)
-                  }
-                  isMutating={isMutating || analysisHook.isMutating}
-                />
-                {analysisHook.error && (
-                  <p className="mt-2 text-sm text-destructive">{analysisHook.error}</p>
-                )}
-              </section>
+              <Tabs defaultValue="timeline" className="w-full">
+                <TabsList className="w-full">
+                  <TabsTrigger value="timeline" className="flex-1">
+                    Timeline
+                  </TabsTrigger>
+                  <TabsTrigger value="analysis" className="flex-1">
+                    Analysis
+                  </TabsTrigger>
+                  <TabsTrigger value="session" className="relative flex-1">
+                    Session
+                    {sessionReplay.hasSessionData ? (
+                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-green-500" />
+                    ) : null}
+                  </TabsTrigger>
+                </TabsList>
 
-              <section className="space-y-3 border p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-medium">Reply</h2>
-                    <p className="text-muted-foreground text-xs">
-                      Successful delivery creates Slack evidence for the done policy.
-                    </p>
-                  </div>
-                  <Button
-                    disabled={isMutating || draftReply.trim().length === 0}
-                    onClick={() => void handleSendReply()}
-                  >
-                    <RiChat3Line />
-                    Send reply
-                  </Button>
-                </div>
-                <Textarea
-                  value={draftReply}
-                  onChange={(event) => setDraftReply(event.target.value)}
-                  placeholder="Reply to the customer in-thread..."
-                  className="min-h-32"
-                />
-              </section>
-
-              <section className="space-y-3 border p-4">
-                <div>
-                  <h2 className="font-medium">Done override</h2>
-                  <p className="text-muted-foreground text-xs">
-                    Use only when the customer was informed outside the tracked Slack reply path.
-                  </p>
-                </div>
-                <Textarea
-                  value={overrideReason}
-                  onChange={(event) => setOverrideReason(event.target.value)}
-                  placeholder="Explain why this thread can be closed without Slack delivery evidence."
-                  className="min-h-28"
-                />
-                <Button
-                  variant="outline"
-                  disabled={isMutating || overrideReason.trim().length < 10}
-                  onClick={() => void handleMarkDoneOverride()}
-                >
-                  Mark done with override
-                </Button>
-              </section>
-
-              <section className="space-y-3 border p-4">
-                <div>
-                  <h2 className="font-medium">Timeline</h2>
-                  <p className="text-muted-foreground text-xs">
-                    Event history, failure causes, and retry handles.
-                  </p>
-                </div>
-                <Separator />
-
-                {isTimelineLoading ? (
-                  <p className="text-muted-foreground text-sm">Loading conversation timeline...</p>
-                ) : null}
-
-                <div className="space-y-3">
-                  {events.map((event) => {
-                    const deliveryAttemptId = extractDeliveryAttemptId(event);
-                    const override = extractOverrideReason(event);
-                    const messageText = extractMessageText(event);
-
-                    return (
-                      <div key={event.id} className="space-y-2 border p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="space-y-1">
-                            <p className="font-medium">{event.summary ?? event.eventType}</p>
-                            <p className="text-muted-foreground text-xs">
-                              {event.eventSource} · {formatTimestamp(event.createdAt)}
-                            </p>
-                          </div>
-                          {deliveryAttemptId && event.eventType === "DELIVERY_FAILED" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isMutating}
-                              onClick={() => onRetryDelivery(deliveryAttemptId)}
-                            >
-                              <RiArrowGoBackLine />
-                              Retry
-                            </Button>
-                          ) : null}
-                        </div>
-
-                        {messageText ? <p className="text-sm">{messageText}</p> : null}
-                        {override ? (
-                          <p className="text-muted-foreground text-sm">
-                            Override reason: {override}
-                          </p>
-                        ) : null}
-                        {event.detailsJson?.errorMessage ? (
-                          <p className="text-destructive text-sm">
-                            {String(event.detailsJson.errorMessage)}
-                          </p>
-                        ) : null}
+                <TabsContent value="timeline" className="mt-3 space-y-3">
+                  <section className="space-y-3 border p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="font-medium">Reply</h2>
+                        <p className="text-muted-foreground text-xs">
+                          Successful delivery creates Slack evidence for the done policy.
+                        </p>
                       </div>
-                    );
-                  })}
-                </div>
-              </section>
+                      <Button
+                        disabled={isMutating || draftReply.trim().length === 0}
+                        onClick={() => void handleSendReply()}
+                      >
+                        <RiChat3Line />
+                        Send reply
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={draftReply}
+                      onChange={(event) => setDraftReply(event.target.value)}
+                      placeholder="Reply to the customer in-thread..."
+                      className="min-h-32"
+                    />
+                  </section>
+
+                  <section className="space-y-3 border p-4">
+                    <div>
+                      <h2 className="font-medium">Done override</h2>
+                      <p className="text-muted-foreground text-xs">
+                        Use only when the customer was informed outside the tracked Slack reply path.
+                      </p>
+                    </div>
+                    <Textarea
+                      value={overrideReason}
+                      onChange={(event) => setOverrideReason(event.target.value)}
+                      placeholder="Explain why this thread can be closed without Slack delivery evidence."
+                      className="min-h-28"
+                    />
+                    <Button
+                      variant="outline"
+                      disabled={isMutating || overrideReason.trim().length < 10}
+                      onClick={() => void handleMarkDoneOverride()}
+                    >
+                      Mark done with override
+                    </Button>
+                  </section>
+
+                  <section className="space-y-3 border p-4">
+                    <div>
+                      <h2 className="font-medium">Event history</h2>
+                      <p className="text-muted-foreground text-xs">
+                        Failure causes and retry handles.
+                      </p>
+                    </div>
+                    <Separator />
+
+                    {isTimelineLoading ? (
+                      <p className="text-muted-foreground text-sm">Loading conversation timeline...</p>
+                    ) : null}
+
+                    <div className="space-y-3">
+                      {events.map((event) => {
+                        const deliveryAttemptId = extractDeliveryAttemptId(event);
+                        const override = extractOverrideReason(event);
+                        const messageText = extractMessageText(event);
+
+                        return (
+                          <div key={event.id} className="space-y-2 border p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="space-y-1">
+                                <p className="font-medium">{event.summary ?? event.eventType}</p>
+                                <p className="text-muted-foreground text-xs">
+                                  {event.eventSource} · {formatTimestamp(event.createdAt)}
+                                </p>
+                              </div>
+                              {deliveryAttemptId && event.eventType === "DELIVERY_FAILED" ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={isMutating}
+                                  onClick={() => onRetryDelivery(deliveryAttemptId)}
+                                >
+                                  <RiArrowGoBackLine />
+                                  Retry
+                                </Button>
+                              ) : null}
+                            </div>
+
+                            {messageText ? <p className="text-sm">{messageText}</p> : null}
+                            {override ? (
+                              <p className="text-muted-foreground text-sm">
+                                Override reason: {override}
+                              </p>
+                            ) : null}
+                            {event.detailsJson?.errorMessage ? (
+                              <p className="text-destructive text-sm">
+                                {String(event.detailsJson.errorMessage)}
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                </TabsContent>
+
+                <TabsContent value="analysis" className="mt-3">
+                  <section className="border p-4">
+                    <AnalysisPanel
+                      analysis={analysisHook.analysis}
+                      conversationId={conversation.id}
+                      workspaceId={workspaceId}
+                      isAnalyzing={analysisHook.isAnalyzing}
+                      onTriggerAnalysis={() => void analysisHook.triggerAnalysis()}
+                      onApproveDraft={(draftId, editedBody) =>
+                        void analysisHook.approveDraft(draftId, editedBody)
+                      }
+                      onDismissDraft={(draftId, reason) =>
+                        void analysisHook.dismissDraft(draftId, reason)
+                      }
+                      isMutating={isMutating || analysisHook.isMutating}
+                    />
+                    {analysisHook.error && (
+                      <p className="mt-2 text-sm text-destructive">{analysisHook.error}</p>
+                    )}
+                  </section>
+                </TabsContent>
+
+                <TabsContent value="session" className="mt-3">
+                  <SessionTab
+                    isLoading={sessionReplay.isLoading}
+                    error={sessionReplay.error}
+                    session={sessionReplay.session}
+                    matchConfidence={sessionReplay.matchConfidence}
+                    events={sessionReplay.events}
+                    isLoadingEvents={sessionReplay.isLoadingEvents}
+                    failurePointId={sessionReplay.failurePointId}
+                    replayChunks={sessionReplay.replayChunks}
+                    totalReplayChunks={sessionReplay.totalReplayChunks}
+                    isLoadingReplayChunks={sessionReplay.isLoadingReplayChunks}
+                    replayLoadError={sessionReplay.replayLoadError}
+                    onRetryReplayLoad={sessionReplay.retryReplayLoad}
+                    onLoadReplayChunks={sessionReplay.loadReplayChunks}
+                  />
+                </TabsContent>
+              </Tabs>
             </>
           )}
         </div>

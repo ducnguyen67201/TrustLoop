@@ -5,12 +5,16 @@ import {
   type AgentProviderConfig,
   type AnalyzeRequest,
   type AnalyzeResponse,
+  type SessionDigest,
   agentProviderConfigSchema,
   compressedAnalysisOutputSchema,
   reconstructAnalysisOutput,
 } from "@shared/types";
 
-import { SUPPORT_AGENT_SYSTEM_PROMPT } from "./prompts/support-analysis";
+import {
+  SUPPORT_AGENT_SYSTEM_PROMPT,
+  buildAnalysisPromptWithContext,
+} from "./prompts/support-analysis";
 import { resolveModel } from "./providers";
 import { searchCodeTool } from "./tools/search-code";
 
@@ -29,11 +33,15 @@ const DEFAULT_MAX_STEPS = 8;
 //           → Agent Service (factory creates agent with chosen LLM)
 //               → Same tools, same prompt, different brain
 
-function createSupportAgent(providerConfig: AgentProviderConfig) {
+function createSupportAgent(providerConfig: AgentProviderConfig, sessionDigest?: SessionDigest) {
+  const instructions = sessionDigest
+    ? buildAnalysisPromptWithContext({ sessionDigest })
+    : SUPPORT_AGENT_SYSTEM_PROMPT;
+
   return new Agent({
     id: "trustloop-support-agent",
     name: "TrustLoop Support Agent",
-    instructions: SUPPORT_AGENT_SYSTEM_PROMPT,
+    instructions,
     model: resolveModel(providerConfig),
     tools: { searchCode: searchCodeTool },
   });
@@ -63,7 +71,7 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     maxSteps,
   });
 
-  const agent = createSupportAgent(providerConfig);
+  const agent = createSupportAgent(providerConfig, request.sessionDigest);
 
   const result = await agent.generate(request.threadSnapshot, {
     maxSteps,

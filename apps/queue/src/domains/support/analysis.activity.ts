@@ -1,11 +1,17 @@
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
 import {
+  compileSessionDigest,
+  extractEmailsFromEvents,
+  findCorrelatedSession,
+} from "@shared/rest/services/support/session-correlation-service";
+import {
   ANALYSIS_RESULT_STATUS,
   ANALYSIS_STATUS,
   ANALYSIS_TRIGGER_TYPE,
   type AnalysisTriggerType,
   DRAFT_STATUS,
+  type SessionDigest,
   type SupportAnalysisWorkflowResult,
   analyzeResponseSchema,
 } from "@shared/types";
@@ -20,6 +26,7 @@ interface ThreadSnapshotInput {
 interface ThreadSnapshotResult {
   analysisId: string;
   threadSnapshot: string;
+  sessionDigest: SessionDigest | null;
 }
 
 interface AnalysisAgentInput {
@@ -27,6 +34,7 @@ interface AnalysisAgentInput {
   conversationId: string;
   analysisId: string;
   threadSnapshot: string;
+  sessionDigest?: SessionDigest | null;
 }
 
 // Uses analyzeResponseSchema from @shared/types — same contract as apps/agents
@@ -67,6 +75,25 @@ export async function buildThreadSnapshot(
     })),
   };
 
+  // --- Session Correlation (best-effort) ---
+  let sessionDigest: SessionDigest | null = null;
+  try {
+    const mentionedEmails = extractEmailsFromEvents(conversation.events);
+    if (mentionedEmails.length > 0) {
+      const correlation = await findCorrelatedSession({
+        workspaceId: input.workspaceId,
+        emails: mentionedEmails,
+        windowMinutes: 30,
+      });
+
+      if (correlation) {
+        sessionDigest = compileSessionDigest(correlation.record, correlation.events);
+      }
+    }
+  } catch (error) {
+    console.warn("[analysis] Session correlation failed, continuing without digest:", error);
+  }
+
   const analysis = await prisma.supportAnalysis.create({
     data: {
       workspaceId: input.workspaceId,
@@ -80,6 +107,7 @@ export async function buildThreadSnapshot(
   return {
     analysisId: analysis.id,
     threadSnapshot: JSON.stringify(snapshot, null, 2),
+    sessionDigest,
   };
 }
 
@@ -104,6 +132,7 @@ export async function runAnalysisAgent(
         workspaceId: input.workspaceId,
         conversationId: input.conversationId,
         threadSnapshot: input.threadSnapshot,
+        ...(input.sessionDigest ? { sessionDigest: input.sessionDigest } : {}),
       }),
       signal: AbortSignal.timeout(4 * 60 * 1000), // 4 min (activity timeout is 5 min)
     });

@@ -1,11 +1,12 @@
 "use client";
 
-import { SupportConversationSheet } from "@/components/support/support-conversation-sheet";
+import { ConversationView } from "@/components/support/conversation-view";
 import { SupportKanbanColumn } from "@/components/support/support-kanban-column";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { useSupportInbox } from "@/hooks/use-support-inbox";
 import { SUPPORT_CONVERSATION_STATUS, type SupportConversationStatus } from "@shared/types";
@@ -45,14 +46,11 @@ export function SupportInbox() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-
   // Sync ?thread= URL param → selected conversation
   const threadParam = searchParams.get("thread");
   useEffect(() => {
     if (threadParam && threadParam !== inbox.selectedConversationId) {
       inbox.setSelectedConversationId(threadParam);
-      setIsSheetOpen(true);
     }
   }, [threadParam, inbox.selectedConversationId, inbox.setSelectedConversationId]);
 
@@ -95,36 +93,21 @@ export function SupportInbox() {
     return base;
   }, [inbox.listData]);
 
-  const selectedConversation = useMemo(() => {
-    if (!inbox.selectedConversationId) {
-      return null;
-    }
-
-    return (
-      inbox.timelineData?.conversation ??
-      inbox.listData?.conversations.find(
-        (conversation) => conversation.id === inbox.selectedConversationId
-      ) ??
-      null
-    );
-  }, [inbox.listData, inbox.selectedConversationId, inbox.timelineData]);
-
   function handleSelectConversation(conversationId: string) {
     inbox.setSelectedConversationId(conversationId);
-    setIsSheetOpen(true);
     updateThreadParam(conversationId);
   }
 
   function handleDrop(conversationId: string, targetStatus: SupportConversationStatus) {
-    // Don't update if dropped on the same column
     const conversation = inbox.listData?.conversations.find((c) => c.id === conversationId);
     if (conversation && conversation.status !== targetStatus) {
       void inbox.updateConversationStatus(conversationId, targetStatus);
     }
   }
 
+  const isSheetOpen = Boolean(threadParam);
+
   function handleSheetOpenChange(open: boolean) {
-    setIsSheetOpen(open);
     if (!open) {
       updateThreadParam(null);
     }
@@ -152,7 +135,7 @@ export function SupportInbox() {
           <div>
             <CardTitle>Board</CardTitle>
             <CardDescription>
-              Move through work by state. Click any card to open a focused review panel.
+              Move through work by state. Click any card to open the conversation.
             </CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -209,22 +192,23 @@ export function SupportInbox() {
         </CardContent>
       </Card>
 
-      <SupportConversationSheet
-        actionError={inbox.actionError}
-        conversation={selectedConversation}
-        events={inbox.timelineData?.events ?? []}
-        isMutating={inbox.isMutating}
-        isOpen={isSheetOpen}
-        isTimelineLoading={inbox.isTimelineLoading}
-        onAssignConversation={inbox.assignConversation}
-        onMarkDoneWithOverrideReason={inbox.markDoneWithOverrideReason}
-        onOpenChange={handleSheetOpenChange}
-        onRetryDelivery={inbox.retryDelivery}
-        onSendReply={inbox.sendReply}
-        onUpdateConversationStatus={inbox.updateConversationStatus}
-        timelineError={inbox.timelineError}
-        workspaceId={workspaceId ?? ""}
-      />
+      <Sheet open={isSheetOpen} onOpenChange={handleSheetOpenChange}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 data-[side=right]:sm:max-w-3xl"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Conversation</SheetTitle>
+          </SheetHeader>
+          {threadParam && workspaceId ? (
+            <ConversationView
+              conversationId={threadParam}
+              workspaceId={workspaceId}
+              onBack={() => handleSheetOpenChange(false)}
+            />
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </main>
   );
 }

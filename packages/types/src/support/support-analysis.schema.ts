@@ -1,3 +1,4 @@
+import { sessionDigestSchema } from "@shared/types/session-replay/session-digest.schema";
 import { z } from "zod";
 
 export const ANALYSIS_STATUS = {
@@ -159,6 +160,7 @@ export const analyzeRequestSchema = z.object({
   workspaceId: z.string().min(1),
   conversationId: z.string().min(1),
   threadSnapshot: z.string().min(1),
+  sessionDigest: sessionDigestSchema.optional(),
   config: z
     .object({
       maxSteps: z.number().int().positive().optional(),

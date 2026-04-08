@@ -52,6 +52,19 @@ export function withServiceAuth(handler: ServiceAuthHandler): ServiceAuthHandler
   };
 }
 
+const LAST_USED_DEBOUNCE_MS = 60_000;
+const lastUsedFlushTimes = new Map<string, number>();
+
+function shouldFlushLastUsedAt(keyId: string): boolean {
+  const now = Date.now();
+  const lastFlush = lastUsedFlushTimes.get(keyId);
+  if (lastFlush !== undefined && now - lastFlush < LAST_USED_DEBOUNCE_MS) {
+    return false;
+  }
+  lastUsedFlushTimes.set(keyId, now);
+  return true;
+}
+
 export function withWorkspaceApiKeyAuth(handler: WorkspaceAuthHandler): ServiceAuthHandler {
   return async (req, ctx) => {
     const token = extractBearerToken(req);
@@ -83,10 +96,12 @@ export function withWorkspaceApiKeyAuth(handler: WorkspaceAuthHandler): ServiceA
       return unauthorizedResponse();
     }
 
-    await prisma.workspaceApiKey.update({
-      where: { id: keyRecord.id },
-      data: { lastUsedAt: new Date() },
-    });
+    if (shouldFlushLastUsedAt(keyRecord.id)) {
+      await prisma.workspaceApiKey.update({
+        where: { id: keyRecord.id },
+        data: { lastUsedAt: new Date() },
+      });
+    }
 
     return handler(req, {
       ...ctx,
