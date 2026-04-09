@@ -21,7 +21,6 @@ import {
 import { DarkModeToggle } from "@/components/workspace/dark-mode-toggle";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import {
-  workspaceApiKeysPath,
   workspaceRootPath,
   workspaceSettingsPath,
   workspaceSupportPath,
@@ -36,7 +35,6 @@ import {
   RiLogoutBoxRLine,
   RiPieChartLine,
   RiSettings3Line,
-  RiSparkling2Line,
 } from "@remixicon/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -60,7 +58,6 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
 
   const rootPath = workspaceRootPath(workspaceId);
   const settingsPath = workspaceSettingsPath(workspaceId);
-  const apiKeysPath = workspaceApiKeysPath(workspaceId);
   const supportPath = workspaceSupportPath(workspaceId);
 
   const mainNavItems: NavItem[] = [
@@ -236,12 +233,6 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="h-4" />
             <p className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{workspaceId}</p>
-            <Button size="sm" asChild>
-              <Link href={apiKeysPath}>
-                <RiSparkling2Line />
-                Quick Create
-              </Link>
-            </Button>
           </div>
         </header>
 
