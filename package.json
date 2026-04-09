@@ -16,6 +16,8 @@
     "dev:queue": "npm --workspace @apps/queue run dev",
     "dev:agents": "npm --workspace @trustloop/agents run dev",
     "dev:marketing": "npm --workspace @trustloop/marketing run dev",
+    "dev:demo": "npm --workspace @trustloop/demo-app run dev",
+    "dev:demo-web": "npx turbo run dev --filter=@trustloop/web --filter=@trustloop/demo-app --parallel",
     "doppler:dev": "doppler run -- turbo run dev --parallel",
     "doppler:dev:web": "doppler run -- npm --workspace @trustloop/web run dev",
     "doppler:dev:queue": "doppler run -- npm --workspace @apps/queue run dev",

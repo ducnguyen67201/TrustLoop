@@ -15,66 +15,16 @@ import { useAuthSession } from "@/hooks/use-auth-session";
 import { useWorkspaceMembers } from "@/hooks/use-workspace-members";
 import { RiCheckLine, RiFlashlightLine, RiUserSharedLine } from "@remixicon/react";
 import {
+  type ReplayChunkResponse,
   SUPPORT_CONVERSATION_STATUS,
+  type SessionMatchConfidence,
+  type SessionRecordResponse,
+  type SessionTimelineEvent,
+  type SupportAnalysisWithRelations,
   type SupportConversation,
   type SupportConversationStatus,
   type SupportConversationTimelineEvent,
 } from "@shared/types";
-
-interface AnalysisData {
-  id: string;
-  status: string;
-  problemStatement: string | null;
-  likelySubsystem: string | null;
-  severity: string | null;
-  category: string | null;
-  confidence: number | null;
-  missingInfo: string[] | null;
-  reasoningTrace: string | null;
-  toolCallCount: number | null;
-  llmLatencyMs: number | null;
-  evidence: Array<{
-    id: string;
-    sourceType: string;
-    filePath: string | null;
-    snippet: string | null;
-    citation: string | null;
-    createdAt: string;
-  }>;
-  drafts: Array<{
-    id: string;
-    status: string;
-    draftBody: string;
-    editedBody: string | null;
-  }>;
-}
-
-interface SessionRecord {
-  id: string;
-  sessionId: string;
-  userEmail: string | null;
-  userId: string | null;
-  userAgent: string | null;
-  startedAt: string;
-  lastEventAt: string;
-  eventCount: number;
-  hasReplayData: boolean;
-}
-
-interface SessionTimelineEvent {
-  id: string;
-  eventType: string;
-  timestamp: string;
-  url: string | null;
-  payload: Record<string, unknown>;
-}
-
-interface ReplayChunk {
-  sequenceNumber: number;
-  compressedData: Uint8Array;
-  startTimestamp: string;
-  endTimestamp: string;
-}
 
 interface ConversationPropertiesSidebarProps {
   conversation: SupportConversation;
@@ -83,7 +33,7 @@ interface ConversationPropertiesSidebarProps {
   onAssign: (conversationId: string, assigneeUserId: string | null) => Promise<unknown>;
   onUpdateStatus: (conversationId: string, status: SupportConversationStatus) => Promise<unknown>;
 
-  analysis: AnalysisData | null;
+  analysis: SupportAnalysisWithRelations | null;
   isAnalyzing: boolean;
   isAnalysisMutating: boolean;
   analysisError: string | null;
@@ -95,12 +45,12 @@ interface ConversationPropertiesSidebarProps {
   sessionReplay: {
     isLoading: boolean;
     error: string | null;
-    session: SessionRecord | null;
-    matchConfidence: "confirmed" | "fuzzy" | "none";
+    session: SessionRecordResponse | null;
+    matchConfidence: SessionMatchConfidence;
     events: SessionTimelineEvent[];
     isLoadingEvents: boolean;
     failurePointId: string | null;
-    replayChunks: ReplayChunk[];
+    replayChunks: ReplayChunkResponse[];
     totalReplayChunks: number;
     isLoadingReplayChunks: boolean;
     replayLoadError: string | null;

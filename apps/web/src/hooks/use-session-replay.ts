@@ -1,49 +1,25 @@
 "use client";
 
 import { trpcQuery } from "@/lib/trpc-http";
+import {
+  type ReplayChunkResponse,
+  SESSION_MATCH_CONFIDENCE,
+  type SessionCorrelateResult,
+  type SessionMatchConfidence,
+  type SessionRecordResponse,
+  type SessionTimelineEvent,
+} from "@shared/types";
 import { useCallback, useEffect, useState } from "react";
-
-interface SessionRecord {
-  id: string;
-  sessionId: string;
-  userEmail: string | null;
-  userId: string | null;
-  userAgent: string | null;
-  startedAt: string;
-  lastEventAt: string;
-  eventCount: number;
-  hasReplayData: boolean;
-}
-
-interface SessionTimelineEvent {
-  id: string;
-  eventType: string;
-  timestamp: string;
-  url: string | null;
-  payload: Record<string, unknown>;
-}
-
-interface ReplayChunk {
-  sequenceNumber: number;
-  compressedData: Uint8Array;
-  startTimestamp: string;
-  endTimestamp: string;
-}
-
-interface CorrelateResult {
-  session: SessionRecord | null;
-  matchConfidence: "confirmed" | "fuzzy" | "none";
-}
 
 interface UseSessionReplayResult {
   isLoading: boolean;
   error: string | null;
-  session: SessionRecord | null;
-  matchConfidence: "confirmed" | "fuzzy" | "none";
+  session: SessionRecordResponse | null;
+  matchConfidence: SessionMatchConfidence;
   events: SessionTimelineEvent[];
   isLoadingEvents: boolean;
   failurePointId: string | null;
-  replayChunks: ReplayChunk[];
+  replayChunks: ReplayChunkResponse[];
   totalReplayChunks: number;
   isLoadingReplayChunks: boolean;
   replayLoadError: string | null;
@@ -62,12 +38,14 @@ export function useSessionReplay(
 ): UseSessionReplayResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [session, setSession] = useState<SessionRecord | null>(null);
-  const [matchConfidence, setMatchConfidence] = useState<"confirmed" | "fuzzy" | "none">("none");
+  const [session, setSession] = useState<SessionRecordResponse | null>(null);
+  const [matchConfidence, setMatchConfidence] = useState<SessionMatchConfidence>(
+    SESSION_MATCH_CONFIDENCE.none
+  );
   const [events, setEvents] = useState<SessionTimelineEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [failurePointId, setFailurePointId] = useState<string | null>(null);
-  const [replayChunks, setReplayChunks] = useState<ReplayChunk[]>([]);
+  const [replayChunks, setReplayChunks] = useState<ReplayChunkResponse[]>([]);
   const [totalReplayChunks, setTotalReplayChunks] = useState(0);
   const [isLoadingReplayChunks, setIsLoadingReplayChunks] = useState(false);
   const [replayLoadError, setReplayLoadError] = useState<string | null>(null);
@@ -87,7 +65,7 @@ export function useSessionReplay(
         const windowStart = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
         const result = await trpcQuery<
-          CorrelateResult,
+          SessionCorrelateResult,
           { windowStartAt: string; windowEndAt: string }
         >("sessionReplay.correlate", { windowStartAt: windowStart, windowEndAt: windowEnd });
 
@@ -98,7 +76,7 @@ export function useSessionReplay(
           setMatchConfidence(result.matchConfidence);
           await loadEvents(result.session.id);
         } else {
-          setMatchConfidence("none");
+          setMatchConfidence(SESSION_MATCH_CONFIDENCE.none);
         }
       } catch (err) {
         if (!cancelled) {
@@ -142,7 +120,7 @@ export function useSessionReplay(
     async function load() {
       try {
         const result = await trpcQuery<
-          { chunks: ReplayChunk[]; total: number },
+          { chunks: ReplayChunkResponse[]; total: number },
           { sessionRecordId: string }
         >("sessionReplay.getReplayChunks", { sessionRecordId: session!.id });
 

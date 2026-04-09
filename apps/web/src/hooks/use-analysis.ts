@@ -1,45 +1,8 @@
 "use client";
 
 import { trpcMutation, trpcQuery } from "@/lib/trpc-http";
+import type { SupportAnalysisWithRelations, TriggerAnalysisResult } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-interface AnalysisEvidence {
-  id: string;
-  sourceType: string;
-  filePath: string | null;
-  snippet: string | null;
-  citation: string | null;
-  createdAt: string;
-}
-
-interface AnalysisDraft {
-  id: string;
-  status: string;
-  draftBody: string;
-  editedBody: string | null;
-}
-
-interface AnalysisData {
-  id: string;
-  status: string;
-  problemStatement: string | null;
-  likelySubsystem: string | null;
-  severity: string | null;
-  category: string | null;
-  confidence: number | null;
-  missingInfo: string[] | null;
-  reasoningTrace: string | null;
-  toolCallCount: number | null;
-  llmLatencyMs: number | null;
-  evidence: AnalysisEvidence[];
-  drafts: AnalysisDraft[];
-}
-
-interface TriggerAnalysisResult {
-  analysisId: string | null;
-  workflowId: string;
-  alreadyInProgress: boolean;
-}
 
 const POLL_INTERVAL_MS = 2_000;
 
@@ -48,7 +11,7 @@ const POLL_INTERVAL_MS = 2_000;
  * fetch latest, trigger, approve/dismiss drafts, poll while analyzing.
  */
 export function useAnalysis(conversationId: string | null, workspaceId: string) {
-  const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
+  const [analysis, setAnalysis] = useState<SupportAnalysisWithRelations | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,10 +31,10 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
     }
 
     try {
-      const result = await trpcQuery<AnalysisData | null, { conversationId: string }>(
-        "supportAnalysis.getLatestAnalysis",
-        { conversationId }
-      );
+      const result = await trpcQuery<
+        SupportAnalysisWithRelations | null,
+        { conversationId: string }
+      >("supportAnalysis.getLatestAnalysis", { conversationId });
       setAnalysis(result);
       return result;
     } catch (err) {
@@ -106,7 +69,9 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
 
       if (result.alreadyInProgress && result.analysisId) {
         setAnalysis(
-          (prev) => prev ?? ({ id: result.analysisId!, status: "ANALYZING" } as AnalysisData)
+          (prev) =>
+            prev ??
+            ({ id: result.analysisId!, status: "ANALYZING" } as SupportAnalysisWithRelations)
         );
       }
 

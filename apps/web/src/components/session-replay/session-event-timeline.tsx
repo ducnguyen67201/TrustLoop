@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { sessionEventDescription, sessionEventTypeDisplay } from "@shared/types";
 import { useCallback, useRef } from "react";
 
 interface SessionTimelineEvent {
@@ -30,55 +31,6 @@ function formatTime(isoTimestamp: string): string {
     second: "2-digit",
     hour12: false,
   });
-}
-
-function eventTypeLabel(type: string): { label: string; className: string } {
-  switch (type) {
-    case "CLICK":
-      return { label: "CLICK", className: "text-muted-foreground" };
-    case "ROUTE":
-      return { label: "ROUTE", className: "text-blue-600" };
-    case "NETWORK_ERROR":
-      return { label: "NET ERR", className: "text-destructive" };
-    case "CONSOLE_ERROR":
-      return { label: "CONSOLE", className: "text-orange-600" };
-    case "EXCEPTION":
-      return { label: "ERROR", className: "text-destructive font-medium" };
-    default:
-      return { label: type, className: "text-muted-foreground" };
-  }
-}
-
-function eventDescription(event: SessionTimelineEvent): string {
-  const p = event.payload;
-  switch (event.eventType) {
-    case "CLICK": {
-      const text = typeof p.text === "string" ? p.text : "";
-      const tag = typeof p.tag === "string" ? p.tag : "element";
-      return text ? `Click "${text.slice(0, 40)}"` : `Click <${tag}>`;
-    }
-    case "ROUTE": {
-      const to = typeof p.to === "string" ? p.to : (event.url ?? "");
-      return to;
-    }
-    case "NETWORK_ERROR": {
-      const method = typeof p.method === "string" ? p.method : "GET";
-      const url = typeof p.url === "string" ? p.url : "";
-      const status = typeof p.status === "number" ? p.status : 0;
-      const path = url.replace(/^https?:\/\/[^/]+/, "");
-      return `${method} ${path.slice(0, 40)} → ${status}`;
-    }
-    case "CONSOLE_ERROR": {
-      const message = typeof p.message === "string" ? p.message : "";
-      return message.slice(0, 60);
-    }
-    case "EXCEPTION": {
-      const message = typeof p.message === "string" ? p.message : "";
-      return message.slice(0, 60);
-    }
-    default:
-      return event.eventType;
-  }
 }
 
 /**
@@ -130,8 +82,8 @@ export function SessionEventTimeline({
         {events.map((event) => {
           const isFailurePoint = event.id === failurePointId;
           const isSelected = event.id === selectedEventId;
-          const typeInfo = eventTypeLabel(event.eventType);
-          const description = eventDescription(event);
+          const typeInfo = sessionEventTypeDisplay(event.eventType);
+          const description = sessionEventDescription(event.eventType, event.payload, event.url);
 
           return (
             <button

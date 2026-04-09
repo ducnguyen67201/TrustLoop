@@ -71,6 +71,24 @@ export const sessionReplayChunkSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
+// ── Session Match Confidence ──────────────────────────────────────
+
+export const SESSION_MATCH_CONFIDENCE = {
+  confirmed: "confirmed",
+  fuzzy: "fuzzy",
+  none: "none",
+} as const;
+
+export const sessionMatchConfidenceValues = [
+  SESSION_MATCH_CONFIDENCE.confirmed,
+  SESSION_MATCH_CONFIDENCE.fuzzy,
+  SESSION_MATCH_CONFIDENCE.none,
+] as const;
+
+export const sessionMatchConfidenceSchema = z.enum(sessionMatchConfidenceValues);
+
+export type SessionMatchConfidence = z.infer<typeof sessionMatchConfidenceSchema>;
+
 // ── Inferred Types ─────────────────────────────────────────────────
 
 export type SessionRecordStatus = z.infer<typeof sessionRecordStatusSchema>;

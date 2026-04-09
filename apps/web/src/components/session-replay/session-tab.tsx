@@ -4,44 +4,23 @@ import { SessionContextBar } from "@/components/session-replay/session-context-b
 import { SessionEventTimeline } from "@/components/session-replay/session-event-timeline";
 import { SessionReplayModal } from "@/components/session-replay/session-replay-modal";
 import { Button } from "@/components/ui/button";
+import type {
+  ReplayChunkResponse,
+  SessionMatchConfidence,
+  SessionRecordResponse,
+  SessionTimelineEvent,
+} from "@shared/types";
 import { useState } from "react";
-
-interface SessionRecord {
-  id: string;
-  sessionId: string;
-  userEmail: string | null;
-  userId: string | null;
-  userAgent: string | null;
-  startedAt: string;
-  lastEventAt: string;
-  eventCount: number;
-  hasReplayData: boolean;
-}
-
-interface SessionTimelineEvent {
-  id: string;
-  eventType: string;
-  timestamp: string;
-  url: string | null;
-  payload: Record<string, unknown>;
-}
-
-interface ReplayChunk {
-  sequenceNumber: number;
-  compressedData: Uint8Array;
-  startTimestamp: string;
-  endTimestamp: string;
-}
 
 interface SessionTabProps {
   isLoading: boolean;
   error: string | null;
-  session: SessionRecord | null;
-  matchConfidence: "confirmed" | "fuzzy" | "none";
+  session: SessionRecordResponse | null;
+  matchConfidence: SessionMatchConfidence;
   events: SessionTimelineEvent[];
   isLoadingEvents: boolean;
   failurePointId: string | null;
-  replayChunks: ReplayChunk[];
+  replayChunks: ReplayChunkResponse[];
   totalReplayChunks: number;
   isLoadingReplayChunks: boolean;
   replayLoadError: string | null;

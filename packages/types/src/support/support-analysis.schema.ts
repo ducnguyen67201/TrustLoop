@@ -251,6 +251,46 @@ export type DraftResult = z.infer<typeof draftResultSchema>;
 export type AgentOutput = z.infer<typeof agentOutputSchema>;
 export type SupportAnalysis = z.infer<typeof supportAnalysisSchema>;
 export type SupportDraft = z.infer<typeof supportDraftSchema>;
+
+// ── Evidence Schema ───────────────────────────────────────────────
+
+export const analysisEvidenceSchema = z.object({
+  id: z.string().min(1),
+  sourceType: z.string(),
+  filePath: z.string().nullable(),
+  snippet: z.string().nullable(),
+  citation: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+export type AnalysisEvidence = z.infer<typeof analysisEvidenceSchema>;
+
+// ── Analysis With Relations (API response shape) ─────────────────
+
+export const supportAnalysisWithRelationsSchema = supportAnalysisSchema.extend({
+  missingInfo: z.array(z.string()).nullable(),
+  evidence: z.array(analysisEvidenceSchema),
+  drafts: z.array(
+    supportDraftSchema.pick({
+      id: true,
+      status: true,
+      draftBody: true,
+      editedBody: true,
+    })
+  ),
+});
+
+export type SupportAnalysisWithRelations = z.infer<typeof supportAnalysisWithRelationsSchema>;
+
+// ── Trigger Analysis Result ──────────────────────────────────────
+
+export const triggerAnalysisResultSchema = z.object({
+  analysisId: z.string().nullable(),
+  workflowId: z.string(),
+  alreadyInProgress: z.boolean(),
+});
+
+export type TriggerAnalysisResult = z.infer<typeof triggerAnalysisResultSchema>;
 export type AnalyzeRequest = z.infer<typeof analyzeRequestSchema>;
 export type AnalyzeResponse = z.infer<typeof analyzeResponseSchema>;
 export type ToolCallRecord = z.infer<typeof toolCallRecordSchema>;

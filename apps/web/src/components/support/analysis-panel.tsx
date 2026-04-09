@@ -8,38 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useAnalysisStream } from "@/hooks/use-analysis-stream";
+import type { SupportAnalysisWithRelations } from "@shared/types";
 import { useState } from "react";
 
-interface AnalysisData {
-  id: string;
-  status: string;
-  problemStatement: string | null;
-  likelySubsystem: string | null;
-  severity: string | null;
-  category: string | null;
-  confidence: number | null;
-  missingInfo: string[] | null;
-  reasoningTrace: string | null;
-  toolCallCount: number | null;
-  llmLatencyMs: number | null;
-  evidence: Array<{
-    id: string;
-    sourceType: string;
-    filePath: string | null;
-    snippet: string | null;
-    citation: string | null;
-    createdAt: string;
-  }>;
-  drafts: Array<{
-    id: string;
-    status: string;
-    draftBody: string;
-    editedBody: string | null;
-  }>;
-}
-
 interface AnalysisPanelProps {
-  analysis: AnalysisData | null;
+  analysis: SupportAnalysisWithRelations | null;
   conversationId: string;
   workspaceId: string;
   isAnalyzing: boolean;

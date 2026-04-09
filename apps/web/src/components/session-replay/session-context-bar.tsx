@@ -2,15 +2,14 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-
-type MatchConfidence = "confirmed" | "fuzzy" | "none";
+import { SESSION_MATCH_CONFIDENCE, type SessionMatchConfidence } from "@shared/types";
 
 interface SessionContextBarProps {
   isLoading: boolean;
   userEmail: string | null;
   duration: string | null;
   userAgent: string | null;
-  matchConfidence: MatchConfidence;
+  matchConfidence: SessionMatchConfidence;
   error: string | null;
 }
 
@@ -22,21 +21,21 @@ function browserLabel(userAgent: string): string {
   return "Browser";
 }
 
-function confidenceBadge(confidence: MatchConfidence) {
+function confidenceBadge(confidence: SessionMatchConfidence) {
   switch (confidence) {
-    case "confirmed":
+    case SESSION_MATCH_CONFIDENCE.confirmed:
       return (
         <Badge variant="outline" className="border-green-600 text-green-700">
           Session matched
         </Badge>
       );
-    case "fuzzy":
+    case SESSION_MATCH_CONFIDENCE.fuzzy:
       return (
         <Badge variant="outline" className="border-yellow-600 text-yellow-700">
           Possible match
         </Badge>
       );
-    case "none":
+    case SESSION_MATCH_CONFIDENCE.none:
       return null;
   }
 }
@@ -71,7 +70,7 @@ export function SessionContextBar({
     );
   }
 
-  if (matchConfidence === "none") {
+  if (matchConfidence === SESSION_MATCH_CONFIDENCE.none) {
     return (
       <div className="border p-3">
         <p className="text-muted-foreground text-sm">
