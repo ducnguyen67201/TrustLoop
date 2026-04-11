@@ -34,16 +34,19 @@ const WORKSPACE_NAME = "Default Workspace";
 async function main() {
   console.log("Seeding database...\n");
 
-  // 1. User
+  // 1. User (manual upsert — Prisma upsert fails with partial unique indexes)
   const passwordHash = await hash(SEED_USER_PASSWORD, PASSWORD_HASH_OPTIONS);
-  const user = await prisma.user.upsert({
-    where: { email: SEED_USER_EMAIL },
-    update: {},
-    create: {
-      email: SEED_USER_EMAIL,
-      passwordHash,
-    },
+  const existingUser = await prisma.user.findFirst({
+    where: { email: SEED_USER_EMAIL, deletedAt: null },
   });
+  const user = existingUser
+    ? await prisma.user.update({
+        where: { id: existingUser.id },
+        data: { passwordHash },
+      })
+    : await prisma.user.create({
+        data: { email: SEED_USER_EMAIL, passwordHash },
+      });
   console.log(`User: ${user.email} (${user.id})`);
 
   // 2. Workspace
@@ -57,15 +60,19 @@ async function main() {
   });
   console.log(`Workspace: ${workspace.name} (${workspace.id})`);
 
-  // 3. Membership (OWNER)
-  // Uses partial unique index — create directly (safe after reset).
-  await prisma.workspaceMembership.create({
-    data: {
-      workspaceId: workspace.id,
-      userId: user.id,
-      role: "OWNER",
-    },
+  // 3. Membership (OWNER) — manual upsert for partial unique index
+  const existingMembership = await prisma.workspaceMembership.findFirst({
+    where: { workspaceId: workspace.id, userId: user.id, deletedAt: null },
   });
+  if (!existingMembership) {
+    await prisma.workspaceMembership.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: user.id,
+        role: "OWNER",
+      },
+    });
+  }
   console.log(`Membership: ${user.email} → OWNER of ${workspace.name}`);
 
   // 4. GitHub Installation
@@ -103,25 +110,117 @@ async function main() {
   });
   console.log(`Repository: ${repo.fullName} (selected: true)`);
 
-  // 6. Slack Support Installation (stub for local dev)
-  // Uses partial unique index — create directly (safe after reset).
-  const slackInstallation = await prisma.supportInstallation.create({
-    data: {
-      workspaceId: workspace.id,
-      provider: "SLACK",
-      providerInstallationId: "local-dev-slack",
-      teamId: "T0AQB0129QD",
-      botUserId: "U0BOTLOCAL",
-      metadata: {
-        groupingWindowMinutes: 5,
-        maxGroupingWindowMinutes: 60,
+  // 5b. Repository Index Version (stub so analysis passes the "indexed repo" check)
+  const existingIndex = await prisma.repositoryIndexVersion.findFirst({
+    where: { workspaceId: workspace.id, repositoryId: repo.id, status: "active" },
+  });
+  if (!existingIndex) {
+    await prisma.repositoryIndexVersion.create({
+      data: {
+        workspaceId: workspace.id,
+        repositoryId: repo.id,
+        status: "active",
+        active: true,
+        commitSha: "seed-placeholder",
+        completedAt: new Date(),
+        activatedAt: new Date(),
+        fileCount: 1,
+        chunkCount: 1,
       },
+    });
+  }
+  console.log("Index Version: active (stub for analysis)");
+
+  // 6. Slack Support Installation (stub for local dev)
+  const existingSlack = await prisma.supportInstallation.findFirst({
+    where: { workspaceId: workspace.id, provider: "SLACK", deletedAt: null },
+  });
+  const slackInstallation = existingSlack
+    ?? await prisma.supportInstallation.create({
+        data: {
+          workspaceId: workspace.id,
+          provider: "SLACK",
+          providerInstallationId: "local-dev-slack",
+          teamId: "T0AQB0129QD",
+          botUserId: "U0BOTLOCAL",
+          metadata: {
+            groupingWindowMinutes: 5,
+            maxGroupingWindowMinutes: 60,
+          },
+        },
+      });
+  console.log(`Slack Installation: ${slackInstallation.teamId} (${slackInstallation.id})`);
+
+  // 7. Workspace AI Settings (default tone)
+  await prisma.workspaceAiSettings.upsert({
+    where: { workspaceId: workspace.id },
+    update: {},
+    create: {
+      workspaceId: workspace.id,
+      defaultTone: "professional",
+      maxDraftLength: 500,
+      includeCodeRefs: true,
     },
   });
-  console.log(`Slack Installation: ${slackInstallation.teamId} (${slackInstallation.id})`);
+  console.log("AI Settings: professional tone, 500 char max");
+
+  // 8. Sample support conversation (for testing analysis)
+  const existingConvo = await prisma.supportConversation.findFirst({
+    where: { workspaceId: workspace.id, channelId: "C0TEST001", threadTs: "1712345678.000100" },
+  });
+  const conversation = existingConvo
+    ?? await prisma.supportConversation.create({
+        data: {
+          workspaceId: workspace.id,
+          installationId: slackInstallation.id,
+          canonicalConversationKey: "T0AQB0129QD:C0TEST001:1712345678.000100",
+          teamId: "T0AQB0129QD",
+          channelId: "C0TEST001",
+          threadTs: "1712345678.000100",
+          status: "UNREAD",
+          lastCustomerMessageAt: new Date(),
+        },
+      });
+  console.log(`Conversation: ${conversation.id} (${existingConvo ? "existing" : "UNREAD"})`);
+
+  // 9. Sample conversation events (only seed if conversation is new)
+  if (!existingConvo) {
+    await prisma.supportConversationEvent.createMany({
+    data: [
+      {
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        eventType: "MESSAGE_RECEIVED",
+        eventSource: "CUSTOMER",
+        summary:
+          "Getting a 500 error when I try to connect my GitHub repo. The page just shows 'Internal Server Error' after I authorize.",
+        detailsJson: {
+          slackUserId: "U0CUSTOMER1",
+          slackUsername: "alice.dev",
+          customerEmail: "alice@example.com",
+        },
+      },
+      {
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        eventType: "MESSAGE_RECEIVED",
+        eventSource: "CUSTOMER",
+        summary:
+          "I tried with a different browser and got the same error. The URL shows /api/github/callback with a code parameter but then redirects to an error page.",
+        detailsJson: {
+          slackUserId: "U0CUSTOMER1",
+          slackUsername: "alice.dev",
+          customerEmail: "alice@example.com",
+        },
+      },
+    ],
+  });
+  console.log("Conversation events: 2 customer messages seeded");
+  }
 
   console.log("\nSeed complete.");
   console.log(`\nLogin: ${SEED_USER_EMAIL} / ${SEED_USER_PASSWORD}`);
+  console.log(`Conversation ID: ${conversation.id} (ready for analysis)`);
 }
 
 main()

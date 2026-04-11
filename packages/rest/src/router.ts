@@ -8,6 +8,7 @@ import {
 } from "@shared/rest/temporal-dispatcher";
 import { publicProcedure, router } from "@shared/rest/trpc";
 import { dispatchWorkflow } from "@shared/rest/workflow-router";
+import { workspaceAiSettingsRouter } from "@shared/rest/workspace-ai-settings-router";
 import { workspaceApiKeyRouter } from "@shared/rest/workspace-api-key-router";
 import { workspaceRouter } from "@shared/rest/workspace-router";
 import { healthResponseSchema, workflowDispatchSchema } from "@shared/types";
@@ -19,6 +20,7 @@ export function createAppRouter(dispatcher: WorkflowDispatcher = temporalWorkflo
     supportInbox: supportInboxRouter,
     supportInstallation: supportInstallationRouter,
     workspace: workspaceRouter,
+    workspaceAiSettings: workspaceAiSettingsRouter,
     workspaceApiKey: workspaceApiKeyRouter,
     health: publicProcedure.query(() =>
       healthResponseSchema.parse({

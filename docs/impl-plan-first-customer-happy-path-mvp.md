@@ -98,13 +98,18 @@ Definition of done:
 
 ## D. AI Analysis + Draft Generation (P0)
 
-- [ ] Thread analysis prompt pipeline (severity, category, component, summary).
-- [ ] Sentry context fetch and attach to analysis input.
-- [ ] Code search findings attached to analysis input.
-- [ ] Draft reply generator with workspace-level prompt/tone controls.
-- [ ] Human approval mode (required for MVP).
-- [ ] Draft status lifecycle (`GENERATED`, `APPROVED`, `SENT`, `DISMISSED`, `FAILED`).
-- [ ] Failure fallback path (escalate to manual handling).
+- Focused execution spec: `docs/spec-ai-analysis-draft-generation.md`
+
+- [x] Thread analysis prompt pipeline (severity, category, component, summary).
+- [x] Sentry context fetch and attach to analysis input.
+- [x] Code search findings attached to analysis input.
+- [x] Draft reply generator with workspace-level prompt/tone controls.
+- [x] Human approval mode (required for MVP).
+- [x] Draft status lifecycle (`GENERATING`, `AWAITING_APPROVAL`, `APPROVED`, `SENT`, `DISMISSED`, `FAILED`).
+- [x] Failure fallback path (escalate to manual handling).
+- [x] State machine for analysis + draft status transitions.
+- [x] PR tool (agent creates draft GitHub PRs for clear fixes).
+- [x] Seed script with test conversation data.
 
 Definition of done:
 - Drafts are consistently useful enough that agents keep rather than rewrite at least ~40-60% during pilot.

@@ -29,6 +29,7 @@ model Workspace {
   groupingAnchors          SupportGroupingAnchor[]
   supportAnalyses          SupportAnalysis[]
   supportDrafts            SupportDraft[]
+  aiSettings               WorkspaceAiSettings?
   analysisTriggerMode      AnalysisTriggerMode        @default(AUTO)
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt

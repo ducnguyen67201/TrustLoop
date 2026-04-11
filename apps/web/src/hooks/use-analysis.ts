@@ -17,6 +17,8 @@ interface AnalysisDraft {
   status: string;
   draftBody: string;
   editedBody: string | null;
+  prUrl: string | null;
+  prNumber: number | null;
 }
 
 interface AnalysisData {
@@ -31,6 +33,7 @@ interface AnalysisData {
   reasoningTrace: string | null;
   toolCallCount: number | null;
   llmLatencyMs: number | null;
+  sentryContext: unknown | null;
   evidence: AnalysisEvidence[];
   drafts: AnalysisDraft[];
 }

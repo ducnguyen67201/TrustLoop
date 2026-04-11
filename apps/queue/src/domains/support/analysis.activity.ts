@@ -1,11 +1,17 @@
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
 import {
+  fetchSentryContext,
+  isSentryConfigured,
+} from "@shared/rest/services/sentry/sentry-service";
+import {
   ANALYSIS_RESULT_STATUS,
   ANALYSIS_STATUS,
   ANALYSIS_TRIGGER_TYPE,
   type AnalysisTriggerType,
   DRAFT_STATUS,
+  MAX_ANALYSIS_RETRIES,
+  type SentryContext,
   type SupportAnalysisWorkflowResult,
   analyzeResponseSchema,
 } from "@shared/types";
@@ -20,6 +26,17 @@ interface ThreadSnapshotInput {
 interface ThreadSnapshotResult {
   analysisId: string;
   threadSnapshot: string;
+  customerEmail: string | null;
+}
+
+interface FetchSentryContextInput {
+  customerEmail: string | null;
+  workspaceId: string;
+  analysisId: string;
+}
+
+interface FetchSentryContextResult {
+  sentryContext: SentryContext | null;
 }
 
 interface AnalysisAgentInput {
@@ -27,6 +44,13 @@ interface AnalysisAgentInput {
   conversationId: string;
   analysisId: string;
   threadSnapshot: string;
+}
+
+interface EscalateInput {
+  workspaceId: string;
+  conversationId: string;
+  analysisId: string;
+  errorMessage: string;
 }
 
 // Uses analyzeResponseSchema from @shared/types — same contract as apps/agents
@@ -53,11 +77,17 @@ export async function buildThreadSnapshot(
     },
   });
 
+  // Resolve customer email from event metadata
+  const customerEmail = resolveCustomerEmail(conversation.events);
+
   const snapshot = {
     conversationId: conversation.id,
     channelId: conversation.channelId,
     threadTs: conversation.threadTs,
     status: conversation.status,
+    customer: {
+      email: customerEmail,
+    },
     events: conversation.events.map((e) => ({
       type: e.eventType,
       source: e.eventSource,
@@ -71,15 +101,17 @@ export async function buildThreadSnapshot(
     data: {
       workspaceId: input.workspaceId,
       conversationId: input.conversationId,
-      status: ANALYSIS_STATUS.analyzing,
+      status: ANALYSIS_STATUS.gatheringContext,
       triggerType: input.triggerType ?? ANALYSIS_TRIGGER_TYPE.manual,
       threadSnapshot: snapshot,
+      customerEmail,
     },
   });
 
   return {
     analysisId: analysis.id,
     threadSnapshot: JSON.stringify(snapshot, null, 2),
+    customerEmail,
   };
 }
 
@@ -96,6 +128,11 @@ export async function runAnalysisAgent(
   try {
     heartbeat();
 
+    // Fetch workspace tone config for draft generation
+    const aiSettings = await prisma.workspaceAiSettings.findUnique({
+      where: { workspaceId: input.workspaceId },
+    });
+
     const agentUrl = env.AGENT_SERVICE_URL ?? "http://localhost:3100";
     const response = await fetch(`${agentUrl}/analyze`, {
       method: "POST",
@@ -104,6 +141,17 @@ export async function runAnalysisAgent(
         workspaceId: input.workspaceId,
         conversationId: input.conversationId,
         threadSnapshot: input.threadSnapshot,
+        config: aiSettings
+          ? {
+              toneConfig: {
+                defaultTone: aiSettings.defaultTone,
+                responseStyle: aiSettings.responseStyle,
+                signatureLine: aiSettings.signatureLine,
+                maxDraftLength: aiSettings.maxDraftLength,
+                includeCodeRefs: aiSettings.includeCodeRefs,
+              },
+            }
+          : undefined,
       }),
       signal: AbortSignal.timeout(4 * 60 * 1000), // 4 min (activity timeout is 5 min)
     });
@@ -186,13 +234,23 @@ export async function runAnalysisAgent(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    await prisma.supportAnalysis.update({
+    const analysis = await prisma.supportAnalysis.update({
       where: { id: input.analysisId },
       data: {
         status: ANALYSIS_STATUS.failed,
         errorMessage,
       },
     });
+
+    // Escalate if max retries exceeded
+    if (analysis.retryCount >= MAX_ANALYSIS_RETRIES) {
+      await escalateToManualHandling({
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        analysisId: input.analysisId,
+        errorMessage,
+      });
+    }
 
     return {
       analysisId: input.analysisId,
@@ -202,4 +260,79 @@ export async function runAnalysisAgent(
       toolCallCount: 0,
     };
   }
+}
+
+/**
+ * Fetch Sentry context for the customer email. Non-fatal — returns null if
+ * Sentry is not configured or the API is unreachable.
+ */
+export async function fetchSentryContextActivity(
+  input: FetchSentryContextInput,
+): Promise<FetchSentryContextResult> {
+  if (!input.customerEmail || !isSentryConfigured()) {
+    return { sentryContext: null };
+  }
+
+  const sentryContext = await fetchSentryContext(input.customerEmail);
+
+  if (sentryContext) {
+    await prisma.supportAnalysis.update({
+      where: { id: input.analysisId },
+      data: { sentryContext: JSON.parse(JSON.stringify(sentryContext)) },
+    });
+  }
+
+  return { sentryContext };
+}
+
+/**
+ * Transition the analysis record from GATHERING_CONTEXT to ANALYZING.
+ */
+export async function markAnalyzing(analysisId: string): Promise<void> {
+  await prisma.supportAnalysis.update({
+    where: { id: analysisId },
+    data: { status: ANALYSIS_STATUS.analyzing },
+  });
+}
+
+/**
+ * Escalate a failed analysis to manual handling after max retries.
+ * Moves conversation to IN_PROGRESS and emits an escalation event.
+ */
+export async function escalateToManualHandling(
+  input: EscalateInput,
+): Promise<void> {
+  await prisma.supportConversation.update({
+    where: { id: input.conversationId },
+    data: { status: "IN_PROGRESS" },
+  });
+
+  await prisma.supportConversationEvent.create({
+    data: {
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+      eventType: "ANALYSIS_ESCALATED",
+      eventSource: "SYSTEM",
+      summary: `AI analysis failed after ${MAX_ANALYSIS_RETRIES} attempts. Manual handling required.`,
+      detailsJson: {
+        analysisId: input.analysisId,
+        errorMessage: input.errorMessage,
+        retryCount: MAX_ANALYSIS_RETRIES,
+      },
+    },
+  });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+type EventRow = { detailsJson: unknown };
+
+function resolveCustomerEmail(events: EventRow[]): string | null {
+  for (const event of events) {
+    const details = event.detailsJson as Record<string, unknown> | null;
+    if (details && typeof details.customerEmail === "string") {
+      return details.customerEmail;
+    }
+  }
+  return null;
 }

@@ -50,7 +50,7 @@ export async function triggerSupportAnalysis(
   const existingAnalysis = await prisma.supportAnalysis.findFirst({
     where: {
       conversationId: input.conversationId,
-      status: ANALYSIS_STATUS.analyzing,
+      status: { in: [ANALYSIS_STATUS.gatheringContext, ANALYSIS_STATUS.analyzing] },
     },
   });
   if (existingAnalysis) {

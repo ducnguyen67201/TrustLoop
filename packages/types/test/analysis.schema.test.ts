@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 describe("analysis const enums", () => {
   it("ANALYSIS_STATUS has all expected values", () => {
+    expect(ANALYSIS_STATUS.gatheringContext).toBe("GATHERING_CONTEXT");
     expect(ANALYSIS_STATUS.analyzing).toBe("ANALYZING");
     expect(ANALYSIS_STATUS.analyzed).toBe("ANALYZED");
     expect(ANALYSIS_STATUS.needsContext).toBe("NEEDS_CONTEXT");
@@ -34,9 +35,13 @@ describe("analysis const enums", () => {
     expect(ANALYSIS_CATEGORY.unknown).toBe("UNKNOWN");
   });
 
-  it("DRAFT_STATUS has no GENERATED state", () => {
-    expect(Object.values(DRAFT_STATUS)).not.toContain("GENERATED");
+  it("DRAFT_STATUS has GENERATING and all lifecycle states", () => {
+    expect(DRAFT_STATUS.generating).toBe("GENERATING");
     expect(DRAFT_STATUS.awaitingApproval).toBe("AWAITING_APPROVAL");
+    expect(DRAFT_STATUS.approved).toBe("APPROVED");
+    expect(DRAFT_STATUS.sent).toBe("SENT");
+    expect(DRAFT_STATUS.dismissed).toBe("DISMISSED");
+    expect(DRAFT_STATUS.failed).toBe("FAILED");
   });
 
   it("EVIDENCE_SOURCE_TYPE starts with CODE_CHUNK only", () => {
@@ -65,8 +70,8 @@ describe("analysis Zod schemas", () => {
     expect(draftStatusSchema.parse("SENT")).toBe("SENT");
   });
 
-  it("draftStatusSchema rejects GENERATED", () => {
-    expect(() => draftStatusSchema.parse("GENERATED")).toThrow();
+  it("draftStatusSchema accepts GENERATING", () => {
+    expect(draftStatusSchema.parse("GENERATING")).toBe("GENERATING");
   });
 });
 

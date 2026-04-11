@@ -28,6 +28,7 @@ enum SupportConversationEventType {
   ANALYSIS_COMPLETED
   DRAFT_APPROVED
   DRAFT_DISMISSED
+  ANALYSIS_ESCALATED
 }
 
 enum SupportConversationEventSource {

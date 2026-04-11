@@ -105,7 +105,7 @@ export function verifyAndDecodeGithubState(state: string): { workspaceId: string
 /**
  * Create an authenticated Octokit instance for a GitHub App installation.
  */
-function createInstallationOctokit(installationId: number): Octokit {
+export function createInstallationOctokit(installationId: number): Octokit {
   const appId = env.GITHUB_APP_ID;
   const privateKey = env.GITHUB_APP_PRIVATE_KEY;
 

@@ -6,6 +6,7 @@ enum AnalysisTriggerMode {
 }
 
 enum SupportAnalysisStatus {
+  GATHERING_CONTEXT
   ANALYZING
   ANALYZED
   NEEDS_CONTEXT
@@ -33,6 +34,7 @@ enum SupportAnalysisTriggerType {
 }
 
 enum SupportDraftStatus {
+  GENERATING
   AWAITING_APPROVAL
   APPROVED
   SENT
@@ -48,9 +50,12 @@ model SupportAnalysis {
   id                String                      @id @default(cuid())
   workspaceId       String
   conversationId    String
-  status            SupportAnalysisStatus       @default(ANALYZING)
+  status            SupportAnalysisStatus       @default(GATHERING_CONTEXT)
   triggerType        SupportAnalysisTriggerType  @default(MANUAL)
   threadSnapshot    Json?
+  sentryContext     Json?
+  customerEmail    String?
+  retryCount        Int                          @default(0)
   problemStatement  String?                     @db.Text
   likelySubsystem   String?
   severity          SupportAnalysisSeverity?
@@ -95,7 +100,7 @@ model SupportDraft {
   analysisId     String
   conversationId String
   workspaceId    String
-  status         SupportDraftStatus  @default(AWAITING_APPROVAL)
+  status         SupportDraftStatus  @default(GENERATING)
   draftBody      String              @db.Text
   editedBody     String?             @db.Text
   internalNotes  String?             @db.Text
@@ -106,6 +111,8 @@ model SupportDraft {
   approvedBy     String?
   approvedAt     DateTime?
   sentAt         DateTime?
+  prUrl          String?
+  prNumber       Int?
   errorMessage   String?             @db.Text
   deletedAt      DateTime?
   analysis       SupportAnalysis     @relation(fields: [analysisId], references: [id], onDelete: Restrict)
@@ -117,4 +124,17 @@ model SupportDraft {
   @@index([analysisId])
   @@index([conversationId, createdAt])
   @@index([workspaceId, status])
+}
+
+model WorkspaceAiSettings {
+  id              String    @id @default(cuid())
+  workspaceId     String    @unique
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  defaultTone     String    @default("professional")
+  responseStyle   String?   @db.Text
+  signatureLine   String?
+  maxDraftLength  Int       @default(500)
+  includeCodeRefs Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }

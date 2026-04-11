@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { toneConfigSchema } from "./tone-config.schema";
 
 export const ANALYSIS_STATUS = {
+  gatheringContext: "GATHERING_CONTEXT",
   analyzing: "ANALYZING",
   analyzed: "ANALYZED",
   needsContext: "NEEDS_CONTEXT",
@@ -8,6 +10,7 @@ export const ANALYSIS_STATUS = {
 } as const;
 
 export const analysisStatusValues = [
+  ANALYSIS_STATUS.gatheringContext,
   ANALYSIS_STATUS.analyzing,
   ANALYSIS_STATUS.analyzed,
   ANALYSIS_STATUS.needsContext,
@@ -63,6 +66,7 @@ export const analysisTriggerTypeValues = [
 export const analysisTriggerTypeSchema = z.enum(analysisTriggerTypeValues);
 
 export const DRAFT_STATUS = {
+  generating: "GENERATING",
   awaitingApproval: "AWAITING_APPROVAL",
   approved: "APPROVED",
   sent: "SENT",
@@ -71,12 +75,15 @@ export const DRAFT_STATUS = {
 } as const;
 
 export const draftStatusValues = [
+  DRAFT_STATUS.generating,
   DRAFT_STATUS.awaitingApproval,
   DRAFT_STATUS.approved,
   DRAFT_STATUS.sent,
   DRAFT_STATUS.dismissed,
   DRAFT_STATUS.failed,
 ] as const;
+
+export const MAX_ANALYSIS_RETRIES = 3;
 
 export const draftStatusSchema = z.enum(draftStatusValues);
 
@@ -164,6 +171,7 @@ export const analyzeRequestSchema = z.object({
       maxSteps: z.number().int().positive().optional(),
       provider: z.string().optional(),
       model: z.string().optional(),
+      toneConfig: toneConfigSchema.optional(),
     })
     .optional(),
 });

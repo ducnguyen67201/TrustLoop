@@ -5,14 +5,17 @@ import {
   type AgentProviderConfig,
   type AnalyzeRequest,
   type AnalyzeResponse,
+  type ToneConfig,
   agentProviderConfigSchema,
   compressedAnalysisOutputSchema,
   reconstructAnalysisOutput,
 } from "@shared/types";
 
-import { SUPPORT_AGENT_SYSTEM_PROMPT } from "./prompts/support-analysis";
+import { buildSupportAgentSystemPrompt } from "./prompts/support-analysis";
 import { resolveModel } from "./providers";
+import { createPullRequestTool } from "./tools/create-pr";
 import { searchCodeTool } from "./tools/search-code";
+import { searchSentryTool } from "./tools/search-sentry";
 
 const DEFAULT_MAX_STEPS = 8;
 
@@ -29,13 +32,17 @@ const DEFAULT_MAX_STEPS = 8;
 //           → Agent Service (factory creates agent with chosen LLM)
 //               → Same tools, same prompt, different brain
 
-function createSupportAgent(providerConfig: AgentProviderConfig) {
+function createSupportAgent(providerConfig: AgentProviderConfig, toneConfig?: ToneConfig) {
   return new Agent({
     id: "trustloop-support-agent",
     name: "TrustLoop Support Agent",
-    instructions: SUPPORT_AGENT_SYSTEM_PROMPT,
+    instructions: buildSupportAgentSystemPrompt(toneConfig),
     model: resolveModel(providerConfig),
-    tools: { searchCode: searchCodeTool },
+    tools: {
+      searchCode: searchCodeTool,
+      searchSentry: searchSentryTool,
+      createPullRequest: createPullRequestTool,
+    },
   });
 }
 
@@ -63,9 +70,11 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     maxSteps,
   });
 
-  const agent = createSupportAgent(providerConfig);
+  const agent = createSupportAgent(providerConfig, request.config?.toneConfig);
 
-  const result = await agent.generate(request.threadSnapshot, {
+  const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${request.threadSnapshot}`;
+
+  const result = await agent.generate(userMessage, {
     maxSteps,
     toolChoice: "auto",
   });
@@ -105,7 +114,7 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
   const toolCalls = rawToolResults.map((tc) => ({
     tool: tc.toolName ?? tc.name ?? "unknown",
     input: (tc.args ?? tc.input ?? {}) as Record<string, unknown>,
-    output: typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result ?? tc.output),
+    output: typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result ?? tc.output ?? ""),
     durationMs: 0,
   }));
 
