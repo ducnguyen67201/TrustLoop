@@ -3,23 +3,35 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { RequestAccessForm } from "@/components/workspace/request-access-form";
 
 /**
- * Dedicated state for authenticated users who have no workspace memberships.
+ * Landing page for authenticated users with no workspace membership.
+ *
+ * The Google sign-in callback lands brand-new users here when their
+ * email domain doesn't match an existing workspace (the TrustLoop team
+ * provisions workspaces manually during customer onboarding for now).
+ * Copy is intentionally warm — every prospect's first impression after
+ * clicking "Continue with Google" happens on this page, so the message
+ * needs to funnel them into a sales conversation rather than reading
+ * as a permission error.
  */
 export function NoWorkspaceState() {
   return (
     <Card className="mx-auto w-full max-w-2xl">
       <CardHeader>
-        <CardTitle>No workspace access yet</CardTitle>
+        <CardTitle>Your team hasn't set up TrustLoop yet</CardTitle>
         <CardDescription>
-          Your account is authenticated, but it is not currently linked to any workspace.
+          Signing in worked, but your company doesn't have a TrustLoop workspace yet. Drop us a
+          line and we'll get your team set up.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert>
-          <AlertTitle>Need access?</AlertTitle>
+          <AlertTitle>Get in touch</AlertTitle>
           <AlertDescription>
-            Contact us with the workspace you need and we will route your request to the correct
-            owner.
+            Email{" "}
+            <a className="font-medium underline" href="mailto:hello@trustloop.com">
+              hello@trustloop.com
+            </a>{" "}
+            and we'll get your team onboarded. Or leave a message below and we'll reach out.
           </AlertDescription>
         </Alert>
 
