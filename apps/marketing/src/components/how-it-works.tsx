@@ -6,7 +6,7 @@ const STEPS = [
   { num: 1, text: "Connect Slack and GitHub in two clicks." },
   {
     num: 2,
-    text: "TrustLoop indexes your repos and groups incoming support threads automatically.",
+    text: "TrustLoop AI indexes your repos and groups incoming support threads automatically.",
   },
   {
     num: 3,

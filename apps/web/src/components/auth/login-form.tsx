@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { workspaceRootPath } from "@/lib/workspace-paths";
+import { Logo } from "@shared/brand";
 import { AUTH_MODE, type AuthMode } from "@shared/types";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -68,9 +69,12 @@ export function LoginForm({ googleBanner, googleEnabled }: LoginFormProps) {
 
   return (
     <Card className="w-full max-w-md">
-      <CardHeader>
+      <CardHeader className="items-center text-center">
+        <Logo title="TrustLoop AI" className="mb-3 size-12" />
         <CardTitle>
-          {mode === AUTH_MODE.SIGN_IN ? "Sign in to TrustLoop" : "Create your TrustLoop account"}
+          {mode === AUTH_MODE.SIGN_IN
+            ? "Sign in to TrustLoop AI"
+            : "Create your TrustLoop AI account"}
         </CardTitle>
         <CardDescription>
           {googleEnabled

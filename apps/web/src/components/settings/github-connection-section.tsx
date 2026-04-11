@@ -98,7 +98,7 @@ export function GitHubConnectionSection({
           <div className="space-y-1 text-center">
             <p className="text-sm font-medium">Connect your GitHub account</p>
             <p className="max-w-sm text-sm text-muted-foreground">
-              Choose which repositories TrustLoop can read to index code and prepare fixes.
+              Choose which repositories TrustLoop AI can read to index code and prepare fixes.
             </p>
           </div>
           {popupOpen && (

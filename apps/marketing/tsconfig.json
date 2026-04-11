@@ -6,7 +6,9 @@
     "plugins": [{ "name": "next" }],
     "types": ["node"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/brand": ["../../packages/brand/src/index.ts"],
+      "@shared/brand/*": ["../../packages/brand/src/*"]
     }
   },
   "include": ["next-env.d.ts", "src", ".next/types/**/*.ts"],

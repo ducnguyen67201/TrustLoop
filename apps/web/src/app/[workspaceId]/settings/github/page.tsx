@@ -47,7 +47,7 @@ export default async function GitHubSettingsPage({
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">GitHub</h1>
         <p className="text-sm text-muted-foreground">
-          Connect your repositories so TrustLoop can index code and prepare fixes.
+          Connect your repositories so TrustLoop AI can index code and prepare fixes.
         </p>
       </header>
 

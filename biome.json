@@ -7,6 +7,7 @@
       ".turbo",
       "dist",
       "coverage",
+      "**/tsup.config.bundled_*.mjs",
       "**/src/generated/**",
       "**/src/prisma-generated/client.ts",
       "docs/contracts/openapi.json"

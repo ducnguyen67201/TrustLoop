@@ -201,7 +201,7 @@ export function SessionsList() {
   if (sessions.length === 0) {
     return (
       <p className="text-muted-foreground p-6 text-sm">
-        No sessions captured yet. Install the TrustLoop SDK in your app to start recording.
+        No sessions captured yet. Install the TrustLoop AI SDK in your app to start recording.
       </p>
     );
   }

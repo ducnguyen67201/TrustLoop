@@ -32,8 +32,8 @@ export function EvidenceResults({
           <div className="space-y-1">
             <p className="text-sm font-medium">Run your first sync to make this repo searchable.</p>
             <p className="text-sm text-muted-foreground">
-              Once indexing finishes, TrustLoop will show file path, line span, freshness, and score
-              receipts for every result.
+              Once indexing finishes, TrustLoop AI will show file path, line span, freshness, and
+              score receipts for every result.
             </p>
           </div>
         ) : receipt.results.length === 0 ? (

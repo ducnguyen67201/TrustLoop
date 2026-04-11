@@ -19,7 +19,7 @@ export default async function WorkspaceSessionsPage({
         <div>
           <h1 className="text-lg font-semibold">Sessions</h1>
           <p className="text-muted-foreground text-sm">
-            Every browser session captured by the TrustLoop SDK.
+            Every browser session captured by the TrustLoop AI SDK.
           </p>
         </div>
         <Badge variant="outline" className="w-fit font-mono text-xs">

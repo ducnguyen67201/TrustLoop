@@ -63,7 +63,7 @@ export default function AppHomePage() {
     <main className="mx-auto w-full max-w-5xl space-y-6 p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">TrustLoop Workspace</h1>
+          <h1 className="text-2xl font-semibold">TrustLoop AI Workspace</h1>
           <p className="text-muted-foreground text-sm">
             Authenticated and workspace-isolated context.
           </p>

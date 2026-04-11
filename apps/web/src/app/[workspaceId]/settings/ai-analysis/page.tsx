@@ -56,7 +56,7 @@ export default function AiAnalysisSettingsPage() {
       <div>
         <h1 className="font-mono text-lg font-semibold">AI Analysis</h1>
         <p className="text-sm text-muted-foreground">
-          Configure how TrustLoop analyzes support conversations and generates draft responses.
+          Configure how TrustLoop AI analyzes support conversations and generates draft responses.
         </p>
       </div>
 
@@ -66,7 +66,7 @@ export default function AiAnalysisSettingsPage() {
         <div className="space-y-2">
           <Label htmlFor="trigger-mode">Analysis trigger</Label>
           <p className="text-xs text-muted-foreground">
-            Controls when TrustLoop automatically analyzes incoming conversations.
+            Controls when TrustLoop AI automatically analyzes incoming conversations.
           </p>
           <Select
             value={triggerMode}
@@ -98,7 +98,7 @@ export default function AiAnalysisSettingsPage() {
             <>
               <p className="font-medium">Automatic mode</p>
               <p className="text-muted-foreground">
-                TrustLoop waits for the customer to stop sending messages (5 minute window), then
+                TrustLoop AI waits for the customer to stop sending messages (5 minute window), then
                 automatically analyzes the conversation and generates a draft response. The draft
                 appears in the inbox for your review.
               </p>

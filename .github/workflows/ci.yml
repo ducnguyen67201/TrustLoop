@@ -27,11 +27,25 @@ jobs:
       COREPACK_ENABLE_AUTO_PIN: "0"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
+      - name: Enable turbo remote cache (GitHub Actions cache backend)
+        uses: dtinth/setup-github-actions-caching-for-turbo@v1
+
+      - name: Determine turbo filter base
+        id: turbo-base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=HEAD^1" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Remove yarn to prevent Corepack/SWC registry conflict
         run: |
@@ -49,12 +63,15 @@ jobs:
             @img/sharp-linux-x64 \
             lightningcss-linux-x64-gnu \
             || true
+
+      # Global guards — always run, cheap, protect committed artifacts.
       - run: npm run db:generate
       - run: git diff --exit-code
       - run: npm run openapi:check
-      - run: npm run type-check
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
+
+      # Scoped validation — only workspaces changed since base ref + their dependents.
+      # `[ref]` matches changed packages; trailing `...` pulls in everything that depends on them.
+      - name: Validate affected workspaces
+        run: npx turbo run type-check lint test build --filter="[${{ steps.turbo-base.outputs.ref }}]..."
         env:
           SKIP_ENV_VALIDATION: "1"

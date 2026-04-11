@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const mono = JetBrains_Mono({
+const mono = Geist_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
-  title: "TrustLoop | Support Ops for Engineering Teams",
+  title: "TrustLoop AI | Support Ops for Engineering Teams",
   description:
-    "TrustLoop reads your codebase, groups chat threads, and drafts technically accurate support responses.",
+    "TrustLoop AI reads your codebase, groups chat threads, and drafts technically accurate support responses.",
 };
 
 export default function RootLayout({

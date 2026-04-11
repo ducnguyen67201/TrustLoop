@@ -1,4 +1,4 @@
-"use client";
+const BOOKING_URL = "https://calendar.app.google/RPU52joHKB57nrrL7";
 
 export function CtaSection() {
   return (
@@ -9,28 +9,20 @@ export function CtaSection() {
             Your support queue won&apos;t fix itself.
           </h2>
           <p className="text-lg text-[#8B7E74] mb-12 leading-relaxed max-w-xl">
-            Limited early access spots. Engineering teams with Slack + GitHub get priority.
+            Limited early access spots. Engineering teams with Slack + GitHub get priority. Book a
+            15-minute intro call and we&apos;ll walk you through a live demo.
           </p>
 
-          <form
-            className="flex flex-col sm:flex-row gap-0 max-w-xl"
-            onSubmit={(e) => e.preventDefault()}
-          >
-            <input
-              type="email"
-              placeholder="Email address"
-              required
-              className="bg-transparent border border-[#8B7E74] text-[#F4F1EE] px-6 py-4 grow outline-none focus:border-[#D4A017] text-sm placeholder:text-[#8B7E74] transition-colors w-full"
-            />
-            <div className="cta-pulse-wrapper mt-4 sm:mt-0 w-full sm:w-auto">
-              <button
-                type="submit"
-                className="bg-[#D4A017] text-[#1C1917] font-semibold px-8 py-4 hover:bg-[#E5B532] transition-colors whitespace-nowrap text-sm w-full relative z-10"
-              >
-                Request Access
-              </button>
-            </div>
-          </form>
+          <div className="cta-pulse-wrapper inline-block w-full sm:w-auto">
+            <a
+              href={BOOKING_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="relative z-10 inline-flex items-center justify-center bg-[#D4A017] text-[#1C1917] font-semibold px-8 py-4 hover:bg-[#E5B532] transition-colors whitespace-nowrap text-sm w-full sm:w-auto"
+            >
+              Book an Intro Call →
+            </a>
+          </div>
         </div>
       </div>
     </section>
