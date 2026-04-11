@@ -143,7 +143,7 @@ interface RawToolResult {
   output?: unknown;
 }
 
-function extractToolCalls(result: { toolResults?: RawToolResult[] }) {
+function extractToolCalls(result: unknown) {
   const raw = (result as unknown as { toolResults?: RawToolResult[] }).toolResults ?? [];
   return raw.map((tc) => ({
     tool: tc.toolName ?? tc.name ?? "unknown",

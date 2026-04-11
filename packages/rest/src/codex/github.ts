@@ -11,6 +11,7 @@
 // split, over the 300-line budget.
 // ---------------------------------------------------------------------------
 
+export * from "./github/_shared";
 export * from "./github/install-url";
 export * from "./github/installation";
 export * from "./github/content";
