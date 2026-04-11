@@ -40,7 +40,7 @@ function createSupportAgent(providerConfig: AgentProviderConfig, sessionDigest?:
 
   return new Agent({
     id: "trustloop-support-agent",
-    name: "TrustLoop Support Agent",
+    name: "TrustLoop AI Support Agent",
     instructions,
     model: resolveModel(providerConfig),
     tools: { searchCode: searchCodeTool },

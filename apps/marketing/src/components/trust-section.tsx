@@ -40,6 +40,14 @@ function TrustItem({
       return;
     }
 
+    // If the element is already in view on mount (e.g. back navigation with
+    // restored scroll position, or bfcache restore), skip the reveal gate.
+    const rect = el.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      setVisible(true);
+      return;
+    }
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {

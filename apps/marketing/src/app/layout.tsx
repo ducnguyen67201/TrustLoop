@@ -8,9 +8,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TrustLoop | Support Ops for Engineering Teams",
+  title: "TrustLoop AI | Support Ops for Engineering Teams",
   description:
-    "TrustLoop reads your codebase, groups chat threads, and drafts technically accurate support responses.",
+    "TrustLoop AI reads your codebase, groups chat threads, and drafts technically accurate support responses.",
 };
 
 export default function RootLayout({

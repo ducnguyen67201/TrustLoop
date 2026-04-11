@@ -5,6 +5,7 @@ import { HowItWorks } from "@/components/how-it-works";
 import { Metrics } from "@/components/metrics";
 import { Nav } from "@/components/nav";
 import { Pipeline } from "@/components/pipeline";
+import { Team } from "@/components/team";
 import { TrustSection } from "@/components/trust-section";
 import { WhatChanges } from "@/components/what-changes";
 
@@ -22,6 +23,7 @@ export default function Page() {
       <WhatChanges />
       <TrustSection />
       <Metrics />
+      <Team />
       <CtaSection />
       <Footer />
     </>

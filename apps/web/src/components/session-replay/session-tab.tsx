@@ -69,7 +69,7 @@ export function SessionTab({
     return (
       <div className="space-y-3 p-4">
         <p className="text-muted-foreground text-sm">
-          No session data for this thread. Install the TrustLoop SDK to capture browser context.
+          No session data for this thread. Install the TrustLoop AI SDK to capture browser context.
         </p>
         <Button variant="outline" size="sm" asChild>
           <a href="/docs/sdk-install" target="_blank" rel="noopener noreferrer">

@@ -8,8 +8,8 @@ import type { ReactNode } from "react";
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "TrustLoop",
-  description: "TrustLoop foundation scaffold",
+  title: "TrustLoop AI",
+  description: "TrustLoop AI foundation scaffold",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

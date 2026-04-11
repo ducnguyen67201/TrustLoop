@@ -1,0 +1,18 @@
+{
+  "name": "@shared/brand",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./logo.svg": "./src/logo.svg",
+    "./team/*": "./src/team/*"
+  },
+  "scripts": {
+    "type-check": "tsgo --noEmit",
+    "lint": "biome check ."
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}

@@ -28,7 +28,6 @@ import {
 } from "@/lib/workspace-paths";
 import {
   RiBook2Line,
-  RiBuildingLine,
   RiCheckboxCircleLine,
   RiCustomerService2Line,
   RiKey2Line,
@@ -38,6 +37,7 @@ import {
   RiPlayCircleLine,
   RiSettings3Line,
 } from "@remixicon/react";
+import { Logo } from "@shared/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -137,12 +137,12 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
             <SidebarMenuItem className="h-full">
               <SidebarMenuButton
                 asChild
-                tooltip="TrustLoop"
+                tooltip="TrustLoop AI"
                 className="h-full rounded-none px-3 data-[size=default]:h-full"
               >
                 <Link href={rootPath}>
-                  <RiBuildingLine />
-                  <span className="font-semibold">TrustLoop</span>
+                  <Logo className="size-5 shrink-0" />
+                  <span className="font-semibold">TrustLoop AI</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

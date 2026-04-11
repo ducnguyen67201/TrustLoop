@@ -66,7 +66,11 @@ export function Pipeline() {
         {/* Stage 1: Slack Message */}
         <div className="w-full md:w-[30%] bg-white border border-[#EAE5E0] p-5 flex flex-col gap-3 relative z-10 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#EAE5E0] shrink-0" />
+            <img
+              src="https://i.pravatar.cc/80?img=47"
+              alt="sarah.chen"
+              className="w-8 h-8 rounded-full object-cover shrink-0"
+            />
             <div className="flex flex-col">
               <span className="text-xs font-semibold text-[#1C1917]">sarah.chen</span>
               <span className="text-[10px] text-[#8B7E74]">2:34 PM</span>
