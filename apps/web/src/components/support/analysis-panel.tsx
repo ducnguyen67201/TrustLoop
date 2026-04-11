@@ -62,7 +62,9 @@ export function AnalysisPanel({
   if (analysis?.status === "GATHERING_CONTEXT") {
     return (
       <section className="py-3 space-y-2" aria-label="AI analysis">
-        <div className="text-xs text-muted-foreground font-mono">Fetching thread context and error history...</div>
+        <div className="text-xs text-muted-foreground font-mono">
+          Fetching thread context and error history...
+        </div>
       </section>
     );
   }
@@ -117,9 +119,7 @@ export function AnalysisPanel({
       )}
 
       {/* Sentry context badge */}
-      {analysis?.sentryContext != null && (
-        <SentryBadge sentryContext={analysis.sentryContext} />
-      )}
+      {analysis?.sentryContext != null && <SentryBadge sentryContext={analysis.sentryContext} />}
 
       {/* PR link */}
       {draft?.prUrl && (

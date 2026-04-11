@@ -5,17 +5,17 @@ import {
   type AgentProviderConfig,
   type AnalyzeRequest,
   type AnalyzeResponse,
-  type ToneConfig,
   type SessionDigest,
+  type ToneConfig,
   agentProviderConfigSchema,
   compressedAnalysisOutputSchema,
   reconstructAnalysisOutput,
 } from "@shared/types";
 
 import {
-  buildSupportAgentSystemPrompt,
   SUPPORT_AGENT_SYSTEM_PROMPT,
   buildAnalysisPromptWithContext,
+  buildSupportAgentSystemPrompt,
 } from "./prompts/support-analysis";
 import { resolveModel } from "./providers";
 import { createPullRequestTool } from "./tools/create-pr";

@@ -44,7 +44,9 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
   const alreadyAnalyzed = await prisma.supportAnalysis.findMany({
     where: {
       conversationId: { in: candidateIds },
-      status: { in: [ANALYSIS_STATUS.gatheringContext, ANALYSIS_STATUS.analyzing, ANALYSIS_STATUS.analyzed] },
+      status: {
+        in: [ANALYSIS_STATUS.gatheringContext, ANALYSIS_STATUS.analyzing, ANALYSIS_STATUS.analyzed],
+      },
     },
     select: { conversationId: true },
     distinct: ["conversationId"],

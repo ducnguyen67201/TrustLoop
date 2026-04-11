@@ -1,11 +1,11 @@
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
-import * as sessionCorrelation from "@shared/rest/services/support/session-correlation";
 import {
   fetchSentryContext,
   isSentryConfigured,
 } from "@shared/rest/services/sentry/sentry-service";
+import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
+import * as sessionCorrelation from "@shared/rest/services/support/session-correlation";
 import {
   ANALYSIS_RESULT_STATUS,
   ANALYSIS_STATUS,

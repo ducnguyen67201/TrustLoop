@@ -1,4 +1,8 @@
-import { POSITIONAL_ANALYSIS_FORMAT_INSTRUCTIONS, type ToneConfig, type SessionDigest } from "@shared/types";
+import {
+  POSITIONAL_ANALYSIS_FORMAT_INSTRUCTIONS,
+  type SessionDigest,
+  type ToneConfig,
+} from "@shared/types";
 
 /**
  * System prompt for the TrustLoop support analysis agent.

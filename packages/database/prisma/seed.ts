@@ -188,36 +188,36 @@ async function main() {
   // 9. Sample conversation events (only seed if conversation is new)
   if (!existingConvo) {
     await prisma.supportConversationEvent.createMany({
-    data: [
-      {
-        workspaceId: workspace.id,
-        conversationId: conversation.id,
-        eventType: "MESSAGE_RECEIVED",
-        eventSource: "CUSTOMER",
-        summary:
-          "Getting a 500 error when I try to connect my GitHub repo. The page just shows 'Internal Server Error' after I authorize.",
-        detailsJson: {
-          slackUserId: "U0CUSTOMER1",
-          slackUsername: "alice.dev",
-          customerEmail: "alice@example.com",
+      data: [
+        {
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          eventType: "MESSAGE_RECEIVED",
+          eventSource: "CUSTOMER",
+          summary:
+            "Getting a 500 error when I try to connect my GitHub repo. The page just shows 'Internal Server Error' after I authorize.",
+          detailsJson: {
+            slackUserId: "U0CUSTOMER1",
+            slackUsername: "alice.dev",
+            customerEmail: "alice@example.com",
+          },
         },
-      },
-      {
-        workspaceId: workspace.id,
-        conversationId: conversation.id,
-        eventType: "MESSAGE_RECEIVED",
-        eventSource: "CUSTOMER",
-        summary:
-          "I tried with a different browser and got the same error. The URL shows /api/github/callback with a code parameter but then redirects to an error page.",
-        detailsJson: {
-          slackUserId: "U0CUSTOMER1",
-          slackUsername: "alice.dev",
-          customerEmail: "alice@example.com",
+        {
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          eventType: "MESSAGE_RECEIVED",
+          eventSource: "CUSTOMER",
+          summary:
+            "I tried with a different browser and got the same error. The URL shows /api/github/callback with a code parameter but then redirects to an error page.",
+          detailsJson: {
+            slackUserId: "U0CUSTOMER1",
+            slackUsername: "alice.dev",
+            customerEmail: "alice@example.com",
+          },
         },
-      },
-    ],
-  });
-  console.log("Conversation events: 2 customer messages seeded");
+      ],
+    });
+    console.log("Conversation events: 2 customer messages seeded");
   }
 
   console.log("\nSeed complete.");
