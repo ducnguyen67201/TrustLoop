@@ -38,10 +38,6 @@ function formatDuration(startIso: string, endIso: string): string {
   return `${minutes}m ${seconds}s`;
 }
 
-/**
- * Workspace session table, extracted so the page shell stays focused on data
- * loading and replay state while the tabular layout remains easy to reuse.
- */
 export function SessionsTable({ sessions, onOpen }: SessionsTableProps) {
   return (
     <div className="overflow-x-auto border bg-background">
@@ -49,7 +45,6 @@ export function SessionsTable({ sessions, onOpen }: SessionsTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead>User</TableHead>
-            <TableHead>Workspace</TableHead>
             <TableHead>Started</TableHead>
             <TableHead>Duration</TableHead>
             <TableHead className="text-right">Events</TableHead>
@@ -70,7 +65,6 @@ export function SessionsTable({ sessions, onOpen }: SessionsTableProps) {
                   </span>
                 </div>
               </TableCell>
-              <TableCell className="font-mono text-xs">{session.workspaceId}</TableCell>
               <TableCell className="text-sm">{formatRelative(session.lastEventAt)}</TableCell>
               <TableCell className="text-sm">
                 {formatDuration(session.startedAt, session.lastEventAt)}

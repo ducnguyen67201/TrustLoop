@@ -10,6 +10,7 @@ interface RrwebPlayerViewProps {
 
 interface RrwebPlayerInstance {
   $set?: (props: { width: number; height: number }) => void;
+  $destroy?: () => void;
   triggerResize?: () => void;
   setConfig?: (config: { speed: number }) => void;
 }
@@ -116,6 +117,10 @@ export function RrwebPlayerView({ chunks, speed }: RrwebPlayerViewProps) {
       cancelled = true;
       if (rafHandle !== null) cancelAnimationFrame(rafHandle);
       resizeObserver?.disconnect();
+      // rrweb-player is a Svelte component — $destroy tears down its internal
+      // playback timer and event listeners. Skipping this leaks both across
+      // session switches.
+      playerRef.current?.$destroy?.();
       if (containerRef.current) containerRef.current.innerHTML = "";
       playerRef.current = null;
     };
