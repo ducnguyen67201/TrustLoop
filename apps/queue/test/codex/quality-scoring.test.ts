@@ -7,11 +7,11 @@ vi.mock("@shared/env", () => ({
   env: {},
 }));
 vi.mock("@shared/rest/services/codex/embedding", () => ({
-  generateEmbeddings: vi.fn(),
-  getCachedEmbeddings: vi.fn(),
+  generate: vi.fn(),
+  getCached: vi.fn(),
   splitIdentifiers: vi.fn((t: string) => t),
   formatVector: vi.fn(),
-  EMBEDDING_MODEL: "test",
+  MODEL: "test",
 }));
 vi.mock("@temporalio/activity", () => ({
   ApplicationFailure: { nonRetryable: vi.fn() },

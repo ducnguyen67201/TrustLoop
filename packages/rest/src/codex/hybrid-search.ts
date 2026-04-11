@@ -1,11 +1,6 @@
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import {
-  formatVector,
-  generateEmbeddings,
-  parseVector,
-  splitIdentifiers,
-} from "@shared/rest/services/codex/embedding";
+import * as embeddings from "@shared/rest/services/codex/embedding";
 import { MODEL_CONFIG } from "@shared/types";
 import OpenAI from "openai";
 
@@ -42,8 +37,8 @@ export type RerankedChunk = RankedChunk & {
 };
 
 export async function embedQuery(query: string): Promise<number[]> {
-  const preprocessed = splitIdentifiers(query);
-  const results = await generateEmbeddings([preprocessed]);
+  const preprocessed = embeddings.splitIdentifiers(query);
+  const results = await embeddings.generate([preprocessed]);
   return results[0]!;
 }
 
@@ -52,7 +47,7 @@ export async function vectorSearch(
   queryEmbedding: number[],
   limit = VECTOR_CANDIDATE_LIMIT
 ): Promise<ScoredChunk[]> {
-  const vectorStr = formatVector(queryEmbedding);
+  const vectorStr = embeddings.formatVector(queryEmbedding);
   const rows = await prisma.$queryRawUnsafe<
     Array<{
       id: string;
@@ -89,7 +84,7 @@ export async function keywordSearch(
   query: string,
   limit = KEYWORD_CANDIDATE_LIMIT
 ): Promise<ScoredChunk[]> {
-  const preprocessed = splitIdentifiers(query);
+  const preprocessed = embeddings.splitIdentifiers(query);
   const tokens = preprocessed
     .toLowerCase()
     .split(/\s+/)
@@ -130,7 +125,7 @@ export async function keywordSearch(
 }
 
 function computePathBonus(query: string, chunk: ScoredChunk): number {
-  const queryTokens = splitIdentifiers(query)
+  const queryTokens = embeddings.splitIdentifiers(query)
     .toLowerCase()
     .split(/\s+/)
     .filter((t) => t.length >= 2);

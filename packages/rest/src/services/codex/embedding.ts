@@ -3,8 +3,23 @@ import { env } from "@shared/env";
 import { MODEL_CONFIG } from "@shared/types";
 import OpenAI from "openai";
 
-const EMBEDDING_MODEL = MODEL_CONFIG.embedding;
-const EMBEDDING_DIMENSIONS = MODEL_CONFIG.embeddingDimensions;
+// ---------------------------------------------------------------------------
+// embeddings service
+//
+// Domain-focused service for OpenAI embedding generation and pgvector
+// encode/decode. Import as a namespace (plural — matches the pgvector
+// collection mental model and avoids shadowing the ubiquitous `embedding`
+// loop variable):
+//
+//   import * as embeddings from "@shared/rest/services/codex/embedding";
+//   const vectors = await embeddings.generate(texts);
+//   const cache = await embeddings.getCached(hashes);
+//
+// See docs/service-layer-conventions.md.
+// ---------------------------------------------------------------------------
+
+export const MODEL = MODEL_CONFIG.embedding;
+export const DIMENSIONS = MODEL_CONFIG.embeddingDimensions;
 const MAX_BATCH_SIZE = 100;
 
 let openaiClient: OpenAI | null = null;
@@ -19,7 +34,7 @@ function getOpenAIClient(): OpenAI {
   return openaiClient;
 }
 
-export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
+export async function generate(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const client = getOpenAIClient();
@@ -28,9 +43,9 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   for (let i = 0; i < texts.length; i += MAX_BATCH_SIZE) {
     const batch = texts.slice(i, i + MAX_BATCH_SIZE);
     const response = await client.embeddings.create({
-      model: EMBEDDING_MODEL,
+      model: MODEL,
       input: batch,
-      dimensions: EMBEDDING_DIMENSIONS,
+      dimensions: DIMENSIONS,
     });
 
     for (const item of response.data) {
@@ -41,7 +56,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   return results;
 }
 
-export async function getCachedEmbeddings(contentHashes: string[]): Promise<Map<string, number[]>> {
+export async function getCached(contentHashes: string[]): Promise<Map<string, number[]>> {
   if (contentHashes.length === 0) return new Map();
 
   const placeholders = contentHashes.map((_, i) => `$${i + 1}`).join(", ");
@@ -74,8 +89,6 @@ export function parseVector(pgVector: string): number[] {
     .map(Number);
 }
 
-export function formatVector(embedding: number[]): string {
-  return `[${embedding.join(",")}]`;
+export function formatVector(vector: number[]): string {
+  return `[${vector.join(",")}]`;
 }
-
-export { EMBEDDING_MODEL, EMBEDDING_DIMENSIONS };

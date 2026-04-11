@@ -2,13 +2,7 @@ import { createHash } from "node:crypto";
 import { extname, relative } from "node:path";
 import { prisma } from "@shared/database";
 import { fetchFileContents, fetchLatestCommitSha, fetchRepoTree } from "@shared/rest/codex/github";
-import {
-  EMBEDDING_MODEL,
-  formatVector,
-  generateEmbeddings,
-  getCachedEmbeddings,
-  splitIdentifiers,
-} from "@shared/rest/services/codex/embedding";
+import * as embeddings from "@shared/rest/services/codex/embedding";
 import {
   type RepositoryIndexWorkflowInput,
   type RepositoryIndexWorkflowResult,
@@ -293,14 +287,14 @@ export async function runRepositoryIndexPipeline(
       }));
 
       const hashes = scoredChunks.map((c) => c.contentHash);
-      const embeddingCache = await getCachedEmbeddings(hashes);
+      const embeddingCache = await embeddings.getCached(hashes);
 
       const BATCH_SIZE = 100;
       for (let i = 0; i < scoredChunks.length; i += BATCH_SIZE) {
         const batch = scoredChunks.slice(i, i + BATCH_SIZE);
 
         const uncachedIndexes: number[] = [];
-        const embeddings: (number[] | null)[] = batch.map((chunk, idx) => {
+        const chunkEmbeddings: (number[] | null)[] = batch.map((chunk, idx) => {
           const cached = embeddingCache.get(chunk.contentHash);
           if (cached) return cached;
           uncachedIndexes.push(idx);
@@ -309,16 +303,16 @@ export async function runRepositoryIndexPipeline(
 
         if (uncachedIndexes.length > 0) {
           const textsToEmbed = uncachedIndexes.map((idx) => batch[idx]!.content);
-          const newEmbeddings = await generateEmbeddings(textsToEmbed);
+          const newEmbeddings = await embeddings.generate(textsToEmbed);
           uncachedIndexes.forEach((batchIdx, resultIdx) => {
-            embeddings[batchIdx] = newEmbeddings[resultIdx]!;
+            chunkEmbeddings[batchIdx] = newEmbeddings[resultIdx]!;
           });
         }
 
         const params: unknown[] = [];
         const rows = batch.map((chunk, idx) => {
-          const embedding = embeddings[idx];
-          const preprocessed = splitIdentifiers(chunk.content);
+          const embedding = chunkEmbeddings[idx];
+          const preprocessed = embeddings.splitIdentifiers(chunk.content);
           const o = params.length;
           params.push(
             indexVersion.id,
@@ -329,10 +323,10 @@ export async function runRepositoryIndexPipeline(
             chunk.lineEnd,
             chunk.contentHash,
             chunk.content,
-            embedding ? formatVector(embedding) : null,
+            embedding ? embeddings.formatVector(embedding) : null,
             preprocessed,
             chunk.qualityScore,
-            embedding ? EMBEDDING_MODEL : null
+            embedding ? embeddings.MODEL : null
           );
           return `(
             gen_random_uuid(),

@@ -1,6 +1,6 @@
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import { fetchSlackUserEmail } from "@shared/rest/services/support/adapters/slack/slack-user-service";
+import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
 import {
   compileSessionDigest,
   extractEmailsFromEvents,
@@ -86,7 +86,7 @@ export async function buildThreadSnapshot(
     // 1. Resolve email from Slack user ID (strongest signal)
     const customerSlackUserId = extractCustomerSlackUserId(conversation.events);
     if (customerSlackUserId) {
-      const slackEmail = await fetchSlackUserEmail(
+      const slackEmail = await slackUser.fetchEmail(
         customerSlackUserId,
         conversation.installation.metadata
       );

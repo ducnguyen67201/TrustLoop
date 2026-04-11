@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { env } from "@shared/env";
-import { verifySlackRequestSignature } from "@shared/rest/services/support/slack-signature-service";
+import * as slackSignature from "@shared/rest/services/support/slack-signature-service";
 import { ValidationError } from "@shared/types";
 import { describe, expect, it } from "vitest";
 
@@ -15,13 +15,13 @@ function signSlackBody(timestamp: string, rawBody: string): string {
   return `v0=${digest}`;
 }
 
-describe("verifySlackRequestSignature", () => {
+describe("slackSignature.verifyRequest", () => {
   it("accepts a valid signature within the replay window", () => {
     const rawBody = JSON.stringify({ type: "event_callback", event_id: "evt_1" });
     const timestamp = `${Math.floor(Date.now() / 1000)}`;
 
     expect(() =>
-      verifySlackRequestSignature(rawBody, signSlackBody(timestamp, rawBody), timestamp)
+      slackSignature.verifyRequest(rawBody, signSlackBody(timestamp, rawBody), timestamp)
     ).not.toThrow();
   });
 
@@ -29,7 +29,7 @@ describe("verifySlackRequestSignature", () => {
     const rawBody = JSON.stringify({ type: "event_callback", event_id: "evt_1" });
     const timestamp = `${Math.floor(Date.now() / 1000)}`;
 
-    expect(() => verifySlackRequestSignature(rawBody, "v0=bad", timestamp)).toThrow(
+    expect(() => slackSignature.verifyRequest(rawBody, "v0=bad", timestamp)).toThrow(
       ValidationError
     );
   });
@@ -39,7 +39,7 @@ describe("verifySlackRequestSignature", () => {
     const timestamp = `${Math.floor(Date.now() / 1000) - slackReplayWindowSeconds - 5}`;
 
     expect(() =>
-      verifySlackRequestSignature(rawBody, signSlackBody(timestamp, rawBody), timestamp)
+      slackSignature.verifyRequest(rawBody, signSlackBody(timestamp, rawBody), timestamp)
     ).toThrow(ValidationError);
   });
 });

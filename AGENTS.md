@@ -224,9 +224,11 @@ Incremental migration. Each service + all its call sites land in one commit.
 | `user-service.ts`                        | ✅ migrated  | Imported as `users`. 4 fns renamed.                                                |
 | `auth/workspace-auto-join-service.ts`    | ✅ migrated  | Imported as `autoJoin`. Only `resolveWorkspaceFromVerifiedEmail` was renamed.      |
 | `auth/google-oauth-service.ts`           | ⏳ pending   | Large (417 lines). May split into `auth/google/{token,verify,profile}.ts` on move. |
-| `codex/embedding.ts`                     | ⏳ pending   |                                                                                    |
+| `codex/embedding.ts`                     | ✅ migrated  | Imported as `embeddings` (plural — avoids `embedding` loop-var collision).         |
+| `support/slack-signature-service.ts`     | ✅ migrated  | Imported as `slackSignature`. HMAC request verifier.                               |
+| `support/adapters/slack/slack-user-service.ts` | ✅ migrated | Imported as `slackUser`. `users.info` resolver.                                   |
 | `soft-delete-cascade.ts`                 | ⚪ exception | Prisma client extension, not a classic service. Stays on named exports.            |
-| `support/*` (12 files)                   | ⏳ pending   | Largest surface. Stage by sub-concern (ingress, analysis, slack adapters).         |
+| `support/*` (remaining 9 files)          | ⏳ pending   | Largest surface. Stage by sub-concern (ingress, analysis, slack adapters).         |
 
 Migration rules: pilot first, migrate a service + all call sites in one commit, never leave a service half-converted, run `vitest run <file>` and `tsgo --noEmit` on `apps/web` and `packages/rest` before handoff.
 

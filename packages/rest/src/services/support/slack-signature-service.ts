@@ -2,6 +2,18 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "@shared/env";
 import { ValidationError } from "@shared/types";
 
+// ---------------------------------------------------------------------------
+// slackSignature service
+//
+// Verifies inbound Slack HTTP request signatures (HMAC-SHA256) and replay
+// window. Import as a namespace:
+//
+//   import * as slackSignature from "@shared/rest/services/support/slack-signature-service";
+//   slackSignature.verifyRequest(rawBody, sig, ts);
+//
+// See docs/service-layer-conventions.md.
+// ---------------------------------------------------------------------------
+
 function toBuffer(value: string): Buffer {
   return Buffer.from(value, "utf8");
 }
@@ -42,7 +54,7 @@ function assertReplayWindow(timestamp: string): void {
 /**
  * Verify the Slack request signature and replay window against the raw body.
  */
-export function verifySlackRequestSignature(
+export function verifyRequest(
   rawBody: string,
   signature: string | null,
   timestamp: string | null

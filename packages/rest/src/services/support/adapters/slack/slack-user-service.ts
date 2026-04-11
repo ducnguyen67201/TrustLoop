@@ -1,6 +1,18 @@
 import { env } from "@shared/env";
 import { PermanentExternalError, TransientExternalError } from "@shared/types";
 
+// ---------------------------------------------------------------------------
+// slackUser service (adapter)
+//
+// Resolves Slack user IDs to their email via the users.info Slack API.
+// Import as a namespace:
+//
+//   import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
+//   const email = await slackUser.fetchEmail(slackUserId, installMeta);
+//
+// See docs/service-layer-conventions.md.
+// ---------------------------------------------------------------------------
+
 interface SlackUsersInfoResponse {
   ok?: boolean;
   error?: string;
@@ -42,7 +54,7 @@ function resolveToken(installationMetadata: unknown): string {
  *
  * Requires the `users:read.email` bot scope on the Slack app.
  */
-export async function fetchSlackUserEmail(
+export async function fetchEmail(
   slackUserId: string,
   installationMetadata: unknown
 ): Promise<string | null> {

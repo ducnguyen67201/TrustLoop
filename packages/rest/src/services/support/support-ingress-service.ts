@@ -1,6 +1,6 @@
 import { prisma } from "@shared/database";
 import type { Prisma } from "@shared/database";
-import { verifySlackRequestSignature } from "@shared/rest/services/support/slack-signature-service";
+import * as slackSignature from "@shared/rest/services/support/slack-signature-service";
 import {
   type WorkflowDispatcher,
   temporalWorkflowDispatcher,
@@ -88,7 +88,7 @@ export async function processSlackWebhook(
   headers: SlackWebhookHeaders,
   dispatcher: WorkflowDispatcher = temporalWorkflowDispatcher
 ): Promise<SlackWebhookResult> {
-  verifySlackRequestSignature(rawBody, headers.signature, headers.timestamp);
+  slackSignature.verifyRequest(rawBody, headers.signature, headers.timestamp);
 
   const body = JSON.parse(rawBody) as unknown;
   if (isRecord(body) && body.type === "url_verification") {
