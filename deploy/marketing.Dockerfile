@@ -9,18 +9,25 @@
 # Railway: referenced from railway.json at the repo root.
 #
 
-FROM node:24-alpine AS base
-RUN apk add --no-cache libc6-compat
+FROM node:24-slim AS base
 WORKDIR /app
 
 # -----------------------------------------------------------------------------
 # Stage: deps — install workspace dependencies only
+#
+# node:24-slim is Debian (glibc). We deliberately do NOT copy package-lock.json
+# because of npm/cli#4828: the host-generated lockfile only lists the optional
+# native bindings that were installed on the host (e.g. @tailwindcss/oxide
+# only has darwin-arm64 listed), so npm ci/install inside Docker will not
+# install the linux variant needed to actually build. Fresh `npm install`
+# without a lockfile resolves optional native deps for the target platform
+# correctly.
 # -----------------------------------------------------------------------------
 FROM base AS deps
-COPY package.json package-lock.json ./
+COPY package.json ./
 COPY apps/marketing/package.json ./apps/marketing/
 COPY packages/brand/package.json ./packages/brand/
-RUN npm ci --ignore-scripts
+RUN npm install --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 # Stage: builder — build marketing with standalone output
@@ -28,7 +35,7 @@ RUN npm ci --ignore-scripts
 FROM base AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json package-lock.json tsconfig.base.json ./
+COPY package.json tsconfig.base.json ./
 COPY apps/marketing ./apps/marketing
 COPY packages/brand ./packages/brand
 RUN npm run build --workspace=@trustloop/marketing
@@ -42,8 +49,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs nextjs
 
 # Next's standalone output places a self-contained server tree inside
 # .next/standalone. Static assets live next to it under .next/static and
