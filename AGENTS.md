@@ -83,7 +83,7 @@ REST endpoints fall into two categories with different auth requirements:
 - `/api/github/callback` (OAuth flow)
 - `/api/trpc/*` (own tRPC middleware)
 
-Auth guards live in `packages/rest/src/security/rest-auth.ts`. See `docs/spec-rest-api-key-auth.md` for full details.
+Auth guards live in `packages/rest/src/security/rest-auth.ts`. See `docs/conventions/spec-rest-api-key-auth.md` for full details.
 
 ### URL Parameter Conventions
 
@@ -144,7 +144,7 @@ All LLM-generated structured output must use Positional JSON — compressed fiel
 - Every positional format must include at least two examples in its prompt instructions (one with all fields, one minimal/null case).
 - Never ask LLMs to return verbose JSON. Always use the compressed format with reconstruction.
 - **Max nesting depth: 2 levels.** LLMs produce unreliable output beyond 2 levels of JSON nesting. If a field needs deeper structure, flatten it (e.g. `"filepath:line|snippet"` instead of `{"f":"filepath","l":line,"t":"snippet"}`). Arrays of primitives (strings, numbers) are fine. Arrays of objects are a smell — prefer flat encoded strings.
-- See `docs/spec-positional-json-format.md` for the full spec, reliability layers, and extension guide.
+- See `docs/conventions/spec-positional-json-format.md` for the full spec, reliability layers, and extension guide.
 
 ### Contract source of truth order
 
@@ -187,7 +187,7 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 - Break pages/features into small, focused components — one responsibility per component. Avoid monolithic page files.
 - Extract reusable logic into custom hooks (`use*.ts`). Keep components declarative; keep side effects and state logic in hooks.
 - Add concise comments in UI code: purpose of each component at the top, intent behind non-obvious prop patterns or layout decisions. This improves readability for both humans and AI agents.
-- See `docs/ui-conventions.md` for full details.
+- See `docs/conventions/ui-conventions.md` for full details.
 
 ## API/Router Conventions
 
@@ -200,7 +200,7 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 
 ## Service Layer Conventions
 
-Full spec: [`docs/service-layer-conventions.md`](docs/service-layer-conventions.md).
+Full spec: [`docs/conventions/service-layer-conventions.md`](docs/conventions/service-layer-conventions.md).
 
 Non-negotiable rules (summary):
 
@@ -358,11 +358,11 @@ A feature is done only when:
 ## Additional Docs
 
 - Architecture/conventions baseline:
-  - `docs/foundation-setup-and-conventions.md`
+  - `docs/conventions/foundation-setup-and-conventions.md`
 - Implementation plan (MVP):
-  - `docs/impl-plan-first-customer-happy-path-mvp.md`
+  - `docs/plans/impl-plan-first-customer-happy-path-mvp.md`
 - Service layer conventions (namespace imports, naming rules, rollout status):
-  - `docs/service-layer-conventions.md`
+  - `docs/conventions/service-layer-conventions.md`
 
 ## Skills + Doc Hygiene
 

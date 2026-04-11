@@ -30,7 +30,7 @@ import { TRPCError } from "@trpc/server";
 //   const page = await slackOauth.listInstallations(workspaceId);
 //   await slackOauth.disconnect(workspaceId, installationId, actorUserId);
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 /** Bot scopes requested during OAuth. */

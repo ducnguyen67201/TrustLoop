@@ -28,7 +28,7 @@ import {
 // (they're the public API the frontend calls). Only the internal function
 // names are migrated here.
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 export interface TriggerAnalysisResult {

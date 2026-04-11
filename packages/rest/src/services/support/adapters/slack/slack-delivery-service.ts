@@ -16,7 +16,7 @@ import { PermanentExternalError, TransientExternalError } from "@shared/types";
 //   import * as slackDelivery from "@shared/rest/services/support/adapters/slack/slack-delivery-service";
 //   const result = await slackDelivery.sendThreadReply(input);
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 interface SlackSendRequest extends SupportAdapterSendRequest {

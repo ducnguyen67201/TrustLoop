@@ -10,7 +10,7 @@ import { PermanentExternalError, TransientExternalError } from "@shared/types";
 //   import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
 //   const email = await slackUser.fetchEmail(slackUserId, installMeta);
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 interface SlackUsersInfoResponse {

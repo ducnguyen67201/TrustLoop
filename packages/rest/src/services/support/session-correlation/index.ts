@@ -10,7 +10,7 @@
 //   const digest = sessionCorrelation.compileDigest(match.record, match.events);
 //
 // File layout (split from a single 333-line file during Stage E of the
-// service-layer rollout — see docs/service-layer-conventions.md):
+// service-layer rollout — see docs/conventions/service-layer-conventions.md):
 //
 //   extract.ts  — pure email extraction (no DB)
 //   digest.ts   — session digest compilation (pure)

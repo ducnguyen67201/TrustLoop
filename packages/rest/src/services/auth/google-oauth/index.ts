@@ -26,7 +26,7 @@
 //             → atomic find-or-create of User + AuthIdentity inside the tx
 //
 // File layout (split from a single 417-line file during Stage E of the
-// service-layer rollout — see docs/service-layer-conventions.md):
+// service-layer rollout — see docs/conventions/service-layer-conventions.md):
 //
 //   authorize.ts  — URL construction (pure)
 //   token.ts      — token endpoint exchange

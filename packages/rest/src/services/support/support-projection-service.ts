@@ -19,7 +19,7 @@ import { TRPCError } from "@trpc/server";
 //   const page = await supportProjection.listConversations(input);
 //   const timeline = await supportProjection.getConversationTimeline(ws, conv);
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 /**

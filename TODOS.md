@@ -22,7 +22,7 @@ When you pick this up: the `AuthIdentity` model, `Workspace.emailDomain` column,
 
 **Why:** Enterprise-lite SSO. A customer with strict identity policies can say "only @acme.com Google Workspace accounts can sign in to our TrustLoop workspace" without requiring full SAML/SCIM.
 
-**Context:** Added from `/plan-ceo-review` of the Google sign-in plan on 2026-04-11. Deferred because there is no customer demand signal yet — no prospect has asked for it. The full SSO/SAML/SCIM path is still the post-P0 end state per `docs/spec-auth-workspace-security-p0.md`. This is a half-measure that provides enterprise comfort without committing to the full SSO build.
+**Context:** Added from `/plan-ceo-review` of the Google sign-in plan on 2026-04-11. Deferred because there is no customer demand signal yet — no prospect has asked for it. The full SSO/SAML/SCIM path is still the post-P0 end state per `docs/domains/auth/spec-auth-workspace-security-p0.md`. This is a half-measure that provides enterprise comfort without committing to the full SSO build.
 
 When you pick this up: add a `hostedDomain String?` field to `Workspace`, pass it as `hd` on the Google authorization URL, verify the `hd` claim on the returned id_token matches. Reject with a clear error if not. Should take ~1 hour of CC time.
 

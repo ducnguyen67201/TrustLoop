@@ -10,7 +10,7 @@ import {
 // Note: the tRPC procedure names below (triggerAnalysis, approveDraft,
 // dismissDraft, getLatestAnalysis) are the PUBLIC API the frontend calls,
 // and stay unchanged. Only the internal service function calls were
-// renamed under the service-layer convention. See docs/service-layer-conventions.md.
+// renamed under the service-layer convention. See docs/conventions/service-layer-conventions.md.
 export function createSupportAnalysisRouter(dispatcher: WorkflowDispatcher) {
   return router({
     triggerAnalysis: workspaceProcedure

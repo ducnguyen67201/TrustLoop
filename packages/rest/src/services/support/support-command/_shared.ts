@@ -6,7 +6,7 @@ import { TRPCError } from "@trpc/server";
 // supportCommand/_shared — helpers used across multiple command files
 //
 // Only put something here if more than one command file needs it. Single-file
-// helpers stay private to that file. See docs/service-layer-conventions.md.
+// helpers stay private to that file. See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 /**
