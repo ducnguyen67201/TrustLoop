@@ -15,16 +15,19 @@ WORKDIR /app
 # -----------------------------------------------------------------------------
 # Stage: deps — install workspace dependencies only
 #
-# node:24-slim is Debian (glibc). Alpine/musl triggers an npm optional-deps
-# bug with @tailwindcss/oxide native bindings (issue npm/cli#4828). Keep this
-# image as glibc to avoid that rabbit hole. We also drop --ignore-scripts so
-# native addon postinstall hooks can link platform binaries correctly.
+# node:24-slim is Debian (glibc). We deliberately do NOT copy package-lock.json
+# because of npm/cli#4828: the host-generated lockfile only lists the optional
+# native bindings that were installed on the host (e.g. @tailwindcss/oxide
+# only has darwin-arm64 listed), so npm ci/install inside Docker will not
+# install the linux variant needed to actually build. Fresh `npm install`
+# without a lockfile resolves optional native deps for the target platform
+# correctly.
 # -----------------------------------------------------------------------------
 FROM base AS deps
-COPY package.json package-lock.json ./
+COPY package.json ./
 COPY apps/marketing/package.json ./apps/marketing/
 COPY packages/brand/package.json ./packages/brand/
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 # Stage: builder — build marketing with standalone output
@@ -32,7 +35,7 @@ RUN npm ci
 FROM base AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json package-lock.json tsconfig.base.json ./
+COPY package.json tsconfig.base.json ./
 COPY apps/marketing ./apps/marketing
 COPY packages/brand ./packages/brand
 RUN npm run build --workspace=@trustloop/marketing
