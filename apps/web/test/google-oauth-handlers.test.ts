@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaTransactionMock = vi.fn();
-const exchangeCodeForTokensMock = vi.fn();
-const findOrCreateUserFromGoogleProfileMock = vi.fn();
+const exchangeCodeMock = vi.fn();
+const findOrCreateUserFromProfileMock = vi.fn();
 const verifyIdTokenMock = vi.fn();
 const resolveWorkspaceFromVerifiedEmailMock = vi.fn();
 const ensureMembershipMock = vi.fn();
@@ -52,8 +52,8 @@ vi.mock("@shared/rest/security/session", () => ({
   getSessionRequestMeta: vi.fn(() => ({ ip: "127.0.0.1", userAgent: "vitest" })),
 }));
 
-vi.mock("@shared/rest/services/auth/google-oauth-service", () => ({
-  buildGoogleAuthorizationUrl: vi.fn(
+vi.mock("@shared/rest/services/auth/google-oauth", () => ({
+  buildAuthorizationUrl: vi.fn(
     ({
       state,
       nonce,
@@ -71,8 +71,8 @@ vi.mock("@shared/rest/services/auth/google-oauth-service", () => ({
         codeChallenge
       )}&redirect_uri=${encodeURIComponent(redirectUri)}`
   ),
-  exchangeCodeForTokens: exchangeCodeForTokensMock,
-  findOrCreateUserFromGoogleProfile: findOrCreateUserFromGoogleProfileMock,
+  exchangeCode: exchangeCodeMock,
+  findOrCreateUserFromProfile: findOrCreateUserFromProfileMock,
   verifyIdToken: verifyIdTokenMock,
 }));
 
@@ -95,11 +95,11 @@ beforeEach(() => {
   prismaTransactionMock.mockReset();
   prismaTransactionMock.mockImplementation(async (callback) => callback({}));
 
-  exchangeCodeForTokensMock.mockReset();
-  exchangeCodeForTokensMock.mockResolvedValue({ idToken: "id-token", accessToken: "access-token" });
+  exchangeCodeMock.mockReset();
+  exchangeCodeMock.mockResolvedValue({ idToken: "id-token", accessToken: "access-token" });
 
-  findOrCreateUserFromGoogleProfileMock.mockReset();
-  findOrCreateUserFromGoogleProfileMock.mockResolvedValue({
+  findOrCreateUserFromProfileMock.mockReset();
+  findOrCreateUserFromProfileMock.mockResolvedValue({
     user: { id: "user-123", email: "alice@acme.com" },
     created: false,
   });
@@ -144,7 +144,7 @@ beforeEach(() => {
 // emission, real redirect construction.
 //
 // The happy path (successful find-or-create + session write) is covered by
-// unit tests on google-oauth-service.ts and workspace-auto-join-service.ts.
+// unit tests on google-oauth.ts and workspace-auto-join-service.ts.
 // This file keeps one callback success-path regression test so handler-only
 // orchestration bugs still get caught without a real database.
 // ---------------------------------------------------------------------------
