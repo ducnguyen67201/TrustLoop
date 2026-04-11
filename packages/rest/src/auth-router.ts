@@ -1,3 +1,4 @@
+import { env } from "@shared/env";
 import { writeAuditEvent } from "@shared/rest/security/audit";
 import { hashPassword, verifyPassword } from "@shared/rest/security/password";
 import { consumeLoginAttempt } from "@shared/rest/security/rate-limit";
@@ -16,6 +17,7 @@ import {
 import { listUserWorkspaceAccess } from "@shared/rest/services/workspace-membership-service";
 import { authenticatedProcedure, publicProcedure, router } from "@shared/rest/trpc";
 import {
+  authProvidersSchema,
   loginRequestSchema,
   loginResponseSchema,
   logoutResponseSchema,
@@ -153,6 +155,17 @@ export const authRouter = router({
 
     return logoutResponseSchema.parse({
       success: true,
+    });
+  }),
+  // Which external sign-in providers are enabled for this deployment.
+  // Driven by env vars so ops can toggle without a rebuild. publicProcedure
+  // because /login needs to read it pre-authentication. Zero side effects.
+  // The Next.js login page reads env directly via a Server Component for
+  // its primary render path; this query exists for CLI / test clients and
+  // as a fallback.
+  providers: publicProcedure.query(() => {
+    return authProvidersSchema.parse({
+      google: Boolean(env.GOOGLE_OAUTH_CLIENT_ID),
     });
   }),
   me: authenticatedProcedure.query(({ ctx }) => {
