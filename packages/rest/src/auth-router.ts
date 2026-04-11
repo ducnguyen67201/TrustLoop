@@ -89,7 +89,13 @@ export const authRouter = router({
 
     const user = await findUserAuthByEmail(normalizedEmail);
 
-    const isValid = user ? await verifyPassword(user.passwordHash, input.password) : false;
+    // Null passwordHash means the account is Google-only (no password was ever set).
+    // Treat identically to "user doesn't exist" or "wrong password" so the response
+    // never leaks which accounts exist or which provider they're linked to.
+    const isValid =
+      user && user.passwordHash !== null
+        ? await verifyPassword(user.passwordHash, input.password)
+        : false;
 
     if (!user || !isValid) {
       await writeAuditEvent({
