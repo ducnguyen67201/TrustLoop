@@ -2,8 +2,8 @@ import { CtaSection } from "@/components/cta-section";
 import { Footer } from "@/components/footer";
 import { Hero } from "@/components/hero";
 import { HowItWorks } from "@/components/how-it-works";
-import { Metrics } from "@/components/metrics";
 import { Nav } from "@/components/nav";
+import { Origin } from "@/components/origin";
 import { Pipeline } from "@/components/pipeline";
 import { Team } from "@/components/team";
 import { TrustSection } from "@/components/trust-section";
@@ -22,7 +22,7 @@ export default function Page() {
       <HowItWorks />
       <WhatChanges />
       <TrustSection />
-      <Metrics />
+      <Origin />
       <Team />
       <CtaSection />
       <Footer />

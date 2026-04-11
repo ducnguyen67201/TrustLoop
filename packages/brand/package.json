@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./logo.svg": "./src/logo.svg",
-    "./team/*": "./src/team/*"
+    "./team/*": "./src/team/*",
+    "./hackathon/*": "./src/hackathon/*"
   },
   "scripts": {
     "type-check": "tsgo --noEmit",

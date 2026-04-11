@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const HEADLINE = "Support that knows your codebase.";
+const HEADLINE = "Slack support that reads your code.";
 
 export function Hero() {
   const [text, setText] = useState("");
@@ -45,15 +45,18 @@ export function Hero() {
         <span className="cursor-blink text-[#D4A017] font-normal">|</span>
       </h1>
       <p className="text-lg md:text-xl text-[#8B7E74] mb-12 max-w-2xl mx-auto leading-relaxed">
-        Chat messages become tickets. AI drafts responses using your actual code. Engineers review
-        and send. Hours saved, every week.
+        Built for engineering teams drowning in customer support threads. Reads your repo, replays
+        the customer&apos;s session, drafts the Slack reply, and preps the fix PR. Your engineer
+        approves. No hallucinations, every answer grounded in real code.
       </p>
       <div className="flex flex-col sm:flex-row gap-4 mb-24 justify-center">
         <a
-          href="#cta"
+          href="https://calendar.app.google/RPU52joHKB57nrrL7"
+          target="_blank"
+          rel="noopener noreferrer"
           className="bg-[#D4A017] text-[#1C1917] px-8 py-4 font-semibold text-sm hover:bg-[#E5B532] transition-colors inline-flex justify-center items-center"
         >
-          Get Early Access
+          Book a Call
         </a>
         <a
           href="#how-it-works"
