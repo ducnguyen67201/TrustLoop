@@ -1,12 +1,4 @@
-import {
-  connectGithubInstallation,
-  getCodexSettings,
-  preparePullRequestIntent,
-  recordSearchFeedback,
-  requestRepositorySync,
-  searchRepositoryCode,
-  updateRepositorySelection,
-} from "@shared/rest/codex";
+import * as codex from "@shared/rest/codex";
 import * as supportIngress from "@shared/rest/services/support/support-ingress-service";
 import { temporalWorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import { dispatchWorkflow } from "@shared/rest/workflow-router";
@@ -48,39 +40,39 @@ export async function dispatchWorkflowFromHttpBody(
 export async function getCodexSettingsResponse(
   workspaceId?: string
 ): Promise<CodexSettingsResponse> {
-  return getCodexSettings(workspaceId);
+  return codex.getSettings(workspaceId);
 }
 
 export async function connectGithubInstallationFromHttpBody(
   body: unknown
 ): Promise<ConnectGithubInstallationResponse> {
-  return connectGithubInstallation(connectGithubInstallationRequestSchema.parse(body));
+  return codex.connectGithubInstallation(connectGithubInstallationRequestSchema.parse(body));
 }
 
 export async function updateRepositorySelectionFromHttpBody(
   body: unknown
 ): Promise<UpdateRepositorySelectionResponse> {
-  return updateRepositorySelection(updateRepositorySelectionRequestSchema.parse(body));
+  return codex.updateRepositorySelection(updateRepositorySelectionRequestSchema.parse(body));
 }
 
 export async function requestRepositorySyncFromHttpBody(
   body: unknown
 ): Promise<RequestRepositorySyncResponse> {
-  return requestRepositorySync(requestRepositorySyncSchema.parse(body));
+  return codex.requestRepositorySync(requestRepositorySyncSchema.parse(body));
 }
 
 export async function searchRepositoryCodeFromHttpBody(body: unknown): Promise<SearchCodeResponse> {
-  return searchRepositoryCode(searchCodeRequestSchema.parse(body));
+  return codex.searchRepositoryCode(searchCodeRequestSchema.parse(body));
 }
 
 export async function recordSearchFeedbackFromHttpBody(
   body: unknown
 ): Promise<SearchFeedbackResponse> {
-  return recordSearchFeedback(searchFeedbackRequestSchema.parse(body));
+  return codex.recordSearchFeedback(searchFeedbackRequestSchema.parse(body));
 }
 
 export async function preparePrIntentFromHttpBody(body: unknown): Promise<PreparePrIntentResponse> {
-  return preparePullRequestIntent(preparePrIntentRequestSchema.parse(body));
+  return codex.preparePullRequestIntent(preparePrIntentRequestSchema.parse(body));
 }
 
 export async function processSlackWebhookFromHttpRequest(

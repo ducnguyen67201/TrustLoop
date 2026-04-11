@@ -3,7 +3,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import { ensureWorkspace, getCodexSettings } from "@shared/rest/codex/shared";
+import { ensureWorkspace, getSettings } from "@shared/rest/codex/shared";
 import {
   type ConnectGithubInstallationRequest,
   type ConnectGithubInstallationResponse,
@@ -234,7 +234,7 @@ export async function connectGithubInstallation(
     });
   }
 
-  const settings = await getCodexSettings(parsed.workspaceId);
+  const settings = await getSettings(parsed.workspaceId);
 
   return connectGithubInstallationResponseSchema.parse({
     connection: settings.githubConnection,

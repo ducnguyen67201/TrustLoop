@@ -1,5 +1,5 @@
 import { createTool } from "@mastra/core/tools";
-import { searchWorkspaceCode } from "@shared/rest/codex/workspace-code-search";
+import * as codex from "@shared/rest/codex";
 import { z } from "zod";
 
 export const searchCodeTool = createTool({
@@ -22,7 +22,7 @@ export const searchCodeTool = createTool({
   execute: async (input) => {
     const { query, filePattern, workspaceId } = input;
 
-    const results = await searchWorkspaceCode(workspaceId, query, {
+    const results = await codex.searchWorkspaceCode(workspaceId, query, {
       filePattern,
       limit: 10,
     });

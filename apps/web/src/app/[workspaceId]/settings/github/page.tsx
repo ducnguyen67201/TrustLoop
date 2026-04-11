@@ -1,6 +1,6 @@
 import { FlashBanner } from "@/components/settings/flash-banner";
 import { GitHubConnectionSection } from "@/components/settings/github-connection-section";
-import { generateGithubInstallUrl, getCodexSettings } from "@shared/rest";
+import * as codex from "@shared/rest/codex";
 
 type PageParams = Promise<{ workspaceId: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -29,7 +29,7 @@ export default async function GitHubSettingsPage({
 }) {
   const { workspaceId } = await params;
   const search = await searchParams;
-  const settings = await getCodexSettings(workspaceId);
+  const settings = await codex.getSettings(workspaceId);
 
   const flash = readParam(search, "flash");
   const tone = readParam(search, "tone") === "error" ? "error" : "success";
@@ -37,7 +37,7 @@ export default async function GitHubSettingsPage({
 
   let installUrl: string | null = null;
   try {
-    installUrl = generateGithubInstallUrl(workspaceId);
+    installUrl = codex.generateGithubInstallUrl(workspaceId);
   } catch {
     /* GITHUB_APP_SLUG not configured */
   }

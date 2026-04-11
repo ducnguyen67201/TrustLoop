@@ -1,9 +1,6 @@
 import { oauthPopupCloseHtml } from "@/server/http/templates/oauth-popup-close";
 import { env } from "@shared/env";
-import {
-  handleGithubInstallationCallback,
-  verifyAndDecodeGithubState,
-} from "@shared/rest/codex/github";
+import * as codex from "@shared/rest/codex";
 import { GITHUB_OAUTH_STATUS, type GithubOAuthStatus } from "@shared/types";
 import { NextResponse } from "next/server";
 
@@ -33,7 +30,7 @@ export async function handleGithubOAuthCallback(request: Request): Promise<NextR
   if (setupAction === "cancel") {
     let workspaceId: string | null = null;
     try {
-      const decoded = verifyAndDecodeGithubState(state);
+      const decoded = codex.verifyAndDecodeGithubState(state);
       workspaceId = decoded.workspaceId;
     } catch {
       /* best-effort: redirect to login if state is unverifiable */
@@ -42,7 +39,7 @@ export async function handleGithubOAuthCallback(request: Request): Promise<NextR
   }
 
   try {
-    const { workspaceId } = await handleGithubInstallationCallback(installationId, state);
+    const { workspaceId } = await codex.handleGithubInstallationCallback(installationId, state);
     return redirectToSettings(workspaceId, GITHUB_OAUTH_STATUS.CONNECTED);
   } catch (callbackError) {
     console.error("[github-oauth] Callback failed", {

@@ -228,7 +228,7 @@ export function toRepositorySummary(repository: {
 /**
  * Load the current repository settings view, including connection status and trust signals.
  */
-export async function getCodexSettings(
+export async function getSettings(
   workspaceId = DEFAULT_WORKSPACE_ID
 ): Promise<CodexSettingsResponse> {
   const workspace = await ensureWorkspace(workspaceId);
