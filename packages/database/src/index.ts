@@ -72,3 +72,4 @@ export const prismaRaw = baseClient;
 export type { Prisma } from "@shared/database/generated/prisma/client";
 export { SOFT_DELETE_MODELS } from "./soft-delete";
 export { findIncludingDeleted, softUpsert, resurrectOrUpsert } from "./soft-delete-helpers";
+export { countSoftDeletedRecords, hardDeleteById, purgeDeletedRecords } from "./hard-delete";
