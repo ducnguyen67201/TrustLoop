@@ -1,12 +1,4 @@
-import {
-  type GoogleOauthTx,
-  type GoogleProfile,
-  __setGoogleJwksForTest,
-  buildGoogleAuthorizationUrl,
-  exchangeCodeForTokens,
-  findOrCreateUserFromGoogleProfile,
-  verifyIdToken,
-} from "@shared/rest/services/auth/google-oauth-service";
+import * as googleOauth from "@shared/rest/services/auth/google-oauth";
 import { PermanentExternalError, TransientExternalError, ValidationError } from "@shared/types";
 import {
   type JWK,
@@ -21,7 +13,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 // ---------------------------------------------------------------------------
 // Test fixture: a static RSA keypair we control. Tests sign fake id_tokens
 // with the private key and feed the matching public key into the service
-// via __setGoogleJwksForTest. Zero network, fully deterministic.
+// via googleOauth.__setJwksForTest. Zero network, fully deterministic.
 // ---------------------------------------------------------------------------
 
 let privateKey: CryptoKey;
@@ -69,12 +61,12 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "test-client-id");
   vi.stubEnv("GOOGLE_OAUTH_CLIENT_SECRET", "test-client-secret");
-  __setGoogleJwksForTest(jwksResolver);
+  googleOauth.__setJwksForTest(jwksResolver);
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  __setGoogleJwksForTest(null);
+  googleOauth.__setJwksForTest(null);
   vi.restoreAllMocks();
 });
 
@@ -84,7 +76,7 @@ afterEach(() => {
 
 describe("buildGoogleAuthorizationUrl", () => {
   it("produces a URL with all required OAuth 2.0 + PKCE params", () => {
-    const url = buildGoogleAuthorizationUrl({
+    const url = googleOauth.buildAuthorizationUrl({
       state: "state-123",
       nonce: "nonce-456",
       codeChallenge: "challenge-789",
@@ -109,7 +101,7 @@ describe("buildGoogleAuthorizationUrl", () => {
   it("throws PermanentExternalError when GOOGLE_OAUTH_CLIENT_ID is unset", () => {
     vi.stubEnv("GOOGLE_OAUTH_CLIENT_ID", "");
     expect(() =>
-      buildGoogleAuthorizationUrl({
+      googleOauth.buildAuthorizationUrl({
         state: "s",
         nonce: "n",
         codeChallenge: "c",
@@ -123,7 +115,7 @@ describe("buildGoogleAuthorizationUrl", () => {
 // exchangeCodeForTokens
 // ---------------------------------------------------------------------------
 
-describe("exchangeCodeForTokens", () => {
+describe("googleOauth.exchangeCode", () => {
   function mockFetchOk(body: unknown): void {
     vi.stubGlobal(
       "fetch",
@@ -163,7 +155,7 @@ describe("exchangeCodeForTokens", () => {
       token_type: "Bearer",
     });
 
-    const result = await exchangeCodeForTokens({
+    const result = await googleOauth.exchangeCode({
       code: "code-abc",
       codeVerifier: "verifier-abc",
       redirectUri: "https://app.example.com/cb",
@@ -176,7 +168,7 @@ describe("exchangeCodeForTokens", () => {
   it("throws PermanentExternalError on 400 Bad Request (bad code)", async () => {
     mockFetchStatus(400, '{"error":"invalid_grant"}');
     await expect(
-      exchangeCodeForTokens({
+      googleOauth.exchangeCode({
         code: "bad-code",
         codeVerifier: "verifier",
         redirectUri: "https://app.example.com/cb",
@@ -187,7 +179,7 @@ describe("exchangeCodeForTokens", () => {
   it("throws TransientExternalError on 503", async () => {
     mockFetchStatus(503, "service unavailable");
     await expect(
-      exchangeCodeForTokens({
+      googleOauth.exchangeCode({
         code: "code",
         codeVerifier: "verifier",
         redirectUri: "https://app.example.com/cb",
@@ -198,7 +190,7 @@ describe("exchangeCodeForTokens", () => {
   it("throws TransientExternalError on network failure", async () => {
     mockFetchThrow();
     await expect(
-      exchangeCodeForTokens({
+      googleOauth.exchangeCode({
         code: "code",
         codeVerifier: "verifier",
         redirectUri: "https://app.example.com/cb",
@@ -209,7 +201,7 @@ describe("exchangeCodeForTokens", () => {
   it("throws PermanentExternalError when response shape is invalid", async () => {
     mockFetchOk({ access_token: "a" /* missing id_token, expires_in, scope */ });
     await expect(
-      exchangeCodeForTokens({
+      googleOauth.exchangeCode({
         code: "code",
         codeVerifier: "verifier",
         redirectUri: "https://app.example.com/cb",
@@ -222,7 +214,7 @@ describe("exchangeCodeForTokens", () => {
 // verifyIdToken — the highest-risk function in this module
 // ---------------------------------------------------------------------------
 
-describe("verifyIdToken", () => {
+describe("googleOauth.verifyIdToken", () => {
   it("returns a profile for a well-formed id_token with matching nonce", async () => {
     const token = await issueToken({
       sub: "google-sub-123",
@@ -233,7 +225,7 @@ describe("verifyIdToken", () => {
       nonce: "expected-nonce",
     });
 
-    const profile = await verifyIdToken(token, "expected-nonce");
+    const profile = await googleOauth.verifyIdToken(token, "expected-nonce");
     expect(profile.sub).toBe("google-sub-123");
     expect(profile.email).toBe("alice@acme.com");
     expect(profile.emailVerified).toBe(true);
@@ -248,7 +240,7 @@ describe("verifyIdToken", () => {
       email_verified: true,
       nonce: "nonce",
     });
-    const profile = await verifyIdToken(token, "nonce");
+    const profile = await googleOauth.verifyIdToken(token, "nonce");
     expect(profile.email).toBe("alice@acme.com");
   });
 
@@ -259,7 +251,7 @@ describe("verifyIdToken", () => {
       email_verified: false,
       nonce: "nonce",
     });
-    const profile = await verifyIdToken(token, "nonce");
+    const profile = await googleOauth.verifyIdToken(token, "nonce");
     expect(profile.emailVerified).toBe(false);
   });
 
@@ -268,7 +260,7 @@ describe("verifyIdToken", () => {
       { sub: "sub", email: "alice@acme.com", email_verified: true, nonce: "nonce" },
       { issuer: "https://evil.example.com" }
     );
-    await expect(verifyIdToken(token, "nonce")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(token, "nonce")).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("accepts the alternate issuer form accounts.google.com (no scheme)", async () => {
@@ -276,7 +268,7 @@ describe("verifyIdToken", () => {
       { sub: "sub", email: "alice@acme.com", email_verified: true, nonce: "nonce" },
       { issuer: "accounts.google.com" }
     );
-    const profile = await verifyIdToken(token, "nonce");
+    const profile = await googleOauth.verifyIdToken(token, "nonce");
     expect(profile.sub).toBe("sub");
   });
 
@@ -285,7 +277,7 @@ describe("verifyIdToken", () => {
       { sub: "sub", email: "alice@acme.com", email_verified: true, nonce: "nonce" },
       { audience: "somebody-elses-client-id" }
     );
-    await expect(verifyIdToken(token, "nonce")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(token, "nonce")).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("rejects expired id_token", async () => {
@@ -294,7 +286,7 @@ describe("verifyIdToken", () => {
       { sub: "sub", email: "alice@acme.com", email_verified: true, nonce: "nonce" },
       { expirationTime: Math.floor(Date.now() / 1000) - 600 }
     );
-    await expect(verifyIdToken(token, "nonce")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(token, "nonce")).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("rejects token with wrong algorithm (HS256 confusion attempt)", async () => {
@@ -319,7 +311,7 @@ describe("verifyIdToken", () => {
     ).toString("base64url");
     const badToken = `${header}.${payload}.fake-sig`;
 
-    await expect(verifyIdToken(badToken, "nonce")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(badToken, "nonce")).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("rejects alg=none token", async () => {
@@ -339,7 +331,7 @@ describe("verifyIdToken", () => {
     ).toString("base64url");
     const badToken = `${header}.${payload}.`;
 
-    await expect(verifyIdToken(badToken, "nonce")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(badToken, "nonce")).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("rejects nonce mismatch", async () => {
@@ -349,7 +341,7 @@ describe("verifyIdToken", () => {
       email_verified: true,
       nonce: "expected",
     });
-    await expect(verifyIdToken(token, "different")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(token, "different")).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("rejects token with invalid claim shape (missing email)", async () => {
@@ -359,15 +351,15 @@ describe("verifyIdToken", () => {
       email_verified: true,
       nonce: "nonce",
     });
-    await expect(verifyIdToken(token, "nonce")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(token, "nonce")).rejects.toBeInstanceOf(ValidationError);
   });
 });
 
 // ---------------------------------------------------------------------------
-// findOrCreateUserFromGoogleProfile
+// findOrCreateUserFromgoogleOauth.GoogleProfile
 // ---------------------------------------------------------------------------
 
-describe("findOrCreateUserFromGoogleProfile", () => {
+describe("findOrCreateUserFromgoogleOauth.GoogleProfile", () => {
   // Build a mock transaction client where each call is tracked so tests can
   // assert exactly which paths were taken. `any` is fine here per the same
   // pattern used in soft-delete-cascade.test.ts.
@@ -376,7 +368,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
     existingUserByEmail?: unknown | null;
     createdUserId?: string;
   }): {
-    tx: GoogleOauthTx;
+    tx: googleOauth.GoogleOauthTx;
     calls: {
       identityFindUnique: number;
       identityCreate: number;
@@ -392,7 +384,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
       userCreate: 0,
       userUpdate: 0,
     };
-    const tx: GoogleOauthTx = {
+    const tx: googleOauth.GoogleOauthTx = {
       authIdentity: {
         // biome-ignore lint/suspicious/noExplicitAny: test mock
         findUnique: async (_args: any) => {
@@ -426,7 +418,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
     return { tx, calls };
   }
 
-  const verifiedProfile: GoogleProfile = {
+  const verifiedProfile: googleOauth.GoogleProfile = {
     sub: "google-sub-123",
     email: "alice@acme.com",
     emailVerified: true,
@@ -441,7 +433,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
       },
     });
 
-    const result = await findOrCreateUserFromGoogleProfile(tx, verifiedProfile);
+    const result = await googleOauth.findOrCreateUserFromProfile(tx, verifiedProfile);
     expect(result.user.id).toBe("user-abc");
     expect(result.created).toBe(false);
     expect(calls.identityFindUnique).toBe(1);
@@ -460,7 +452,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
       },
     });
 
-    await expect(findOrCreateUserFromGoogleProfile(tx, verifiedProfile)).rejects.toBeInstanceOf(
+    await expect(googleOauth.findOrCreateUserFromProfile(tx, verifiedProfile)).rejects.toBeInstanceOf(
       ValidationError
     );
 
@@ -480,7 +472,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
       },
     });
 
-    const result = await findOrCreateUserFromGoogleProfile(tx, verifiedProfile);
+    const result = await googleOauth.findOrCreateUserFromProfile(tx, verifiedProfile);
     expect(result.user.id).toBe("user-existing");
     expect(result.created).toBe(false);
     expect(calls.identityCreate).toBe(1);
@@ -499,7 +491,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
       },
     });
 
-    await findOrCreateUserFromGoogleProfile(tx, verifiedProfile);
+    await googleOauth.findOrCreateUserFromProfile(tx, verifiedProfile);
     expect(calls.identityCreate).toBe(1);
     // both name AND avatarUrl already set — no update needed
     expect(calls.userUpdate).toBe(0);
@@ -517,7 +509,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
     });
 
     await expect(
-      findOrCreateUserFromGoogleProfile(tx, { ...verifiedProfile, emailVerified: false })
+      googleOauth.findOrCreateUserFromProfile(tx, { ...verifiedProfile, emailVerified: false })
     ).rejects.toBeInstanceOf(ValidationError);
 
     expect(calls.identityCreate).toBe(0);
@@ -531,7 +523,7 @@ describe("findOrCreateUserFromGoogleProfile", () => {
       createdUserId: "user-fresh",
     });
 
-    const result = await findOrCreateUserFromGoogleProfile(tx, verifiedProfile);
+    const result = await googleOauth.findOrCreateUserFromProfile(tx, verifiedProfile);
     expect(result.user.id).toBe("user-fresh");
     expect(result.created).toBe(true);
     expect(calls.userCreate).toBe(1);

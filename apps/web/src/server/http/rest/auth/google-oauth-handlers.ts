@@ -8,13 +8,7 @@ import {
 } from "@shared/rest/security/oauth-state";
 import { consumeLoginAttempt } from "@shared/rest/security/rate-limit";
 import { createUserSession, getSessionRequestMeta } from "@shared/rest/security/session";
-import {
-  type GoogleProfile,
-  buildGoogleAuthorizationUrl,
-  exchangeCodeForTokens,
-  findOrCreateUserFromGoogleProfile,
-  verifyIdToken,
-} from "@shared/rest/services/auth/google-oauth-service";
+import * as googleOauth from "@shared/rest/services/auth/google-oauth";
 import {
   GOOGLE_OAUTH_OUTCOME,
   GOOGLE_OAUTH_STATUS,
@@ -42,7 +36,7 @@ export async function handleGoogleOAuthStart(_request: Request): Promise<NextRes
 
   const issued = issueOauthStateCookie();
   const redirectUri = buildRedirectUri();
-  const authUrl = buildGoogleAuthorizationUrl({
+  const authUrl = googleOauth.buildAuthorizationUrl({
     state: issued.state,
     nonce: issued.nonce,
     codeChallenge: issued.codeChallenge,
@@ -117,10 +111,10 @@ export async function handleGoogleOAuthCallback(request: Request): Promise<NextR
   }
 
   const redirectUri = buildRedirectUri();
-  let profile: GoogleProfile;
+  let profile: googleOauth.GoogleProfile;
   try {
-    const tokens = await exchangeCodeForTokens({ code, codeVerifier, redirectUri });
-    profile = await verifyIdToken(tokens.idToken, nonce);
+    const tokens = await googleOauth.exchangeCode({ code, codeVerifier, redirectUri });
+    profile = await googleOauth.verifyIdToken(tokens.idToken, nonce);
   } catch (err) {
     console.warn("[google-oauth] token exchange or id_token verify failed", {
       error: err instanceof Error ? err.message : String(err),
@@ -146,7 +140,7 @@ export async function handleGoogleOAuthCallback(request: Request): Promise<NextR
   let autoJoinedWorkspaceId: string | null;
   try {
     const txResult = await prisma.$transaction(async (tx) => {
-      const { user: foundUser, created: wasCreated } = await findOrCreateUserFromGoogleProfile(
+      const { user: foundUser, created: wasCreated } = await googleOauth.findOrCreateUserFromProfile(
         tx,
         profile
       );
@@ -270,7 +264,7 @@ function buildRedirectUri(): string {
 
 async function resolveWorkspaceAfterLogin(input: {
   userId: string;
-  profile: GoogleProfile;
+  profile: googleOauth.GoogleProfile;
   autoJoinedWorkspaceId: string | null;
 }): Promise<{
   activeWorkspaceId: string | null;
@@ -304,7 +298,7 @@ async function resolveWorkspaceAfterLogin(input: {
 async function autoJoinUserFromVerifiedGoogleProfile(
   tx: autoJoin.WorkspaceAutoJoinTx,
   userId: string,
-  profile: GoogleProfile
+  profile: googleOauth.GoogleProfile
 ): Promise<string | null> {
   const match = await autoJoin.resolveFromVerifiedEmail(tx, {
     email: profile.email,
