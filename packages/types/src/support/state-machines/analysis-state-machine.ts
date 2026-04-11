@@ -1,8 +1,8 @@
 import {
   ANALYSIS_STATUS,
-  MAX_ANALYSIS_RETRIES,
   type AnalysisResult,
   type DraftResult,
+  MAX_ANALYSIS_RETRIES,
 } from "../support-analysis.schema";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -151,14 +151,14 @@ export function restoreAnalysisContext(
   analysisId: string,
   status: AnalysisStatusValue,
   errorMessage: string | null,
-  retryCount: number,
+  retryCount: number
 ): AnalysisContext {
   return { analysisId, status, errorMessage, retryCount };
 }
 
 export function transitionAnalysis(
   context: AnalysisContext,
-  event: AnalysisEvent,
+  event: AnalysisEvent
 ): AnalysisContext {
   const state = STATE_MAP[context.status];
   if (!state) {
@@ -167,15 +167,10 @@ export function transitionAnalysis(
   return state.handle(event, context);
 }
 
-export function getAllowedAnalysisEvents(
-  context: AnalysisContext,
-): readonly AnalysisEventType[] {
+export function getAllowedAnalysisEvents(context: AnalysisContext): readonly AnalysisEventType[] {
   const state = STATE_MAP[context.status];
   if (!state) return [];
-  if (
-    context.status === ANALYSIS_STATUS.failed &&
-    context.retryCount >= MAX_ANALYSIS_RETRIES
-  ) {
+  if (context.status === ANALYSIS_STATUS.failed && context.retryCount >= MAX_ANALYSIS_RETRIES) {
     return [];
   }
   return state.allowedEvents;

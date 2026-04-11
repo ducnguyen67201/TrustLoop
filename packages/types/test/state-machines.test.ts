@@ -87,10 +87,10 @@ describe("analysis state machine", () => {
       "an_1",
       ANALYSIS_STATUS.failed,
       "persistent failure",
-      MAX_ANALYSIS_RETRIES,
+      MAX_ANALYSIS_RETRIES
     );
     expect(() => transitionAnalysis(ctx, { type: "retry" })).toThrow(
-      InvalidAnalysisTransitionError,
+      InvalidAnalysisTransitionError
     );
   });
 
@@ -103,7 +103,7 @@ describe("analysis state machine", () => {
       draft: null,
     });
     expect(() => transitionAnalysis(ctx, { type: "retry" })).toThrow(
-      InvalidAnalysisTransitionError,
+      InvalidAnalysisTransitionError
     );
   });
 
@@ -114,7 +114,7 @@ describe("analysis state machine", () => {
         type: "analyzed",
         result: mockAnalysisResult(),
         draft: null,
-      }),
+      })
     ).toThrow(InvalidAnalysisTransitionError);
   });
 
@@ -238,7 +238,7 @@ describe("draft state machine", () => {
     ctx = transitionDraft(ctx, { type: "approve", approvedBy: "user_1" });
     ctx = transitionDraft(ctx, { type: "send" });
     expect(() => transitionDraft(ctx, { type: "retry" })).toThrow(
-      InvalidDraftTransitionError,
+      InvalidDraftTransitionError
     );
   });
 
@@ -247,14 +247,14 @@ describe("draft state machine", () => {
     ctx = transitionDraft(ctx, { type: "generated" });
     ctx = transitionDraft(ctx, { type: "dismiss" });
     expect(() => transitionDraft(ctx, { type: "retry" })).toThrow(
-      InvalidDraftTransitionError,
+      InvalidDraftTransitionError
     );
   });
 
   it("rejects invalid transitions", () => {
     const ctx = createDraftContext("dr_1");
     expect(() =>
-      transitionDraft(ctx, { type: "approve", approvedBy: "user_1" }),
+      transitionDraft(ctx, { type: "approve", approvedBy: "user_1" })
     ).toThrow(InvalidDraftTransitionError);
   });
 

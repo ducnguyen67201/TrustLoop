@@ -145,15 +145,12 @@ export function createDraftContext(draftId: string): DraftContext {
 export function restoreDraftContext(
   draftId: string,
   status: DraftStatusValue,
-  errorMessage: string | null,
+  errorMessage: string | null
 ): DraftContext {
   return { draftId, status, errorMessage };
 }
 
-export function transitionDraft(
-  context: DraftContext,
-  event: DraftEvent,
-): DraftContext {
+export function transitionDraft(context: DraftContext, event: DraftEvent): DraftContext {
   const state = STATE_MAP[context.status];
   if (!state) {
     throw new Error(`Unknown draft status: ${context.status}`);
@@ -161,9 +158,7 @@ export function transitionDraft(
   return state.handle(event, context);
 }
 
-export function getAllowedDraftEvents(
-  context: DraftContext,
-): readonly DraftEventType[] {
+export function getAllowedDraftEvents(context: DraftContext): readonly DraftEventType[] {
   const state = STATE_MAP[context.status];
   if (!state) return [];
   return state.allowedEvents;
