@@ -57,7 +57,7 @@ export const createPullRequestTool = createTool({
 
     const baseBranch = input.baseBranch ?? repo.defaultBranch ?? "main";
     const branchName = `trustloop/fix-${Date.now()}`;
-    const [owner, repoName] = input.repositoryFullName.split("/");
+    const [owner = "", repoName = ""] = input.repositoryFullName.split("/");
 
     try {
       const octokit = createInstallationOctokit(installation.githubInstallationId);
