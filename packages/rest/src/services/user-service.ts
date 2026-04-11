@@ -1,12 +1,15 @@
 import { prisma } from "@shared/database";
 
-export type UserIdentity = {
+export type UserIdentityRecord = {
   id: string;
   email: string;
 };
 
-export type UserAuthRecord = UserIdentity & {
-  passwordHash: string;
+// passwordHash is nullable: Google-only users have no password. The login
+// procedure in auth-router.ts rejects a null hash with the same generic 401
+// as a wrong-password attempt.
+export type UserAuthRecord = UserIdentityRecord & {
+  passwordHash: string | null;
 };
 
 /**
@@ -19,7 +22,7 @@ export function normalizeUserEmail(email: string): string {
 /**
  * Fetch a user identity record by email for membership and ownership checks.
  */
-export async function findUserIdentityByEmail(email: string): Promise<UserIdentity | null> {
+export async function findUserIdentityByEmail(email: string): Promise<UserIdentityRecord | null> {
   const normalizedEmail = normalizeUserEmail(email);
   return prisma.user.findUnique({
     where: {
@@ -55,7 +58,7 @@ export async function findUserAuthByEmail(email: string): Promise<UserAuthRecord
 export async function createUserWithPassword(
   email: string,
   passwordHash: string
-): Promise<UserIdentity> {
+): Promise<UserIdentityRecord> {
   const normalizedEmail = normalizeUserEmail(email);
   return prisma.user.create({
     data: {

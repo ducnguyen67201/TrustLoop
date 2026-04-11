@@ -7,6 +7,13 @@ enum WorkspaceRole {
 model Workspace {
   id                       String                     @id @default(cuid())
   name                     String
+  // TYPE GENERATION ONLY: DB uses partial unique index
+  // (WHERE emailDomain IS NOT NULL AND deletedAt IS NULL).
+  // Workspaces with a set emailDomain receive auto-join from users who sign in
+  // with a Google-verified email at that domain. TrustLoop team assigns this
+  // manually during customer provisioning. Personal email domains (gmail.com,
+  // etc.) are rejected at the service layer, never here.
+  emailDomain              String?                    @unique
   deletedAt                DateTime?
   memberships              WorkspaceMembership[]
   apiKeys                  WorkspaceApiKey[]
@@ -43,10 +50,16 @@ model User {
   id                         String                @id @default(cuid())
   // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
   email                      String                @unique
-  passwordHash               String
+  // Nullable: Google-only users have no password. Password login path
+  // enforces presence at runtime and returns a generic 401 if null.
+  passwordHash               String?
+  // Populated from the Google id_token profile on first sign-in.
+  name                       String?
+  avatarUrl                  String?
   deletedAt                  DateTime?
   sessions                   Session[]
   memberships                WorkspaceMembership[]
+  identities                 AuthIdentity[]
   createdApiKeys             WorkspaceApiKey[]     @relation("ApiKeyCreatedBy")
   auditLogs                  AuditLog[]            @relation("AuditActor")
   assignedSupportConvos      SupportConversation[] @relation("SupportConversationAssignee")
@@ -54,6 +67,26 @@ model User {
   updatedAt                  DateTime              @updatedAt
 
   // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
+}
+
+// External identity (Google, future: GitHub, Microsoft, SAML) linked to a User.
+// One User may have many AuthIdentity rows (one per provider they link).
+// (provider, providerAccountId) is globally unique.
+model AuthIdentity {
+  id                 String   @id @default(cuid())
+  userId             String
+  // Currently "google" only. See AUTH_PROVIDER const enum in @shared/types.
+  provider           String
+  // Google's stable `sub` claim. Never the email.
+  providerAccountId  String
+  // Email reported by the provider at link time. Audit-only, may drift.
+  emailAtLink        String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {

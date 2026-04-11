@@ -51,6 +51,14 @@ export const serverSchemas = {
   GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
   GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
 
+  // Google OAuth sign-in. All optional so the feature can be disabled in dev
+  // by leaving the vars unset. When GOOGLE_OAUTH_CLIENT_ID is missing, the
+  // "Continue with Google" button is hidden on /login and the callback
+  // returns a friendly error. See packages/rest/src/services/auth/google-oauth-service.ts.
+  GOOGLE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_OAUTH_REDIRECT_PATH: z.string().min(1).optional().default("/api/auth/google/callback"),
+
   // Debug
   TRUSTLOOP_DEBUG_TRPC: z.enum(["0", "1"]).optional().default("0"),
 };

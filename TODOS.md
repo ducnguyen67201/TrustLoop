@@ -1,5 +1,59 @@
 # TODOS
 
+## Auth & Onboarding
+
+### Self-serve workspace creation UI
+
+**What:** Let the first user at a brand-new domain create a workspace themselves (becoming OWNER), instead of landing at `/no-workspace` and waiting for the TrustLoop team to provision it manually.
+
+**Why:** Launching Google sign-in with white-glove provisioning (TrustLoop team sets `Workspace.emailDomain` by hand) is the right move for pilot #1-#5 — it forces a human first contact with every prospect, prevents domain squatting, and removes a whole UI from launch scope. But once you're doing 5+ pilots a week, manual provisioning becomes the bottleneck.
+
+**Context:** Added from `/plan-ceo-review` of the Google sign-in plan on 2026-04-11. The CEO review selected SELECTIVE EXPANSION and accepted workspace auto-join by verified email domain for users whose domain already matches a workspace. For new domains, the user chose "land at /no-workspace with a 'Contact us' message" instead of auto-creating a workspace. That decision is smart now but should be revisited when the manual workflow becomes a bottleneck.
+
+When you pick this up: the `AuthIdentity` model, `Workspace.emailDomain` column, and `resolveWorkspaceFromVerifiedEmail` helper already exist. You'll need: (1) a new workspace-create form on `/no-workspace` prefilled with the domain and a proposed name, (2) a confirmation step that sets `Workspace.emailDomain`, (3) protection against domain squatting (maybe: domain must pass a DNS TXT verification, or only allow if the user's `email_verified=true` AND the domain isn't on the personal-email block list, which it already is).
+
+**Effort:** M (human) / S (CC)
+**Priority:** P2
+**Depends on:** Initial Google sign-in + auto-join PR landing (in flight on main).
+
+### `hd` (hosted domain) parameter per-workspace for customer-restricted sign-in
+
+**What:** Let a workspace admin restrict Google sign-in for their workspace to only users from a specific Google Workspace `hd` domain. Pass the `hd` parameter on `/authorize` and verify it on the returned id_token.
+
+**Why:** Enterprise-lite SSO. A customer with strict identity policies can say "only @acme.com Google Workspace accounts can sign in to our TrustLoop workspace" without requiring full SAML/SCIM.
+
+**Context:** Added from `/plan-ceo-review` of the Google sign-in plan on 2026-04-11. Deferred because there is no customer demand signal yet — no prospect has asked for it. The full SSO/SAML/SCIM path is still the post-P0 end state per `docs/spec-auth-workspace-security-p0.md`. This is a half-measure that provides enterprise comfort without committing to the full SSO build.
+
+When you pick this up: add a `hostedDomain String?` field to `Workspace`, pass it as `hd` on the Google authorization URL, verify the `hd` claim on the returned id_token matches. Reject with a clear error if not. Should take ~1 hour of CC time.
+
+**Effort:** S (human) / S (CC)
+**Priority:** P3
+**Depends on:** Google sign-in + auto-join PR landing. Customer asking for it.
+
+### Multiple email domains per workspace (`WorkspaceEmailDomain` table)
+
+**What:** Support multiple email domains matching the same workspace — e.g. Acme Corp with subsidiaries `acme.com`, `acme-eu.com`, and a recent acquisition `bravo.io`, all of which should auto-join the Acme workspace.
+
+**Why:** Real companies have acquisitions, regional subsidiaries, and brand multiples. A single `emailDomain` column covers pilot #1-#10 but will break the first time a real enterprise signs up.
+
+**Context:** Added from `/plan-ceo-review` of the Google sign-in plan on 2026-04-11. The initial design uses a simple `Workspace.emailDomain String?` column with a partial unique index. This is the right call for speed now. When the first customer with multiple domains hits, promote to a many-to-one `WorkspaceEmailDomain` table with a backfill: `INSERT INTO workspace_email_domain (workspaceId, domain) SELECT id, emailDomain FROM workspace WHERE emailDomain IS NOT NULL`.
+
+**Effort:** S (human) / S (CC)
+**Priority:** P3
+**Depends on:** First customer with multiple domains asking.
+
+### Personal-email block list for paid plan seats
+
+**What:** Prevent personal-email domain users (gmail.com, outlook.com, etc.) from occupying paid plan seats on a customer's workspace.
+
+**Why:** When billing ships, you don't want a customer paying for seats that are "alice.random@gmail.com" — it's an accidental freeloader problem and a licensing concern.
+
+**Context:** Added from `/plan-ceo-review` of the Google sign-in plan on 2026-04-11. The `PERSONAL_EMAIL_DOMAINS` reject list already exists in `workspace-auto-join-service.ts` — it blocks personal emails from being used as workspace match keys during auto-join. This TODO extends that list to be enforced at seat assignment time once billing exists.
+
+**Effort:** S (human) / S (CC)
+**Priority:** P3
+**Depends on:** Billing/metering work shipping (Deliverable D in the MVP plan).
+
 ## Code Indexing
 
 ### Unified Escalation Timeline Panel
