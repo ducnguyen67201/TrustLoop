@@ -12,23 +12,21 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 interface LoginFormProps {
-  googleEnabled: boolean;
   googleBanner: string | null;
 }
 
 /**
- * Unified auth form. Google sign-in is the primary CTA when enabled;
- * email/password is secondary, collapsed behind a disclosure link.
- *
- * When googleEnabled is false (env vars unset), the Google button is
- * hidden and the password form renders expanded — same behavior as
- * before Google was added.
+ * Unified auth form. Google sign-in is the primary CTA for every user;
+ * email/password is the secondary path, collapsed behind a disclosure
+ * link. If the Google credentials aren't configured server-side the
+ * /api/auth/google/start handler short-circuits to /login?google=error,
+ * which is an acceptable fallback for a misconfigured environment.
  */
-export function LoginForm({ googleEnabled, googleBanner }: LoginFormProps) {
+export function LoginForm({ googleBanner }: LoginFormProps) {
   const router = useRouter();
   const { login, register, isLoading } = useAuthSession();
   const [mode, setMode] = useState<"sign-in" | "register">("sign-in");
-  const [showPasswordForm, setShowPasswordForm] = useState(!googleEnabled);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -73,9 +71,7 @@ export function LoginForm({ googleEnabled, googleBanner }: LoginFormProps) {
           {mode === "sign-in" ? "Sign in to TrustLoop" : "Create your TrustLoop account"}
         </CardTitle>
         <CardDescription>
-          {googleEnabled
-            ? "Continue with your Google account, or use email and password."
-            : "Use your workspace account credentials."}
+          Continue with your Google account, or use email and password.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -95,17 +91,15 @@ export function LoginForm({ googleEnabled, googleBanner }: LoginFormProps) {
 
         {/* Google as primary CTA. Full-page navigation (not fetch) so the
             browser follows the redirect chain to Google and back. */}
-        {googleEnabled ? (
-          <Button
-            type="button"
-            className="mb-4 w-full"
-            onClick={() => {
-              window.location.href = "/api/auth/google/start";
-            }}
-          >
-            <GoogleGlyph /> Continue with Google
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          className="mb-4 w-full"
+          onClick={() => {
+            window.location.href = "/api/auth/google/start";
+          }}
+        >
+          <GoogleGlyph /> Continue with Google
+        </Button>
 
         {/* Tab switcher stays visible for register/sign-in on the password
             path. Hidden when the password form is collapsed so the page
@@ -136,10 +130,8 @@ export function LoginForm({ googleEnabled, googleBanner }: LoginFormProps) {
           </div>
         ) : null}
 
-        {/* Collapsed disclosure: show a muted link that expands the form.
-            When Google is disabled, the form is always expanded so this
-            link never renders. */}
-        {googleEnabled && !showPasswordForm ? (
+        {/* Collapsed disclosure: show a muted link that expands the form. */}
+        {!showPasswordForm ? (
           <button
             type="button"
             className="mx-auto mb-4 block text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
@@ -194,7 +186,7 @@ export function LoginForm({ googleEnabled, googleBanner }: LoginFormProps) {
 
             <Button
               type="submit"
-              variant={googleEnabled ? "outline" : "default"}
+              variant="outline"
               className="w-full"
               disabled={submitting || isLoading}
             >
