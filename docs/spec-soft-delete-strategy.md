@@ -440,58 +440,80 @@ All `findMany`, `findFirst`, `findUnique`, and `count` queries automatically exc
 
 ## 7. Hard Delete for True Cleanup (Admin/Cron)
 
-Soft-deleted records should eventually be purged. Add a scheduled cleanup:
+**Status:** Implemented in `packages/database/src/hard-delete.ts`
+
+Soft-deleted records are eventually purged via three exported functions. All accept `prismaRaw` (the base client without the soft-delete extension) to ensure `deleteMany` performs actual SQL DELETEs.
+
+### 7.1 Batch Purge
 
 ```typescript
-/**
- * Permanently delete records soft-deleted more than 90 days ago.
- * Run via cron/scheduled task, not user-triggered.
- */
-async function purgeDeletedRecords(retentionDays = 90) {
-  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+import { prismaRaw, purgeDeletedRecords } from "@shared/database";
 
-  // Delete in dependency order (children first)
-  await prisma.$transaction([
-    prisma.supportTicketLink.deleteMany({ where: { deletedAt: { lt: cutoff } } }),
-    prisma.supportDeliveryAttempt.deleteMany({ where: { deletedAt: { lt: cutoff } } }),
-    prisma.supportConversation.deleteMany({ where: { deletedAt: { lt: cutoff } } }),
-    prisma.supportInstallation.deleteMany({ where: { deletedAt: { lt: cutoff } } }),
-    prisma.workspaceApiKey.deleteMany({ where: { deletedAt: { lt: cutoff } } }),
-    prisma.workspaceMembership.deleteMany({ where: { deletedAt: { lt: cutoff } } }),
-    prisma.workspace.deleteMany({ where: { deletedAt: { lt: cutoff } } }),
-    prisma.user.deleteMany({ where: { deletedAt: { lt: cutoff } } }),
-  ]);
-}
+// Purge records soft-deleted more than 90 days ago (default)
+const results = await purgeDeletedRecords(prismaRaw);
+// => [{ model: "SupportTicketLink", deletedCount: 12 }, ...]
+
+// Custom retention period
+const results = await purgeDeletedRecords(prismaRaw, { retentionDays: 30 });
+
+// Dry run — count without deleting
+const preview = await purgeDeletedRecords(prismaRaw, { dryRun: true });
 ```
 
-Note: The purge function must bypass the soft-delete extension to perform actual hard deletes. Use `prisma.$queryRaw` or a separate non-extended client instance.
+Deletes in dependency order (children first): SupportTicketLink → SupportDeliveryAttempt → SupportConversation → SupportInstallation → WorkspaceApiKey → WorkspaceMembership → Workspace → User.
+
+### 7.2 Single-Record Hard Delete
+
+```typescript
+import { prismaRaw, hardDeleteById } from "@shared/database";
+
+// Hard-delete one specific record (must already be soft-deleted)
+await hardDeleteById(prismaRaw, "User", "cuid_123");
+
+// Throws if record is active (not soft-deleted) — safety guard
+// Error: "Cannot hard-delete User cuid_123: record not found or not soft-deleted."
+```
+
+### 7.3 Count for Monitoring
+
+```typescript
+import { prismaRaw, countSoftDeletedRecords } from "@shared/database";
+
+// Count per model (for admin dashboards)
+const counts = await countSoftDeletedRecords(prismaRaw, 90);
+// => [{ model: "User", deletedCount: 3 }, ...]
+```
+
+### 7.4 Wiring into Cron (TODO)
+
+The purge function is ready to be called from a Temporal scheduled workflow or a standalone cron job. Not yet wired — see Phase 4 checklist below.
 
 ---
 
 ## 8. Implementation Checklist
 
 ### Phase 1: Schema + Extension (do first)
-- [ ] Add `deletedAt DateTime?` to all Tier 1 models in schema
-- [ ] Write migration with partial unique indexes (raw SQL)
-- [ ] Update composite indexes to include `deletedAt` where beneficial
-- [ ] Change `onDelete: Cascade` to `onDelete: Restrict` for soft-deletable parents
-- [ ] Implement Prisma Client extension in `packages/database/src/soft-delete.ts`
-- [ ] Wire extension into `packages/database/src/index.ts`
-- [ ] Run `db:generate` and verify no type errors
+- [x] Add `deletedAt DateTime?` to all Tier 1 models in schema
+- [x] Write migration with partial unique indexes (raw SQL)
+- [x] Update composite indexes to include `deletedAt` where beneficial
+- [x] Change `onDelete: Cascade` to `onDelete: Restrict` for soft-deletable parents
+- [x] Implement Prisma Client extension in `packages/database/src/soft-delete.ts`
+- [x] Wire extension into `packages/database/src/index.ts`
+- [x] Run `db:generate` and verify no type errors
 
 ### Phase 2: Application Code
-- [ ] Create cascade soft delete service in `packages/rest/src/services/soft-delete-cascade.ts`
-- [ ] Update `slack-oauth-service.ts` disconnect → cascade soft delete installation
-- [ ] Update `workspace-router.ts` remove member → verify auto soft delete works
-- [ ] Update `slack-oauth-service.ts` upsert → resurrect pattern
-- [ ] Update `workspace-router.ts` add member → resurrect pattern
-- [ ] Update `support.activity.ts` conversation upsert → resurrect pattern
-- [ ] Verify session hard delete still works (Tier 2, no extension intercept)
+- [x] Create cascade soft delete service in `packages/rest/src/services/soft-delete-cascade.ts`
+- [x] Update `slack-oauth-service.ts` disconnect → cascade soft delete installation
+- [x] Update `workspace-router.ts` remove member → verify auto soft delete works
+- [x] Update `slack-oauth-service.ts` upsert → resurrect pattern (`softUpsert`)
+- [x] Update `workspace-router.ts` add member → resurrect pattern (`softUpsert`)
+- [x] Update `support.activity.ts` conversation upsert → resurrect pattern (`softUpsert`)
+- [x] Verify session hard delete still works (Tier 2, no extension intercept)
 
 ### Phase 3: Testing
-- [ ] Unit test: Prisma extension auto-filters `deletedAt: null`
-- [ ] Unit test: `.delete()` converts to soft delete for Tier 1 models
-- [ ] Unit test: `.delete()` stays hard delete for Tier 2 models (Session)
+- [x] Unit test: Prisma extension auto-filters `deletedAt: null`
+- [x] Unit test: `.delete()` converts to soft delete for Tier 1 models
+- [x] Unit test: `.delete()` stays hard delete for Tier 2 models (Session)
 - [ ] Integration test: Remove + re-add workspace member (no unique constraint error)
 - [ ] Integration test: Disconnect + reconnect Slack (no unique constraint error)
 - [ ] Integration test: Soft-deleted user can't log in
@@ -500,9 +522,11 @@ Note: The purge function must bypass the soft-delete extension to perform actual
 - [ ] Integration test: Soft-deleted records invisible in inbox, member list, API key list
 
 ### Phase 4: Cleanup Infrastructure
-- [ ] Implement purge function for records past retention period
-- [ ] Wire into cron/scheduled task (Temporal or standalone)
-- [ ] Add `includeDeleted` escape hatch for admin tooling
+- [x] Implement purge function for records past retention period (`packages/database/src/hard-delete.ts`)
+- [x] Add `hardDeleteById` for single-record hard delete with safety guard
+- [x] Add `countSoftDeletedRecords` for admin monitoring (dry-run mode)
+- [x] Add `includeDeleted` escape hatch for admin tooling (`findIncludingDeleted` in `soft-delete-helpers.ts`)
+- [ ] Wire purge into cron/scheduled task (Temporal or standalone)
 
 ---
 
