@@ -5,9 +5,11 @@ Status: **Active** — adopted 2026-04-11, pilot landed on `workspace-service.ts
 ## TL;DR
 
 All business logic that reads or writes Prisma, calls external APIs, or
-composes multiple domain operations lives under `packages/rest/src/services/`.
-Routers, workflow handlers, HTTP handlers, and UI server components **call
-services**, they do not talk to Prisma or external SDKs directly.
+composes multiple domain operations lives under `packages/rest/src/services/`
+or `packages/rest/src/codex/` (the latter is a second service root — see
+"Second service root" below). Routers, workflow handlers, HTTP handlers,
+and UI server components **call services**, they do not talk to Prisma
+or external SDKs directly.
 
 Services are **plain ES modules of pure functions**, imported as a namespace
 so every call site reads as `<domain>.<operation>(...)`:
@@ -196,6 +198,41 @@ From `AGENTS.md`:
 This convention makes that rule enforceable: if the service name is
 `workspace`, then "is there a workspace helper for this?" is a one-line
 grep, not a hunt.
+
+## Second service root
+
+### `packages/rest/src/codex/**`
+
+Codex has its own top-level folder at `packages/rest/src/codex/`, sibling
+to `packages/rest/src/services/`. This predates the services/ convention
+and was kept in place during the rollout to minimize churn (every import
+path would have changed if we'd relocated).
+
+**Same convention applies.** Same namespace-import rule, same 300-line
+budget, same shim-file pattern for folder splits. Callers use:
+
+```ts
+import * as codex from "@shared/rest/codex";
+
+const results = await codex.searchRepositoryCode(input);
+const tree = await codex.fetchRepoTree(installationId, owner, repo, branch);
+const settings = await codex.getSettings(workspaceId);
+```
+
+The shim file `packages/rest/src/codex.ts` makes the bare directory
+import resolve for Vite (same reason as the Stage E splits — the
+package.json `"./*": "./src/*"` pattern doesn't auto-resolve
+`<dir>/index.ts`).
+
+Inside codex, the `github.ts` file was over the 300-line budget (418
+lines) and got split into `codex/github/{_shared, install-url,
+installation, content}.ts` with a `codex/github.ts` shim. Same split
+pattern as the Stage E services.
+
+**Why keep codex separate instead of moving under `services/codex/`?**
+The benefit (one canonical service location) was not worth the blast
+radius (every caller's import path changes). We accept the cost of two
+service roots, document it prominently, and apply the same rules to both.
 
 ## Exceptions to the convention
 

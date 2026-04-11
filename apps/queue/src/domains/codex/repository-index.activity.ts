@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { extname, relative } from "node:path";
 import { prisma } from "@shared/database";
-import { fetchFileContents, fetchLatestCommitSha, fetchRepoTree } from "@shared/rest/codex/github";
+import * as codex from "@shared/rest/codex";
 import * as embeddings from "@shared/rest/services/codex/embedding";
 import {
   type RepositoryIndexWorkflowInput,
@@ -265,10 +265,10 @@ export async function runRepositoryIndexPipeline(
   });
 
   try {
-    const tree = await fetchRepoTree(installationId, owner, name, defaultBranch);
+    const tree = await codex.fetchRepoTree(installationId, owner, name, defaultBranch);
     const allowedPaths = tree.filter((entry) => isPathAllowed(entry.path)).map((e) => e.path);
 
-    const fileContents = await fetchFileContents(
+    const fileContents = await codex.fetchFileContents(
       installationId,
       owner,
       name,
@@ -277,7 +277,7 @@ export async function runRepositoryIndexPipeline(
     );
 
     const chunks = fileContents.flatMap((file) => chunkFile(file.path, "", file.content));
-    const commitSha = await fetchLatestCommitSha(installationId, owner, name, defaultBranch);
+    const commitSha = await codex.fetchLatestCommitSha(installationId, owner, name, defaultBranch);
     const completedAt = new Date();
 
     if (chunks.length > 0) {

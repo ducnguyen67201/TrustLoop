@@ -204,7 +204,7 @@ Full spec: [`docs/service-layer-conventions.md`](docs/service-layer-conventions.
 
 Non-negotiable rules (summary):
 
-- All Prisma reads/writes, external API calls, and cross-domain composition live in `packages/rest/src/services/**`. Routers, HTTP handlers, UI server components, and Temporal activities **call services** — they do not talk to Prisma or external SDKs directly.
+- All Prisma reads/writes, external API calls, and cross-domain composition live in `packages/rest/src/services/**` or `packages/rest/src/codex/**` (the latter is a second service root for codex-domain logic, kept at that path for historical reasons — same convention applies). Routers, HTTP handlers, UI server components, and Temporal activities **call services** — they do not talk to Prisma or external SDKs directly.
 - Services are plain ES modules of pure functions, imported as a namespace: `import * as workspace from "@shared/rest/services/workspace-service"`. No classes, no DI containers, no base `Service` abstract.
 - Function names drop the domain prefix so they read correctly through the namespace: `workspace.exists(id)`, not `workspaceExists(id)`.
 - One file per domain concern. Do not collapse related concerns into a god-file — `workspace-service.ts` and `workspace-membership-service.ts` are intentionally separate.
@@ -223,7 +223,6 @@ Incremental migration. Each service + all its call sites land in one commit.
 | `workspace-membership-service.ts`        | ✅ migrated  | Imported as `memberships`. 6 fns renamed (dropped the `Workspace`/`User` prefix).  |
 | `user-service.ts`                        | ✅ migrated  | Imported as `users`. 4 fns renamed.                                                |
 | `auth/workspace-auto-join-service.ts`    | ✅ migrated  | Imported as `autoJoin`. Only `resolveWorkspaceFromVerifiedEmail` was renamed.      |
-| `auth/google-oauth-service.ts`           | ⏳ pending   | Large (417 lines). May split into `auth/google/{token,verify,profile}.ts` on move. |
 | `codex/embedding.ts`                     | ✅ migrated  | Imported as `embeddings` (plural — avoids `embedding` loop-var collision).         |
 | `support/slack-signature-service.ts`     | ✅ migrated  | Imported as `slackSignature`. HMAC request verifier.                               |
 | `support/adapters/slack/slack-user-service.ts` | ✅ migrated | Imported as `slackUser`. `users.info` resolver.                                  |
@@ -238,13 +237,31 @@ Incremental migration. Each service + all its call sites land in one commit.
 | `support/support-command-service.ts`     | ✅ migrated  | 637 lines split into `support-command/{_shared, assign, reply, status}.ts` + shim.  |
 | `soft-delete-cascade.ts`                 | ⚪ exception | Prisma client extension, not a classic service. Stays on named exports.            |
 
-**Rollout status: 16/17 services migrated (1 documented exception). ✅ Complete.**
+**Second service root: `packages/rest/src/codex/**`**
+
+Codex predates the `services/` convention and lives at a sibling path
+for historical reasons. Same rules apply: namespace imports, size budget,
+shim files for folder splits. Callers use `import * as codex from "@shared/rest/codex"`.
+
+| Codex file                               | Status      | Notes                                                                              |
+| ---------------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
+| `codex/shared.ts`                        | ✅ migrated  | `getCodexSettings` renamed to `getSettings` (domain prefix was redundant).          |
+| `codex/code-search.ts`                   | ✅ migrated  | Reached via `codex.searchRepositoryCode`, etc. No renames — qualifiers distinguish. |
+| `codex/hybrid-search.ts`                 | ✅ migrated  | Internal to codex (not re-exported at the top level). Used by code-search.          |
+| `codex/pr-intent.ts`                     | ✅ migrated  | `codex.preparePullRequestIntent`, `codex.getPreparedPrIntent`.                      |
+| `codex/repository-index.ts`              | ✅ migrated  | `codex.updateRepositorySelection`, `codex.requestRepositorySync`.                   |
+| `codex/workspace-code-search.ts`         | ✅ migrated  | Added to `codex/index.ts` barrel so `codex.searchWorkspaceCode` works.              |
+| `codex/github.ts`                        | ✅ migrated  | 418 lines split into `github/{_shared, install-url, installation, content}.ts` + shim. |
+
+**Rollout status: 16/17 `services/*` migrated + codex root complete (1 documented exception). ✅ Complete.**
 
 Folder-split services use a re-export **shim file** at the parent level
 (e.g. `session-correlation.ts` alongside `session-correlation/`) because
 the `@shared/rest` package.json uses `"./*": "./src/*"` for subpath exports,
 which does not fall back to `<dir>/index.ts` for directory imports. The
-shim keeps call-site paths stable across the split.
+shim keeps call-site paths stable across the split. The same pattern is
+used at the codex root (`packages/rest/src/codex.ts` as the outer shim,
+`packages/rest/src/codex/github.ts` as the inner shim for the github split).
 
 Migration rules: pilot first, migrate a service + all call sites in one commit, never leave a service half-converted, run `vitest run <file>` and `tsgo --noEmit` on `apps/web` and `packages/rest` before handoff.
 
