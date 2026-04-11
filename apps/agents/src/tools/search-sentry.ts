@@ -1,10 +1,5 @@
 import { createTool } from "@mastra/core/tools";
-import {
-  fetchLatestEvent,
-  fetchSentryIssuesByQuery,
-  isSentryConfigured,
-  truncateStackTrace,
-} from "@shared/rest/services/sentry/sentry-service";
+import * as sentry from "@shared/rest/services/sentry/sentry-service";
 import { z } from "zod";
 
 export const searchSentryTool = createTool({
@@ -18,14 +13,14 @@ export const searchSentryTool = createTool({
     workspaceId: z.string().describe("The workspace ID"),
   }),
   execute: async (input) => {
-    if (!isSentryConfigured()) {
+    if (!sentry.isConfigured()) {
       return {
         message: "Sentry is not configured for this workspace.",
         results: [],
       };
     }
 
-    const issues = await fetchSentryIssuesByQuery(input.query);
+    const issues = await sentry.fetchIssuesByQuery(input.query);
 
     if (issues.length === 0) {
       return {
@@ -37,8 +32,8 @@ export const searchSentryTool = createTool({
     const topIssues = issues.slice(0, 5);
     const enriched = await Promise.all(
       topIssues.map(async (issue) => {
-        const event = await fetchLatestEvent(issue.id);
-        const stackLines = event ? truncateStackTrace(event) : [];
+        const event = await sentry.fetchLatestEvent(issue.id);
+        const stackLines = event ? sentry.truncateStackTrace(event) : [];
         return {
           id: issue.shortId,
           title: issue.title,

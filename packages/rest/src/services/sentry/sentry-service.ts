@@ -1,16 +1,34 @@
 import { env } from "@shared/env";
 import type { SentryContext, SentryEvent, SentryIssue } from "@shared/types";
 
+// ---------------------------------------------------------------------------
+// sentry service
+//
+// Domain-focused service module for Sentry API reads. Import this file as a
+// namespace so call sites read as `sentry.fetchContext(email)` rather than
+// `fetchSentryContext(email)`:
+//
+//   import * as sentry from "@shared/rest/services/sentry/sentry-service";
+//   if (!sentry.isConfigured()) return null;
+//   const context = await sentry.fetchContext(email);
+//   const issues = await sentry.fetchIssuesByQuery(query);
+//
+// See docs/conventions/service-layer-conventions.md for the full rationale, naming
+// rules, and the "drop the domain prefix" guidance.
+// ---------------------------------------------------------------------------
+
 const SENTRY_TIMEOUT_MS = 10_000;
 const MAX_ISSUES = 10;
 const MAX_EVENTS = 3;
 
-function getSentryConfig(): {
+interface SentryConfig {
   baseUrl: string;
   token: string;
   org: string;
   project: string;
-} | null {
+}
+
+function getConfig(): SentryConfig | null {
   const token = env.SENTRY_AUTH_TOKEN;
   const org = env.SENTRY_ORG;
   const project = env.SENTRY_PROJECT;
@@ -23,11 +41,7 @@ function getSentryConfig(): {
   };
 }
 
-async function sentryFetch<T>(
-  path: string,
-  config: ReturnType<typeof getSentryConfig>
-): Promise<T> {
-  if (!config) throw new Error("Sentry not configured");
+async function sentryFetch<T>(path: string, config: SentryConfig): Promise<T> {
   const url = `${config.baseUrl}/api/0/${path}`;
   const response = await fetch(url, {
     headers: {
@@ -42,38 +56,40 @@ async function sentryFetch<T>(
   return response.json() as Promise<T>;
 }
 
-export async function fetchSentryIssuesForUser(email: string): Promise<SentryIssue[]> {
-  const config = getSentryConfig();
+export function isConfigured(): boolean {
+  return getConfig() !== null;
+}
+
+export async function fetchIssuesForUser(email: string): Promise<SentryIssue[]> {
+  const config = getConfig();
   if (!config) return [];
-  const issues = await sentryFetch<SentryIssue[]>(
+  return sentryFetch<SentryIssue[]>(
     `projects/${config.org}/${config.project}/issues/?query=user.email:${encodeURIComponent(email)}&limit=${MAX_ISSUES}`,
     config
   );
-  return issues;
 }
 
-export async function fetchSentryIssuesByQuery(query: string): Promise<SentryIssue[]> {
-  const config = getSentryConfig();
+export async function fetchIssuesByQuery(query: string): Promise<SentryIssue[]> {
+  const config = getConfig();
   if (!config) return [];
-  const issues = await sentryFetch<SentryIssue[]>(
+  return sentryFetch<SentryIssue[]>(
     `projects/${config.org}/${config.project}/issues/?query=${encodeURIComponent(query)}&limit=${MAX_ISSUES}`,
     config
   );
-  return issues;
 }
 
 export async function fetchLatestEvent(issueId: string): Promise<SentryEvent | null> {
-  const config = getSentryConfig();
+  const config = getConfig();
   if (!config) return null;
   return sentryFetch<SentryEvent>(`issues/${issueId}/events/latest/`, config);
 }
 
-export async function fetchSentryContext(email: string): Promise<SentryContext | null> {
-  const config = getSentryConfig();
+export async function fetchContext(email: string): Promise<SentryContext | null> {
+  const config = getConfig();
   if (!config) return null;
 
   try {
-    const issues = await fetchSentryIssuesForUser(email);
+    const issues = await fetchIssuesForUser(email);
     if (issues.length === 0) {
       return {
         issues: [],
@@ -111,10 +127,6 @@ export async function fetchSentryContext(email: string): Promise<SentryContext |
     );
     return null;
   }
-}
-
-export function isSentryConfigured(): boolean {
-  return getSentryConfig() !== null;
 }
 
 export function truncateStackTrace(event: SentryEvent, maxFrames = 5): string[] {

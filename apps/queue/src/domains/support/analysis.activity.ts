@@ -1,11 +1,9 @@
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import {
-  fetchSentryContext,
-  isSentryConfigured,
-} from "@shared/rest/services/sentry/sentry-service";
+import * as sentry from "@shared/rest/services/sentry/sentry-service";
 import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
 import * as sessionCorrelation from "@shared/rest/services/support/session-correlation";
+import * as aiSettings from "@shared/rest/services/workspace-ai-settings-service";
 import {
   ANALYSIS_RESULT_STATUS,
   ANALYSIS_STATUS,
@@ -17,6 +15,7 @@ import {
   type SentryContext,
   type SessionDigest,
   type SupportAnalysisWorkflowResult,
+  type ToneConfig,
   analyzeResponseSchema,
 } from "@shared/types";
 import { heartbeat } from "@temporalio/activity";
@@ -145,8 +144,8 @@ export async function runAnalysisAgent(
   try {
     heartbeat();
 
-    const toneConfig = await fetchToneConfig(input.workspaceId);
-    const result = await callAgentService(input, toneConfig);
+    const toneConfig = await aiSettings.getToneConfig(input.workspaceId);
+    const result = await callAgentService(input, { toneConfig });
 
     heartbeat();
 
@@ -169,11 +168,11 @@ export async function runAnalysisAgent(
 export async function fetchSentryContextActivity(
   input: FetchSentryContextInput
 ): Promise<FetchSentryContextResult> {
-  if (!input.customerEmail || !isSentryConfigured()) {
+  if (!input.customerEmail || !sentry.isConfigured()) {
     return { sentryContext: null };
   }
 
-  const sentryContext = await fetchSentryContext(input.customerEmail);
+  const sentryContext = await sentry.fetchContext(input.customerEmail);
 
   if (sentryContext) {
     await prisma.supportAnalysis.update({
@@ -287,30 +286,9 @@ function buildSnapshot(
   };
 }
 
-async function fetchToneConfig(workspaceId: string) {
-  const aiSettings = await prisma.workspaceAiSettings.findUnique({
-    where: { workspaceId },
-  });
-
-  if (!aiSettings) return undefined;
-
-  return {
-    toneConfig: {
-      defaultTone: aiSettings.defaultTone,
-      responseStyle: aiSettings.responseStyle,
-      signatureLine: aiSettings.signatureLine,
-      maxDraftLength: aiSettings.maxDraftLength,
-      includeCodeRefs: aiSettings.includeCodeRefs,
-    },
-  };
-}
-
 const AGENT_TIMEOUT_MS = 4 * 60 * 1000;
 
-async function callAgentService(
-  input: AnalysisAgentInput,
-  config?: { toneConfig: Record<string, unknown> }
-) {
+async function callAgentService(input: AnalysisAgentInput, config: { toneConfig: ToneConfig }) {
   const agentUrl = env.AGENT_SERVICE_URL ?? "http://localhost:3100";
   const response = await fetch(`${agentUrl}/analyze`, {
     method: "POST",
