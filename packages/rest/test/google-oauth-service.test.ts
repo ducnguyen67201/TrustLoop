@@ -311,7 +311,9 @@ describe("googleOauth.verifyIdToken", () => {
     ).toString("base64url");
     const badToken = `${header}.${payload}.fake-sig`;
 
-    await expect(googleOauth.verifyIdToken(badToken, "nonce")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(badToken, "nonce")).rejects.toBeInstanceOf(
+      ValidationError
+    );
   });
 
   it("rejects alg=none token", async () => {
@@ -331,7 +333,9 @@ describe("googleOauth.verifyIdToken", () => {
     ).toString("base64url");
     const badToken = `${header}.${payload}.`;
 
-    await expect(googleOauth.verifyIdToken(badToken, "nonce")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(badToken, "nonce")).rejects.toBeInstanceOf(
+      ValidationError
+    );
   });
 
   it("rejects nonce mismatch", async () => {
@@ -341,7 +345,9 @@ describe("googleOauth.verifyIdToken", () => {
       email_verified: true,
       nonce: "expected",
     });
-    await expect(googleOauth.verifyIdToken(token, "different")).rejects.toBeInstanceOf(ValidationError);
+    await expect(googleOauth.verifyIdToken(token, "different")).rejects.toBeInstanceOf(
+      ValidationError
+    );
   });
 
   it("rejects token with invalid claim shape (missing email)", async () => {
@@ -452,9 +458,9 @@ describe("findOrCreateUserFromgoogleOauth.GoogleProfile", () => {
       },
     });
 
-    await expect(googleOauth.findOrCreateUserFromProfile(tx, verifiedProfile)).rejects.toBeInstanceOf(
-      ValidationError
-    );
+    await expect(
+      googleOauth.findOrCreateUserFromProfile(tx, verifiedProfile)
+    ).rejects.toBeInstanceOf(ValidationError);
 
     expect(calls.identityFindUnique).toBe(1);
     expect(calls.userFindFirst).toBe(0);

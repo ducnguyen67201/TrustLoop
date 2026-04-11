@@ -45,7 +45,9 @@ export function LoginForm({ googleBanner, googleEnabled }: LoginFormProps) {
       }
 
       const session =
-        mode === AUTH_MODE.SIGN_IN ? await login({ email, password }) : await register({ email, password });
+        mode === AUTH_MODE.SIGN_IN
+          ? await login({ email, password })
+          : await register({ email, password });
 
       router.replace(
         session.activeWorkspaceId ? workspaceRootPath(session.activeWorkspaceId) : "/no-workspace"
@@ -86,7 +88,9 @@ export function LoginForm({ googleBanner, googleEnabled }: LoginFormProps) {
 
         {error ? (
           <Alert variant="destructive" className="mb-4">
-            <AlertTitle>{mode === AUTH_MODE.SIGN_IN ? "Login failed" : "Registration failed"}</AlertTitle>
+            <AlertTitle>
+              {mode === AUTH_MODE.SIGN_IN ? "Login failed" : "Registration failed"}
+            </AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}

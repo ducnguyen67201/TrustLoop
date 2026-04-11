@@ -85,9 +85,7 @@ function isTransientSlackError(errorCode: string | null): boolean {
 /**
  * Send one reply into the source Slack thread and classify failures for retry policy.
  */
-export async function sendThreadReply(
-  input: SlackSendRequest
-): Promise<SupportAdapterSendResult> {
+export async function sendThreadReply(input: SlackSendRequest): Promise<SupportAdapterSendResult> {
   const token = resolveSlackBotToken(input.installationMetadata);
   const response = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",

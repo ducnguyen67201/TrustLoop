@@ -269,11 +269,7 @@ export async function listInstallations(workspaceId: string) {
 /**
  * Soft-delete a Slack installation and cascade to its conversations/children.
  */
-export async function disconnect(
-  workspaceId: string,
-  installationId: string,
-  actorUserId: string
-) {
+export async function disconnect(workspaceId: string, installationId: string, actorUserId: string) {
   await prisma.$transaction(async (tx) => {
     const deleted = await tx.supportInstallation.updateMany({
       where: { id: installationId, workspaceId, deletedAt: null },

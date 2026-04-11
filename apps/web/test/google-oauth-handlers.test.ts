@@ -251,11 +251,14 @@ describe("handleGoogleOAuthCallback — returning-user auto join", () => {
       expect(locationOf(response)).toBe("http://localhost:3000/ws_auto");
       expect(listUserWorkspaceAccessMock).toHaveBeenCalledWith("user-123");
       expect(resolveWorkspaceFromVerifiedEmailMock).toHaveBeenCalledTimes(1);
-      expect(ensureMembershipMock).toHaveBeenCalledWith({}, {
-        workspaceId: "ws_auto",
-        userId: "user-123",
-        role: "MEMBER",
-      });
+      expect(ensureMembershipMock).toHaveBeenCalledWith(
+        {},
+        {
+          workspaceId: "ws_auto",
+          userId: "user-123",
+          role: "MEMBER",
+        }
+      );
       expect(createUserSessionMock).toHaveBeenCalledWith(
         "user-123",
         expect.objectContaining({ ip: "127.0.0.1" }),

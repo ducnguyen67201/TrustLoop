@@ -9,14 +9,14 @@ import {
 import { consumeLoginAttempt } from "@shared/rest/security/rate-limit";
 import { createUserSession, getSessionRequestMeta } from "@shared/rest/security/session";
 import * as googleOauth from "@shared/rest/services/auth/google-oauth";
+import * as autoJoin from "@shared/rest/services/auth/workspace-auto-join-service";
+import * as memberships from "@shared/rest/services/workspace-membership-service";
 import {
   GOOGLE_OAUTH_OUTCOME,
   GOOGLE_OAUTH_STATUS,
   type GoogleOAuthOutcome,
   type GoogleOAuthStatus,
 } from "@shared/types";
-import * as autoJoin from "@shared/rest/services/auth/workspace-auto-join-service";
-import * as memberships from "@shared/rest/services/workspace-membership-service";
 import { NextResponse } from "next/server";
 
 // ---------------------------------------------------------------------------
@@ -140,10 +140,8 @@ export async function handleGoogleOAuthCallback(request: Request): Promise<NextR
   let autoJoinedWorkspaceId: string | null;
   try {
     const txResult = await prisma.$transaction(async (tx) => {
-      const { user: foundUser, created: wasCreated } = await googleOauth.findOrCreateUserFromProfile(
-        tx,
-        profile
-      );
+      const { user: foundUser, created: wasCreated } =
+        await googleOauth.findOrCreateUserFromProfile(tx, profile);
 
       const autoJoined = wasCreated
         ? await autoJoinUserFromVerifiedGoogleProfile(tx, foundUser.id, profile)

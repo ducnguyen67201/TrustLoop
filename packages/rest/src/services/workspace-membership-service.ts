@@ -156,10 +156,7 @@ export async function findWithUser(
 /**
  * Resolve an existing membership id for duplicate-member checks.
  */
-export async function findId(
-  workspaceId: string,
-  userId: string
-): Promise<{ id: string } | null> {
+export async function findId(workspaceId: string, userId: string): Promise<{ id: string } | null> {
   return prisma.workspaceMembership.findUnique({
     where: {
       workspaceId_userId: {

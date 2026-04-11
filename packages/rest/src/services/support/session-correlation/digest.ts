@@ -32,10 +32,7 @@ export interface SessionEventRow {
  * The digest is a condensed view designed for AI agent consumption:
  * route history, failure points, errors, network failures, and console errors.
  */
-export function compileDigest(
-  record: SessionRecordRow,
-  events: SessionEventRow[]
-): SessionDigest {
+export function compileDigest(record: SessionRecordRow, events: SessionEventRow[]): SessionDigest {
   const firstEvent = events[0];
   const lastEvent = events[events.length - 1];
   const durationMs =

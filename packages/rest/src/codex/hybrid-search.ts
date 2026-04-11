@@ -125,7 +125,8 @@ export async function keywordSearch(
 }
 
 function computePathBonus(query: string, chunk: ScoredChunk): number {
-  const queryTokens = embeddings.splitIdentifiers(query)
+  const queryTokens = embeddings
+    .splitIdentifiers(query)
     .toLowerCase()
     .split(/\s+/)
     .filter((t) => t.length >= 2);

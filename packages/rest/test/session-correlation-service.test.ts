@@ -17,9 +17,7 @@ vi.mock("@shared/database", () => ({
   },
 }));
 
-const sessionCorrelation = await import(
-  "@shared/rest/services/support/session-correlation"
-);
+const sessionCorrelation = await import("@shared/rest/services/support/session-correlation");
 const { findByEmails } = sessionCorrelation;
 
 describe("sessionCorrelation.findByEmails", () => {
