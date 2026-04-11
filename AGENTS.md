@@ -232,8 +232,8 @@ Incremental migration. Each service + all its call sites land in one commit.
 | `support/support-projection-service.ts`  | ✅ migrated  | Imported as `supportProjection`. CQRS read-side for the inbox UI.                  |
 | `support/support-analysis-service.ts`    | ✅ migrated  | Imported as `supportAnalysis`. tRPC procedure names unchanged (public API).        |
 | `support/support-ingress-service.ts`     | ✅ migrated  | Imported as `supportIngress`. Wrapper `processSlackWebhookFromHttpRequest` unchanged. |
+| `support/slack-oauth-service.ts`         | ✅ migrated  | Imported as `slackOauth`. End-to-end Slack OAuth install flow.                     |
 | `soft-delete-cascade.ts`                 | ⚪ exception | Prisma client extension, not a classic service. Stays on named exports.            |
-| `support/slack-oauth-service.ts`         | ⏳ pending   | Stage D. 283 lines, 12+ call sites across routers/handlers/tests.                  |
 | **Stage E (file splits needed)**         |             | Over 300-line budget — each PR starts with a split-design discussion.              |
 | `support/session-correlation-service.ts` | ⏳ pending   | 333 lines. Candidate split: `{find, compute}.ts`.                                  |
 | `auth/google-oauth-service.ts`           | ⏳ pending   | 417 lines. Candidate split: `auth/google/{token, verify, profile, identity}.ts`.   |

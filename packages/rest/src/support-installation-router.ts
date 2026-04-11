@@ -1,8 +1,4 @@
-import {
-  disconnectInstallation,
-  generateSlackOAuthUrl,
-  listWorkspaceInstallations,
-} from "@shared/rest/services/support/slack-oauth-service";
+import * as slackOauth from "@shared/rest/services/support/slack-oauth-service";
 import { router, workspaceProcedure, workspaceRoleProcedure } from "@shared/rest/trpc";
 import { WORKSPACE_ROLE, supportInstallationDisconnectRequestSchema } from "@shared/types";
 import { TRPCError } from "@trpc/server";
@@ -10,17 +6,21 @@ import { TRPCError } from "@trpc/server";
 /**
  * tRPC router for Slack installation management.
  * ADMIN-only for connect/disconnect; read access for all workspace members.
+ *
+ * Note: the tRPC procedure names (`getSlackOAuthUrl`, `list`, `disconnect`)
+ * are the public API the frontend calls, and stay unchanged. Only the
+ * internal service function calls were migrated to the namespace convention.
  */
 export const supportInstallationRouter = router({
   /** Generate a Slack OAuth authorize URL for the current workspace. */
   getSlackOAuthUrl: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN).query(({ ctx }) => {
-    const authorizeUrl = generateSlackOAuthUrl(ctx.workspaceId);
+    const authorizeUrl = slackOauth.generateAuthorizeUrl(ctx.workspaceId);
     return { authorizeUrl };
   }),
 
   /** List all installations for the current workspace. */
   list: workspaceProcedure.query(({ ctx }) => {
-    return listWorkspaceInstallations(ctx.workspaceId);
+    return slackOauth.listInstallations(ctx.workspaceId);
   }),
 
   /** Disconnect (delete) a Slack installation. */
@@ -30,6 +30,6 @@ export const supportInstallationRouter = router({
       if (!ctx.user) {
         throw new TRPCError({ code: "FORBIDDEN", message: "User session required" });
       }
-      return disconnectInstallation(ctx.workspaceId, input.installationId, ctx.user.id);
+      return slackOauth.disconnect(ctx.workspaceId, input.installationId, ctx.user.id);
     }),
 });

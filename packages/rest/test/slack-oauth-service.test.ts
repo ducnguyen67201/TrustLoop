@@ -1,8 +1,5 @@
 import { createHmac } from "node:crypto";
-import {
-  generateSlackOAuthUrl,
-  verifyAndDecodeOAuthState,
-} from "@shared/rest/services/support/slack-oauth-service";
+import * as slackOauth from "@shared/rest/services/support/slack-oauth-service";
 import { ValidationError } from "@shared/types";
 import { describe, expect, it } from "vitest";
 
@@ -28,17 +25,17 @@ function buildState(
   return `${b64}.${hmacSign(b64)}`;
 }
 
-describe("verifyAndDecodeOAuthState", () => {
+describe("slackOauth.verifyState", () => {
   it("decodes a valid state and returns workspaceId", () => {
     const state = buildState({ workspaceId: "ws_abc" });
-    const result = verifyAndDecodeOAuthState(state);
+    const result = slackOauth.verifyState(state);
     expect(result.workspaceId).toBe("ws_abc");
   });
 
   it("rejects a tampered HMAC signature", () => {
     const state = buildState();
     const tampered = `${state.split(".")[0]}.aaaa_tampered_signature`;
-    expect(() => verifyAndDecodeOAuthState(tampered)).toThrow(ValidationError);
+    expect(() => slackOauth.verifyState(tampered)).toThrow(ValidationError);
   });
 
   it("rejects a tampered payload", () => {
@@ -51,31 +48,31 @@ describe("verifyAndDecodeOAuthState", () => {
         expiresAt: Date.now() + 10 * 60 * 1000,
       })
     );
-    expect(() => verifyAndDecodeOAuthState(`${evilPayload}.${sig}`)).toThrow(ValidationError);
+    expect(() => slackOauth.verifyState(`${evilPayload}.${sig}`)).toThrow(ValidationError);
   });
 
   it("rejects an expired state", () => {
     const state = buildState({ expiresAt: Date.now() - 1000 });
-    expect(() => verifyAndDecodeOAuthState(state)).toThrow(ValidationError);
+    expect(() => slackOauth.verifyState(state)).toThrow(ValidationError);
   });
 
   it("rejects a state without a dot separator", () => {
-    expect(() => verifyAndDecodeOAuthState("no-dot-here")).toThrow(ValidationError);
+    expect(() => slackOauth.verifyState("no-dot-here")).toThrow(ValidationError);
   });
 
   it("rejects a state with invalid base64 payload", () => {
     const invalid = `not_valid_base64.${hmacSign("not_valid_base64")}`;
-    expect(() => verifyAndDecodeOAuthState(invalid)).toThrow();
+    expect(() => slackOauth.verifyState(invalid)).toThrow();
   });
 });
 
-describe("generateSlackOAuthUrl", () => {
+describe("slackOauth.generateAuthorizeUrl", () => {
   it("returns a valid Slack authorize URL when SLACK_CLIENT_ID is set", () => {
     if (!process.env.SLACK_CLIENT_ID) {
       // Skip if env not configured (CI without Slack creds)
       return;
     }
-    const url = generateSlackOAuthUrl("ws_test_123");
+    const url = slackOauth.generateAuthorizeUrl("ws_test_123");
     expect(url).toContain("https://slack.com/oauth/v2/authorize");
     expect(url).toContain("client_id=");
     expect(url).toContain("scope=chat%3Awrite%2Cchannels%3Ahistory%2Cgroups%3Ahistory");
@@ -88,6 +85,6 @@ describe("generateSlackOAuthUrl", () => {
       // Can't test this when the env var is set
       return;
     }
-    expect(() => generateSlackOAuthUrl("ws_test")).toThrow(ValidationError);
+    expect(() => slackOauth.generateAuthorizeUrl("ws_test")).toThrow(ValidationError);
   });
 });

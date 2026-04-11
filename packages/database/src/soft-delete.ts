@@ -59,7 +59,7 @@ function applySoftDeleteFilter<T>(model: string, args: T): T {
  *
  * RULE: Never call `.delete()` or `.deleteMany()` inside `$transaction()` for
  * soft-delete models. Use manual `updateMany({ data: { deletedAt: new Date() } })`
- * inside transactions instead. See `disconnectInstallation()` for the correct pattern.
+ * inside transactions instead. See `slackOauth.disconnect()` for the correct pattern.
  */
 export const softDeleteExtension = Prisma.defineExtension((client) => {
   return client.$extends({

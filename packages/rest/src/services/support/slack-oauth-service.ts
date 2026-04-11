@@ -14,6 +14,25 @@ import {
 } from "@shared/types";
 import { TRPCError } from "@trpc/server";
 
+// ---------------------------------------------------------------------------
+// slackOauth service
+//
+// End-to-end Slack OAuth install flow: generate HMAC-signed state, verify
+// the callback, exchange the code for a bot token, upsert the installation,
+// list installations for the workspace, disconnect with a cascading
+// soft-delete. Import as a namespace:
+//
+//   import * as slackOauth from "@shared/rest/services/support/slack-oauth-service";
+//   const url = slackOauth.generateAuthorizeUrl(workspaceId);
+//   const { workspaceId } = slackOauth.verifyState(state);
+//   const result = await slackOauth.exchangeCode(code, redirectUri);
+//   const install = await slackOauth.completeInstall(workspaceId, result);
+//   const page = await slackOauth.listInstallations(workspaceId);
+//   await slackOauth.disconnect(workspaceId, installationId, actorUserId);
+//
+// See docs/service-layer-conventions.md.
+// ---------------------------------------------------------------------------
+
 /** Bot scopes requested during OAuth. */
 const SLACK_BOT_SCOPES = "chat:write,channels:history,groups:history,users:read,users:read.email";
 
@@ -48,7 +67,7 @@ function base64UrlDecode(encoded: string): string {
  * Generate a Slack OAuth authorize URL with HMAC-signed state.
  * State encodes the workspaceId so the callback knows which workspace to bind.
  */
-export function generateSlackOAuthUrl(workspaceId: string): string {
+export function generateAuthorizeUrl(workspaceId: string): string {
   const clientId = env.SLACK_CLIENT_ID;
   if (!clientId) {
     throw new ValidationError("SLACK_CLIENT_ID is not configured");
@@ -81,7 +100,7 @@ export function generateSlackOAuthUrl(workspaceId: string): string {
  * Verify HMAC and decode the OAuth state parameter.
  * Throws ValidationError on tamper, expiry, or malformed input.
  */
-export function verifyAndDecodeOAuthState(state: string): { workspaceId: string } {
+export function verifyState(state: string): { workspaceId: string } {
   const dotIndex = state.indexOf(".");
   if (dotIndex === -1) {
     throw new ValidationError("Malformed OAuth state");
@@ -130,7 +149,7 @@ type SlackOAuthAccessResponse = {
 /**
  * Exchange an OAuth code for a bot token via Slack's oauth.v2.access endpoint.
  */
-export async function exchangeSlackOAuthCode(
+export async function exchangeCode(
   code: string,
   redirectUri: string
 ): Promise<{
@@ -177,7 +196,7 @@ export async function exchangeSlackOAuthCode(
  * Create or update a SupportInstallation from an OAuth response.
  * Checks for soft-deleted records and resurrects them on reconnect.
  */
-export async function completeSlackOAuthInstall(
+export async function completeInstall(
   workspaceId: string,
   oauthResult: {
     accessToken: string;
@@ -225,7 +244,7 @@ export async function completeSlackOAuthInstall(
 /**
  * List all installations for a workspace, mapped to summary schema.
  */
-export async function listWorkspaceInstallations(workspaceId: string) {
+export async function listInstallations(workspaceId: string) {
   const installations = await prisma.supportInstallation.findMany({
     where: { workspaceId },
     orderBy: { createdAt: "desc" },
@@ -250,7 +269,7 @@ export async function listWorkspaceInstallations(workspaceId: string) {
 /**
  * Soft-delete a Slack installation and cascade to its conversations/children.
  */
-export async function disconnectInstallation(
+export async function disconnect(
   workspaceId: string,
   installationId: string,
   actorUserId: string

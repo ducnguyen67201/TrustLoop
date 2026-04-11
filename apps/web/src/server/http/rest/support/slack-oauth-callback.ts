@@ -1,9 +1,5 @@
 import { env } from "@shared/env";
-import {
-  completeSlackOAuthInstall,
-  exchangeSlackOAuthCode,
-  verifyAndDecodeOAuthState,
-} from "@shared/rest/services/support/slack-oauth-service";
+import * as slackOauth from "@shared/rest/services/support/slack-oauth-service";
 import { SLACK_OAUTH_STATUS, type SlackOAuthStatus } from "@shared/types";
 import { NextResponse } from "next/server";
 
@@ -30,12 +26,12 @@ export async function handleSlackOAuthCallback(request: Request): Promise<NextRe
   }
 
   try {
-    const { workspaceId } = verifyAndDecodeOAuthState(state);
+    const { workspaceId } = slackOauth.verifyState(state);
     const publicUrl = env.APP_PUBLIC_URL ?? env.APP_BASE_URL;
     const redirectUri = `${publicUrl}/api/slack/oauth/callback`;
-    const oauthResult = await exchangeSlackOAuthCode(code, redirectUri);
+    const oauthResult = await slackOauth.exchangeCode(code, redirectUri);
 
-    await completeSlackOAuthInstall(workspaceId, oauthResult);
+    await slackOauth.completeInstall(workspaceId, oauthResult);
 
     return redirectToSettings(workspaceId, SLACK_OAUTH_STATUS.CONNECTED);
   } catch (callbackError) {
