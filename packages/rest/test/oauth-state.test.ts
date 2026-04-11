@@ -1,9 +1,9 @@
 import { createHmac } from "node:crypto";
 import {
+  type OauthStatePayload,
   buildClearedOauthStateCookie,
   consumeOauthStateCookie,
   issueOauthStateCookie,
-  type OauthStatePayload,
 } from "@shared/rest/security/oauth-state";
 import { describe, expect, it } from "vitest";
 

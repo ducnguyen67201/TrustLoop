@@ -1,4 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
 import {
   PERSONAL_EMAIL_DOMAINS,
   type WorkspaceAutoJoinTx,
@@ -7,6 +6,7 @@ import {
   resolveWorkspaceFromVerifiedEmail,
 } from "@shared/rest/services/auth/workspace-auto-join-service";
 import { WORKSPACE_ROLE } from "@shared/types";
+import { describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // extractDomain

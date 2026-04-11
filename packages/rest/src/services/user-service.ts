@@ -22,9 +22,7 @@ export function normalizeUserEmail(email: string): string {
 /**
  * Fetch a user identity record by email for membership and ownership checks.
  */
-export async function findUserIdentityByEmail(
-  email: string
-): Promise<UserIdentityRecord | null> {
+export async function findUserIdentityByEmail(email: string): Promise<UserIdentityRecord | null> {
   const normalizedEmail = normalizeUserEmail(email);
   return prisma.user.findUnique({
     where: {

@@ -1,18 +1,13 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  type GoogleProfile,
   type GoogleOauthTx,
+  type GoogleProfile,
   __setGoogleJwksForTest,
   buildGoogleAuthorizationUrl,
   exchangeCodeForTokens,
   findOrCreateUserFromGoogleProfile,
   verifyIdToken,
 } from "@shared/rest/services/auth/google-oauth-service";
-import {
-  PermanentExternalError,
-  TransientExternalError,
-  ValidationError,
-} from "@shared/types";
+import { PermanentExternalError, TransientExternalError, ValidationError } from "@shared/types";
 import {
   type JWK,
   type JWTVerifyGetKey,
@@ -21,6 +16,7 @@ import {
   generateKeyPair,
   importJWK,
 } from "jose";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Test fixture: a static RSA keypair we control. Tests sign fake id_tokens
@@ -146,9 +142,7 @@ describe("exchangeCodeForTokens", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
-        Promise.resolve(
-          new Response(body, { status, headers: { "content-type": "text/plain" } })
-        )
+        Promise.resolve(new Response(body, { status, headers: { "content-type": "text/plain" } }))
       )
     );
   }
@@ -308,8 +302,9 @@ describe("verifyIdToken", () => {
     // We can't sign HS256 with the RSA fixture key, so construct a
     // structurally-valid JWT with alg: HS256 that has an HMAC signature
     // computed against the public key modulus as the secret (classic attack).
-    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT", kid: "test-kid" }))
-      .toString("base64url");
+    const header = Buffer.from(
+      JSON.stringify({ alg: "HS256", typ: "JWT", kid: "test-kid" })
+    ).toString("base64url");
     const payload = Buffer.from(
       JSON.stringify({
         iss: "https://accounts.google.com",
@@ -328,8 +323,9 @@ describe("verifyIdToken", () => {
   });
 
   it("rejects alg=none token", async () => {
-    const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT", kid: "test-kid" }))
-      .toString("base64url");
+    const header = Buffer.from(
+      JSON.stringify({ alg: "none", typ: "JWT", kid: "test-kid" })
+    ).toString("base64url");
     const payload = Buffer.from(
       JSON.stringify({
         iss: "https://accounts.google.com",
@@ -490,7 +486,12 @@ describe("findOrCreateUserFromGoogleProfile", () => {
   it("throws ValidationError on email-match with email_verified=false", async () => {
     const { tx, calls } = createMockTx({
       existingIdentity: null,
-      existingUserByEmail: { id: "user-existing", email: "alice@acme.com", name: null, avatarUrl: null },
+      existingUserByEmail: {
+        id: "user-existing",
+        email: "alice@acme.com",
+        name: null,
+        avatarUrl: null,
+      },
     });
 
     await expect(

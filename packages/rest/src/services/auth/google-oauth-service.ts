@@ -1,18 +1,13 @@
 import { env } from "@shared/env";
+import { normalizeUserEmail } from "@shared/rest/services/user-service";
 import {
   AUTH_PROVIDER,
   PermanentExternalError,
   TransientExternalError,
   ValidationError,
 } from "@shared/types";
-import {
-  createRemoteJWKSet,
-  jwtVerify,
-  type JWTPayload,
-  type JWTVerifyGetKey,
-} from "jose";
+import { type JWTPayload, type JWTVerifyGetKey, createRemoteJWKSet, jwtVerify } from "jose";
 import { z } from "zod";
-import { normalizeUserEmail } from "@shared/rest/services/user-service";
 
 // Structural transaction client. Same pattern as soft-delete-cascade.ts —
 // avoids the generic-type gymnastics of Prisma.TransactionClient under the
@@ -149,15 +144,11 @@ export interface ExchangeCodeResult {
  * access_token. Runs against Google's token endpoint. Zod-validates the
  * response shape before trusting any of the fields.
  */
-export async function exchangeCodeForTokens(
-  input: ExchangeCodeInput
-): Promise<ExchangeCodeResult> {
+export async function exchangeCodeForTokens(input: ExchangeCodeInput): Promise<ExchangeCodeResult> {
   const clientId = env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = env.GOOGLE_OAUTH_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    throw new PermanentExternalError(
-      "Google sign-in is not configured: client id/secret missing"
-    );
+    throw new PermanentExternalError("Google sign-in is not configured: client id/secret missing");
   }
 
   const body = new URLSearchParams({
@@ -350,9 +341,7 @@ export async function findOrCreateUserFromGoogleProfile(
     if (!profile.emailVerified) {
       // Defense in depth: never link by email without Google-verified email.
       // This is the single most important security check in this function.
-      throw new ValidationError(
-        "Cannot link Google account: email is not verified"
-      );
+      throw new ValidationError("Cannot link Google account: email is not verified");
     }
 
     await tx.authIdentity.create({

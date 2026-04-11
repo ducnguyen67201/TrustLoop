@@ -47,9 +47,7 @@ export function LoginForm({ googleEnabled, googleBanner }: LoginFormProps) {
       }
 
       const session =
-        mode === "sign-in"
-          ? await login({ email, password })
-          : await register({ email, password });
+        mode === "sign-in" ? await login({ email, password }) : await register({ email, password });
 
       router.replace(
         session.activeWorkspaceId ? workspaceRootPath(session.activeWorkspaceId) : "/no-workspace"

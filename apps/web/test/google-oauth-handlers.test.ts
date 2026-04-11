@@ -1,5 +1,40 @@
-import { describe, expect, it } from "vitest";
-import { handleGoogleOAuthCallback } from "@/server/http/rest/auth/google-oauth-handlers";
+import { describe, expect, it, vi } from "vitest";
+
+// ── Mocks (must be set up before the handler import) ──────────────
+// The handler transitively imports @shared/database, which reads
+// env.DATABASE_URL at module-load time. Vitest doesn't provide real env,
+// so we stub both modules. The tests under this file only exercise the
+// error branches that never reach the database, so empty mocks are fine.
+vi.mock("@shared/database", () => ({
+  prisma: {
+    $transaction: vi.fn(),
+    workspaceMembership: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+  },
+}));
+
+vi.mock("@shared/env", () => ({
+  env: {
+    NODE_ENV: "test",
+    APP_BASE_URL: "http://localhost:3000",
+    APP_PUBLIC_URL: undefined,
+    SESSION_SECRET: "dev-only-trustloop-session-secret",
+    SESSION_COOKIE_NAME: "tl_session",
+    SESSION_TTL_HOURS: 24,
+    GOOGLE_OAUTH_CLIENT_ID: "test-client-id",
+    GOOGLE_OAUTH_CLIENT_SECRET: "test-client-secret",
+    GOOGLE_OAUTH_REDIRECT_PATH: "/api/auth/google/callback",
+  },
+}));
+
+vi.mock("@shared/env/shared", () => ({
+  NODE_ENV: { DEVELOPMENT: "development", TEST: "test", PRODUCTION: "production" },
+}));
+
+const { handleGoogleOAuthCallback } = await import(
+  "../src/server/http/rest/auth/google-oauth-handlers"
+);
 
 // ---------------------------------------------------------------------------
 // Scoped integration tests for handleGoogleOAuthCallback error branches.
@@ -76,11 +111,9 @@ describe("handleGoogleOAuthCallback — error branches", () => {
     // Structurally-valid cookie (base64.sig) but the signature is wrong.
     // Handler should NOT crash — it should cleanly fall through to the
     // error redirect via the consumeOauthStateCookie throw.
-    const tamperedCookie =
-      "tl_oauth_state=" +
-      encodeURIComponent(
-        "eyJzdGF0ZSI6ImFiYyIsImNvZGVWZXJpZmllciI6InYiLCJub25jZSI6Im4iLCJleHBpcmVzQXQiOjk5OTk5OTk5OTk5OTl9.0000000000000000000000000000000000000000000000000000000000000000",
-      );
+    const tamperedCookie = `tl_oauth_state=${encodeURIComponent(
+      "eyJzdGF0ZSI6ImFiYyIsImNvZGVWZXJpZmllciI6InYiLCJub25jZSI6Im4iLCJleHBpcmVzQXQiOjk5OTk5OTk5OTk5OTl9.0000000000000000000000000000000000000000000000000000000000000000"
+    )}`;
     const request = buildRequest(`${CALLBACK_URL}?code=xyz&state=abc`, tamperedCookie);
     const response = await handleGoogleOAuthCallback(request);
 

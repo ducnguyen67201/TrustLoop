@@ -7,10 +7,7 @@ import {
   issueOauthStateCookie,
 } from "@shared/rest/security/oauth-state";
 import { consumeLoginAttempt } from "@shared/rest/security/rate-limit";
-import {
-  createUserSession,
-  getSessionRequestMeta,
-} from "@shared/rest/security/session";
+import { createUserSession, getSessionRequestMeta } from "@shared/rest/security/session";
 import {
   type GoogleProfile,
   buildGoogleAuthorizationUrl,
@@ -147,8 +144,10 @@ export async function handleGoogleOAuthCallback(request: Request): Promise<NextR
   let autoJoinedWorkspaceId: string | null;
   try {
     const txResult = await prisma.$transaction(async (tx) => {
-      const { user: foundUser, created: wasCreated } =
-        await findOrCreateUserFromGoogleProfile(tx, profile);
+      const { user: foundUser, created: wasCreated } = await findOrCreateUserFromGoogleProfile(
+        tx,
+        profile
+      );
 
       let autoJoined: string | null = null;
       if (wasCreated) {

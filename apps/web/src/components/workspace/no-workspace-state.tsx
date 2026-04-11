@@ -19,8 +19,8 @@ export function NoWorkspaceState() {
       <CardHeader>
         <CardTitle>Your team hasn't set up TrustLoop yet</CardTitle>
         <CardDescription>
-          Signing in worked, but your company doesn't have a TrustLoop workspace yet. Drop us a
-          line and we'll get your team set up.
+          Signing in worked, but your company doesn't have a TrustLoop workspace yet. Drop us a line
+          and we'll get your team set up.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
