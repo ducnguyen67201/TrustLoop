@@ -1,4 +1,7 @@
 import { avatarColor, senderInitials } from "@/components/support/avatar-utils";
+import { useCustomerProfile } from "@/components/support/customer-profile-context";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { RiAttachmentLine, RiAlertLine, RiReplyLine } from "@remixicon/react";
 import { SUPPORT_CONVERSATION_EVENT_SOURCE } from "@shared/types";
@@ -6,7 +9,6 @@ import type {
   SupportConversationTimelineEvent,
   SupportTimelineAttachment,
 } from "@shared/types";
-import { Skeleton } from "@/components/ui/skeleton";
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -114,7 +116,12 @@ interface MessageBlockProps {
 export function MessageBlock({ event, showHeader, onReplyToThread, children }: MessageBlockProps) {
   const messageText = extractMessageText(event);
   const isOperator = event.eventSource === SUPPORT_CONVERSATION_EVENT_SOURCE.operator;
-  const name = senderDisplayName(event);
+  const slackUserId =
+    typeof event.detailsJson?.slackUserId === "string" ? event.detailsJson.slackUserId : null;
+  const profile = useCustomerProfile(slackUserId);
+
+  const name = profile?.realName ?? profile?.displayName ?? senderDisplayName(event);
+  const avatarUrl = profile?.avatarUrl ?? null;
   const hasThread = Boolean(children);
   const attachments = event.attachments ?? [];
 
@@ -124,14 +131,17 @@ export function MessageBlock({ event, showHeader, onReplyToThread, children }: M
         {/* Avatar column */}
         <div className="flex w-8 shrink-0 flex-col items-center">
           {showHeader ? (
-            <div
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold",
-                avatarColor(name, isOperator)
-              )}
-            >
-              {senderInitials(name)}
-            </div>
+            <Avatar className="h-8 w-8">
+              {avatarUrl ? <AvatarImage src={avatarUrl} alt={`${name}'s avatar`} /> : null}
+              <AvatarFallback
+                className={cn(
+                  "text-xs font-semibold",
+                  avatarColor(name, isOperator)
+                )}
+              >
+                {senderInitials(name)}
+              </AvatarFallback>
+            </Avatar>
           ) : (
             <div className="h-8 w-8" />
           )}

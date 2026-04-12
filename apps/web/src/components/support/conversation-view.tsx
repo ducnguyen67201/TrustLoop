@@ -2,6 +2,7 @@
 
 import { ConversationHeader } from "@/components/support/conversation-header";
 import { ConversationPropertiesSidebar } from "@/components/support/conversation-properties-sidebar";
+import { CustomerProfileProvider } from "@/components/support/customer-profile-context";
 import { MessageList } from "@/components/support/message-list";
 import { ReplyComposer } from "@/components/support/reply-composer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -37,6 +38,7 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
   const {
     conversation,
     events,
+    customerProfiles,
     isLoading,
     pollingError,
     replyToEventId,
@@ -87,6 +89,7 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
   }
 
   return (
+    <CustomerProfileProvider profiles={customerProfiles}>
     <div className="flex h-full flex-col">
       {/* Full-width header */}
       <ConversationHeader
@@ -139,5 +142,6 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
         />
       </div>
     </div>
+    </CustomerProfileProvider>
   );
 }

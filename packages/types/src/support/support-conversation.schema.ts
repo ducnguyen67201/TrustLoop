@@ -105,9 +105,21 @@ export const supportConversationTimelineEventSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
+export const supportCustomerProfileSummarySchema = z.object({
+  externalUserId: z.string().min(1),
+  displayName: z.string().nullable(),
+  realName: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  isBot: z.boolean().default(false),
+  isExternal: z.boolean().default(false),
+});
+
+export type SupportCustomerProfileSummary = z.infer<typeof supportCustomerProfileSummarySchema>;
+
 export const supportConversationTimelineSchema = z.object({
   conversation: supportConversationSchema,
   events: z.array(supportConversationTimelineEventSchema),
+  customerProfiles: z.record(z.string(), supportCustomerProfileSummarySchema).default({}),
 });
 
 export type SupportConversationStatus = z.infer<typeof supportConversationStatusSchema>;

@@ -158,5 +158,49 @@ export async function getConversationTimeline(
       parentEventId: event.parentEventId ?? null,
       createdAt: event.createdAt.toISOString(),
     })),
+    customerProfiles: await buildCustomerProfileMap(workspaceId, conversation.installationId, conversation.events),
   });
+}
+
+async function buildCustomerProfileMap(
+  workspaceId: string,
+  installationId: string,
+  events: Array<{ detailsJson: unknown }>
+): Promise<Record<string, { externalUserId: string; displayName: string | null; realName: string | null; avatarUrl: string | null; isBot: boolean; isExternal: boolean }>> {
+  const userIds = new Set<string>();
+  for (const event of events) {
+    if (event.detailsJson && typeof event.detailsJson === "object") {
+      const details = event.detailsJson as Record<string, unknown>;
+      if (typeof details.slackUserId === "string") {
+        userIds.add(details.slackUserId);
+      }
+    }
+  }
+
+  if (userIds.size === 0) {
+    return {};
+  }
+
+  const profiles = await prisma.supportCustomerProfile.findMany({
+    where: {
+      installationId,
+      externalUserId: { in: [...userIds] },
+      deletedAt: null,
+    },
+    select: {
+      externalUserId: true,
+      displayName: true,
+      realName: true,
+      avatarUrl: true,
+      isBot: true,
+      isExternal: true,
+    },
+  });
+
+  const map: Record<string, typeof profiles[number]> = {};
+  for (const profile of profiles) {
+    map[profile.externalUserId] = profile;
+  }
+
+  return map;
 }
