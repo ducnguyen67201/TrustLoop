@@ -136,7 +136,7 @@ export async function uploadFileToThread(input: {
   channelId: string;
   threadTs: string;
   filename: string;
-  fileData: Buffer;
+  fileData: Uint8Array;
   initialComment?: string;
 }): Promise<string> {
   const token = resolveSlackBotToken(input.installationMetadata);
@@ -167,7 +167,7 @@ export async function uploadFileToThread(input: {
 
   const uploadResp = await fetch(getUrlJson.upload_url, {
     method: "POST",
-    body: input.fileData,
+    body: new Uint8Array(input.fileData),
     headers: { "Content-Type": "application/octet-stream" },
   });
 

@@ -37,7 +37,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     ? encodeURIComponent(result.filename).replace(/%20/g, "+")
     : null;
 
-  return new NextResponse(result.data, {
+  return new NextResponse(new Uint8Array(result.data), {
     status: 200,
     headers: {
       "Content-Type": contentType,
