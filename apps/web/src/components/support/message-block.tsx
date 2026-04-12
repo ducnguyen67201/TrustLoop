@@ -1,14 +1,16 @@
 import { avatarColor, senderInitials } from "@/components/support/avatar-utils";
 import { useCurrentUser, useCustomerProfile } from "@/components/support/customer-profile-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { RiAttachmentLine, RiAlertLine, RiReplyLine } from "@remixicon/react";
+import { RiAttachmentLine, RiAlertLine, RiCloseLine, RiDownloadLine, RiReplyLine } from "@remixicon/react";
 import { SUPPORT_CONVERSATION_EVENT_SOURCE } from "@shared/types";
 import type {
   SupportConversationTimelineEvent,
   SupportTimelineAttachment,
 } from "@shared/types";
+import { useState } from "react";
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -81,28 +83,67 @@ function AttachmentRow({ attachment }: { attachment: SupportTimelineAttachment }
     );
   }
 
-  if (IMAGE_MIMETYPES.has(attachment.mimeType)) {
-    return (
-      <img
-        src={`/api/support/attachments/${attachment.id}`}
-        alt={attachment.originalFilename ?? "Image attachment"}
-        className="mt-2 block max-h-[320px] max-w-full rounded-sm"
-        loading="lazy"
-      />
-    );
-  }
+  return <PreviewableAttachment attachment={attachment} />;
+}
+
+const PDF_MIMETYPES = new Set(["application/pdf"]);
+
+function PreviewableAttachment({ attachment }: { attachment: SupportTimelineAttachment }) {
+  const [open, setOpen] = useState(false);
+  const url = `/api/support/attachments/${attachment.id}`;
+  const isImage = IMAGE_MIMETYPES.has(attachment.mimeType);
+  const isPdf = PDF_MIMETYPES.has(attachment.mimeType);
+  const canPreview = isImage || isPdf;
 
   return (
-    <a
-      href={`/api/support/attachments/${attachment.id}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="mt-1.5 flex items-center gap-1.5 text-sm text-foreground hover:underline"
-    >
-      <RiAttachmentLine className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <span className="truncate">{attachment.originalFilename ?? "File"}</span>
-      <span className="text-xs text-muted-foreground">{formatFileSize(attachment.sizeBytes)}</span>
-    </a>
+    <>
+      {isImage ? (
+        <button type="button" onClick={() => setOpen(true)} className="mt-2 block cursor-pointer">
+          <img
+            src={url}
+            alt={attachment.originalFilename ?? "Image attachment"}
+            className="max-h-[320px] max-w-full rounded-sm"
+            loading="lazy"
+          />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => canPreview ? setOpen(true) : window.open(url, "_blank")}
+          className="mt-1.5 flex items-center gap-1.5 text-sm text-foreground hover:underline cursor-pointer"
+        >
+          <RiAttachmentLine className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">{attachment.originalFilename ?? "File"}</span>
+          <span className="text-xs text-muted-foreground">{formatFileSize(attachment.sizeBytes)}</span>
+        </button>
+      )}
+
+      {canPreview ? (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden">
+            <div className="flex items-center justify-between border-b px-4 py-2">
+              <span className="text-sm font-medium truncate">{attachment.originalFilename}</span>
+              <div className="flex items-center gap-1">
+                <a
+                  href={url}
+                  download={attachment.originalFilename ?? "file"}
+                  className="p-1.5 rounded hover:bg-muted"
+                >
+                  <RiDownloadLine className="h-4 w-4" />
+                </a>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {isImage ? (
+                <img src={url} alt={attachment.originalFilename ?? "Image"} className="max-w-full mx-auto" />
+              ) : isPdf ? (
+                <iframe src={url} className="w-full h-[75vh] border-0" title={attachment.originalFilename ?? "PDF"} />
+              ) : null}
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
   );
 }
 
