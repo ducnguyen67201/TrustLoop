@@ -2,6 +2,15 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.1.5.0] - 2026-04-12
+
+### Fixed
+- **Inbox now renders Slack threads as threads.** Previously the conversation view showed every event in flat chronological order, which turned a threaded Slack conversation into a jumble of interleaved messages. The tree builder now reads `threadTs` on each event and groups thread children under their parent: customer thread replies, operator replies whose resolver targeted a specific thread, and explicit "reply to this message" replies all collapse to one level of nesting under the correct parent. Each customer burst (standalone top-level message) is its own top-level thread in the view. When the operator clicks "reply" on a message that's itself a thread reply, the new reply is flattened to sit alongside it under the thread parent, matching Slack's own flattening behavior.
+- **Grandchild nesting bug.** The previous nesting logic matched only `replyToEventId` and would put a reply under a thread child, creating a grandchild that the `MessageThread` component doesn't recurse into. The reply would then fail to render at all. The new resolver normalizes reply targets to the thread root.
+
+### Added
+- **`apps/web/src/components/support/thread-tree.ts`.** Extracted the tree-building logic from `message-list.tsx` into a pure module with 8 unit tests in `apps/web/test/thread-tree.test.ts`. Covers standalone messages, threaded replies via `threadTs`, explicit `replyToEventId` paths, replyToEventId-pointing-at-a-child normalization, orphaned thread references, and preservation of event order inside each bucket.
+
 ## [0.1.4.0] - 2026-04-12
 
 ### Added

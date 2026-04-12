@@ -3,6 +3,7 @@
 import { MessageBlock } from "@/components/support/message-block";
 import { MessageThread } from "@/components/support/message-thread";
 import { SystemAnnotation } from "@/components/support/system-annotation";
+import { buildThreadTree } from "@/components/support/thread-tree";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { SupportConversationTimelineEvent } from "@shared/types";
@@ -22,35 +23,6 @@ const SIDEBAR_ONLY_EVENT_TYPES = new Set([
   "MERGED",
   "SPLIT",
 ]);
-
-interface ThreadTree {
-  topLevel: SupportConversationTimelineEvent[];
-  childrenByParent: Map<string, SupportConversationTimelineEvent[]>;
-}
-
-function buildThreadTree(events: SupportConversationTimelineEvent[]): ThreadTree {
-  const childrenByParent = new Map<string, SupportConversationTimelineEvent[]>();
-  const topLevel: SupportConversationTimelineEvent[] = [];
-
-  const eventIds = new Set(events.map((e) => e.id));
-
-  for (const event of events) {
-    const replyToId =
-      typeof event.detailsJson?.replyToEventId === "string"
-        ? event.detailsJson.replyToEventId
-        : null;
-
-    if (replyToId && eventIds.has(replyToId)) {
-      const siblings = childrenByParent.get(replyToId) ?? [];
-      siblings.push(event);
-      childrenByParent.set(replyToId, siblings);
-    } else {
-      topLevel.push(event);
-    }
-  }
-
-  return { topLevel, childrenByParent };
-}
 
 function formatDateSeparator(dateStr: string): string {
   const date = new Date(dateStr);
