@@ -165,7 +165,7 @@ function PreviewableAttachment({ attachment }: { attachment: SupportTimelineAtta
 
       {canPreview ? (
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="max-w-[80%] w-[80%] h-[92vh] max-h-[92vh] p-0 overflow-hidden flex flex-col">
+          <DialogContent className="sm:max-w-[80%] w-[80%] h-[92vh] max-h-[92vh] p-0 overflow-hidden flex flex-col">
             <div className="flex items-center justify-between border-b px-4 py-2">
               <span className="text-sm font-medium truncate">{attachment.originalFilename}</span>
               <div className="flex items-center gap-1">
