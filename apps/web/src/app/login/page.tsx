@@ -15,7 +15,7 @@ export default async function LoginPage({
   const googleEnabled = Boolean(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET);
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <main className="bg-dot-grid flex min-h-screen items-center justify-center p-6">
       <LoginForm googleBanner={googleBanner} googleEnabled={googleEnabled} />
     </main>
   );
@@ -28,7 +28,7 @@ function translateGoogleStatus(status: string | undefined): string | null {
   }
   switch (parsed) {
     case GOOGLE_OAUTH_STATUS.DENIED:
-      return "Google sign-in was cancelled. Try again, or use email and password.";
+      return "Google sign-in was cancelled. Please try again.";
     case GOOGLE_OAUTH_STATUS.UNVERIFIED:
       return "Your Google account's email isn't verified yet. Verify it at myaccount.google.com and try again.";
     case GOOGLE_OAUTH_STATUS.ERROR:

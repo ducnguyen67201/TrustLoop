@@ -1,12 +1,10 @@
 "use client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { NoWorkspaceState } from "@/components/workspace/no-workspace-state";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useWorkspaceMemberships } from "@/hooks/use-workspace-memberships";
 import { workspaceRootPath } from "@/lib/workspace-paths";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -41,17 +39,14 @@ export default function NoWorkspacePage() {
     );
   }
 
+  async function handleSignOut() {
+    await auth.logout();
+    window.location.replace("/login");
+  }
+
   return (
-    <main className="relative flex min-h-screen w-full items-center justify-center p-6">
-      <Button
-        variant="ghost"
-        size="sm"
-        asChild
-        className="absolute top-6 right-6 text-muted-foreground"
-      >
-        <Link href="/">← Back to home</Link>
-      </Button>
-      <NoWorkspaceState />
+    <main className="bg-dot-grid flex min-h-screen w-full items-center justify-center p-6">
+      <NoWorkspaceState onSignOut={handleSignOut} />
     </main>
   );
 }

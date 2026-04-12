@@ -2,16 +2,7 @@
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useAuthSession } from "@/hooks/use-auth-session";
-import { workspaceRootPath } from "@/lib/workspace-paths";
 import { Logo } from "@shared/brand";
-import { AUTH_MODE, type AuthMode } from "@shared/types";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import type { FormEvent } from "react";
 
 interface LoginFormProps {
   googleBanner: string | null;
@@ -19,210 +10,139 @@ interface LoginFormProps {
 }
 
 /**
- * Unified auth form. When Google OAuth is configured it stays the primary
- * CTA; otherwise the password form is shown immediately so the login page
- * never advertises a provider that cannot complete.
+ * Google-only sign in. Email/password was removed from the product — we
+ * don't want to maintain password storage, resets, or lockouts. If Google
+ * OAuth isn't configured for the current deployment, we surface a clear
+ * operational error instead of falling back to a second auth method.
+ *
+ * Layout is a split card: form on the left, branded visual on the right.
+ * On mobile the visual collapses so the form stays the primary surface.
  */
 export function LoginForm({ googleBanner, googleEnabled }: LoginFormProps) {
-  const router = useRouter();
-  const { login, register, isLoading } = useAuthSession();
-  const [mode, setMode] = useState<AuthMode>(AUTH_MODE.SIGN_IN);
-  const [showPasswordForm, setShowPasswordForm] = useState(!googleEnabled);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      if (mode === AUTH_MODE.REGISTER && password !== confirmPassword) {
-        setError("Passwords do not match");
-        return;
-      }
-
-      const session =
-        mode === AUTH_MODE.SIGN_IN
-          ? await login({ email, password })
-          : await register({ email, password });
-
-      router.replace(
-        session.activeWorkspaceId ? workspaceRootPath(session.activeWorkspaceId) : "/no-workspace"
-      );
-      router.refresh();
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : mode === AUTH_MODE.SIGN_IN
-            ? "Login failed"
-            : "Registration failed"
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="items-center text-center">
-        <Logo title="TrustLoop AI" className="mb-3 size-12" />
-        <CardTitle>
-          {mode === AUTH_MODE.SIGN_IN
-            ? "Sign in to TrustLoop AI"
-            : "Create your TrustLoop AI account"}
-        </CardTitle>
-        <CardDescription>
-          {googleEnabled
-            ? "Continue with your Google account, or use email and password."
-            : "Sign in or create an account with email and password."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div className="w-full max-w-4xl overflow-hidden rounded-2xl border bg-card shadow-xl">
+      <div className="grid md:grid-cols-2">
+        <FormSide googleBanner={googleBanner} googleEnabled={googleEnabled} />
+        <VisualSide />
+      </div>
+    </div>
+  );
+}
+
+function FormSide({ googleBanner, googleEnabled }: LoginFormProps) {
+  return (
+    <div className="flex flex-col justify-center p-8 md:p-12">
+      <Logo
+        title="TrustLoop AI"
+        className="mb-8 size-12 rounded-full bg-foreground/5 p-2.5"
+      />
+
+      <h1 className="text-3xl font-semibold tracking-tight text-balance">Welcome back</h1>
+      <p className="mt-2 text-sm text-muted-foreground text-balance">
+        Sign in with your work Google account to continue to TrustLoop.
+      </p>
+
+      <div className="mt-8 space-y-4">
         {googleBanner ? (
-          <Alert className="mb-4">
+          <Alert>
             <AlertTitle>Sign-in issue</AlertTitle>
             <AlertDescription>{googleBanner}</AlertDescription>
           </Alert>
         ) : null}
 
-        {error ? (
-          <Alert variant="destructive" className="mb-4">
-            <AlertTitle>
-              {mode === AUTH_MODE.SIGN_IN ? "Login failed" : "Registration failed"}
-            </AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {/* Google as primary CTA only when the deployment has the OAuth
-            credentials required to complete the redirect flow. */}
         {googleEnabled ? (
           <Button
             type="button"
-            className="mb-4 w-full"
+            size="lg"
+            className="h-14 w-full text-base font-semibold shadow-lg shadow-primary/30 ring-1 ring-primary/40 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/40"
             onClick={() => {
               window.location.href = "/api/auth/google/start";
             }}
           >
-            <GoogleGlyph /> Continue with Google
+            <GoogleGlyph />
+            Continue with Google
           </Button>
-        ) : null}
+        ) : (
+          <Alert variant="destructive">
+            <AlertTitle>Google sign-in is not configured</AlertTitle>
+            <AlertDescription>
+              This deployment is missing Google OAuth credentials. Contact your admin to enable
+              sign-in.
+            </AlertDescription>
+          </Alert>
+        )}
 
-        {/* Tab switcher stays visible for register/sign-in on the password
-            path. Hidden when the password form is collapsed so the page
-            doesn't look busy. */}
-        {showPasswordForm ? (
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant={mode === AUTH_MODE.SIGN_IN ? "default" : "outline"}
-              onClick={() => {
-                setMode(AUTH_MODE.SIGN_IN);
-                setError(null);
-                setConfirmPassword("");
-              }}
-            >
-              Sign in
-            </Button>
-            <Button
-              type="button"
-              variant={mode === AUTH_MODE.REGISTER ? "default" : "outline"}
-              onClick={() => {
-                setMode(AUTH_MODE.REGISTER);
-                setError(null);
-              }}
-            >
-              Register
-            </Button>
-          </div>
-        ) : null}
-
-        {/* Collapsed disclosure: show a muted link that expands the form. */}
-        {googleEnabled && !showPasswordForm ? (
-          <button
-            type="button"
-            className="mx-auto mb-4 block text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-            onClick={() => setShowPasswordForm(true)}
-          >
-            or use email and password
-          </button>
-        ) : null}
-
-        {showPasswordForm ? (
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@company.com"
-                autoComplete="email"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
-                autoComplete={mode === AUTH_MODE.SIGN_IN ? "current-password" : "new-password"}
-                required
-              />
-            </div>
-
-            {mode === AUTH_MODE.REGISTER ? (
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm password</Label>
-                <Input
-                  id="confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  required
-                />
-              </div>
-            ) : null}
-
-            <Button
-              type="submit"
-              variant="outline"
-              className="w-full"
-              disabled={submitting || isLoading}
-            >
-              {submitting
-                ? mode === AUTH_MODE.SIGN_IN
-                  ? "Signing in..."
-                  : "Creating account..."
-                : mode === AUTH_MODE.SIGN_IN
-                  ? "Sign in"
-                  : "Create account"}
-            </Button>
-          </form>
-        ) : null}
-      </CardContent>
-    </Card>
+        <p className="text-xs text-muted-foreground">
+          New here? Your team provisions workspaces, so reach out to your admin first. By
+          continuing you agree to TrustLoop's terms and privacy policy.
+        </p>
+      </div>
+    </div>
   );
 }
 
-// Google "G" glyph inlined — avoids pulling in an icon package just for one mark.
+/**
+ * Right-side visual panel. Branded gradient with a large faded logo
+ * watermark and the marketing headline. No external image dependency —
+ * everything is CSS + the existing Logo SVG so it stays themable and
+ * ships without network requests.
+ */
+function VisualSide() {
+  return (
+    <div className="relative hidden overflow-hidden bg-foreground md:block">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,var(--primary)_0%,transparent_55%)] opacity-40" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_90%,var(--primary)_0%,transparent_60%)] opacity-20" />
+
+      <Logo
+        title="TrustLoop AI"
+        className="-right-20 -bottom-20 absolute size-[28rem] text-background opacity-[0.06]"
+      />
+
+      <div className="relative flex h-full flex-col justify-between p-12 text-background">
+        <div className="inline-flex w-fit items-center gap-2 rounded-full bg-primary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-sm">
+          <span className="relative flex size-1.5">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary-foreground opacity-75" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-primary-foreground" />
+          </span>
+          Hackathon Winner · Early Access
+        </div>
+
+        <div>
+          <h2 className="text-3xl font-semibold tracking-tight text-balance">
+            Slack support that reads your code.
+          </h2>
+          <p className="mt-3 text-sm text-background/70 text-pretty">
+            Reads your repo, replays the customer's session, drafts the Slack reply, and preps the
+            fix PR. Every answer grounded in real code.
+          </p>
+
+          <dl className="mt-8 grid grid-cols-3 gap-4 border-background/15 border-t pt-6">
+            <Metric value="<30s" label="First draft" />
+            <Metric value="90%+" label="Accuracy" />
+            <Metric value="Hours" label="Saved / wk" />
+          </dl>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ value, label }: { value: string; label: string }) {
+  return (
+    <div>
+      <dt className="text-xl font-semibold tracking-tight text-background">{value}</dt>
+      <dd className="mt-1 text-[10px] font-medium uppercase tracking-wider text-background/60">
+        {label}
+      </dd>
+    </div>
+  );
+}
+
 function GoogleGlyph() {
   return (
     <svg
       aria-hidden="true"
-      className="mr-2 h-4 w-4"
+      className="mr-2 h-5 w-5"
       viewBox="0 0 24 24"
       xmlns="http://www.w3.org/2000/svg"
     >
