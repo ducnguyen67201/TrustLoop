@@ -279,6 +279,11 @@ export async function runSupportPipeline(
     // a thread child (has its own parentEventId), walk up to the true
     // thread root — Slack flattens nested threads to one level, so a
     // single hop always terminates at the root.
+    //
+    // `select` is omitted deliberately: a stale Prisma client (generated
+    // before parentEventId existed) would reject any select clause that
+    // names it. Without select, the query returns all known columns and
+    // we read `parentEventId` defensively via an optional cast.
     let parentEventId: string | null = null;
     if (normalized.threadTs !== normalized.messageTs) {
       const direct = await tx.supportConversationEvent.findFirst({
@@ -290,11 +295,18 @@ export async function runSupportPipeline(
           },
         },
         orderBy: { createdAt: "asc" },
-        select: { id: true, parentEventId: true },
       });
-      parentEventId = direct ? (direct.parentEventId ?? direct.id) : null;
+      if (direct) {
+        const directParent = (direct as { parentEventId?: string | null }).parentEventId;
+        parentEventId = directParent ?? direct.id;
+      }
     }
 
+    // Conditional spread on parentEventId: a stale Prisma client (one
+    // generated before the column existed) will reject any data object
+    // that names an unknown field. When parentEventId is null we omit
+    // the key entirely so the write succeeds regardless of client state.
+    // The threadTs is still persisted in detailsJson for forensic lookup.
     await tx.supportConversationEvent.create({
       data: {
         workspaceId: input.workspaceId,
@@ -302,7 +314,7 @@ export async function runSupportPipeline(
         eventType: "MESSAGE_RECEIVED",
         eventSource: mapAuthorRoleToEventSource(normalized.authorRoleBucket),
         summary: summarizeMessage(normalized.text),
-        parentEventId,
+        ...(parentEventId ? { parentEventId } : {}),
         detailsJson: {
           canonicalIdempotencyKey: input.canonicalIdempotencyKey,
           threadTs: normalized.threadTs,

@@ -142,6 +142,13 @@ function extractEventThreadTs(detailsJson: unknown): string | null {
  * to one level, so walking up once is enough.
  *
  * Returns null when no match exists (orphan thread).
+ *
+ * Deliberately omits `select` — we want every field so a stale Prisma
+ * client (one generated before the parentEventId column existed) can
+ * still execute the query. With select, Prisma rejects the query at
+ * the client layer if any listed field is unknown. Without it, the
+ * query succeeds and `parentEventId` is either present (fresh client)
+ * or absent (stale client → access falls back to `direct.id`).
  */
 async function resolveParentEventId(params: {
   conversationId: string;
@@ -156,10 +163,10 @@ async function resolveParentEventId(params: {
       },
     },
     orderBy: { createdAt: "asc" },
-    select: { id: true, parentEventId: true },
   });
   if (!direct) return null;
-  return direct.parentEventId ?? direct.id;
+  const directParent = (direct as { parentEventId?: string | null }).parentEventId;
+  return directParent ?? direct.id;
 }
 
 async function loadConversationDeliveryContext(workspaceId: string, conversationId: string) {
@@ -335,6 +342,11 @@ async function sendReplyWithRecordedAttempt(
           },
         });
 
+    // Conditional spread on parentEventId: a stale Prisma client (one
+    // generated before the column existed) will reject any data object
+    // that names an unknown field. When parentEventId is null we omit
+    // the key entirely so the write succeeds regardless of client state.
+    // The threadTs is still persisted in detailsJson for forensic lookup.
     await tx.supportConversationEvent.create({
       data: {
         workspaceId: params.workspaceId,
@@ -342,7 +354,7 @@ async function sendReplyWithRecordedAttempt(
         eventType: "DELIVERY_ATTEMPTED",
         eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.operator,
         summary: "Reply send requested",
-        parentEventId,
+        ...(parentEventId ? { parentEventId } : {}),
         detailsJson: {
           actorUserId: params.actorUserId,
           attachments: params.payload.attachments,
