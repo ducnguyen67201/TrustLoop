@@ -244,6 +244,20 @@ When you pick this up: wrap the `tx.sessionRecord.create(...)` in a try/catch on
 **Priority:** P1
 **Depends on:** Soft delete migration landed.
 
+## Storage
+
+### Migrate attachment storage from BYTEA to S3/R2
+
+**What:** Move support file attachments from the PostgreSQL `fileData` BYTEA column to object storage (Cloudflare R2 or AWS S3). Keep only a `storageKey` reference in the database row.
+
+**Why:** BYTEA works for low volume but causes database bloat, slow backups, and per-request memory pressure at scale. A 25MB upload costs 25MB+ in WAL + TOAST storage. Concurrent downloads load full files into Node.js memory.
+
+**Context:** The service boundary is already designed for this swap. All callers go through `supportAttachments.store()` and `supportAttachments.readFileData()` in `packages/rest/src/services/support/support-attachment-service.ts`. The `storageKey` column already exists on `SupportMessageAttachment`. Implementation: (1) set up R2/S3 bucket + presigned URL helpers, (2) update `store()` to write to object storage and save the key, (3) update `readFileData()` to stream from object storage (or return a redirect URL), (4) backfill existing BYTEA rows to object storage, (5) drop the `fileData` column after backfill.
+
+**Effort:** M (human) / S (CC)
+**Priority:** P2
+**Depends on:** File attachment feature stable in production. Trigger: DB size growth from attachments becomes noticeable.
+
 ## Completed
 
 ### Tighten bot-message filter to installation.botUserId
