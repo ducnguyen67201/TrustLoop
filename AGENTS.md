@@ -168,6 +168,7 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 - Start with `packages/database/prisma/schema.prisma` while solo.
 - Split into `packages/database/prisma/*.schema.prisma` once schema size or ownership boundaries require it.
 - Every schema change must include a committed migration.
+- **After any schema change, always run `npm run db:generate` and `npm run db:migrate` before testing or moving on.** The Prisma client is generated code — queries against new/changed models will fail at runtime until the client is regenerated. Running dev servers must be restarted after regeneration (the old client is cached in memory).
 - `db:push` is local-prototyping only.
 - Use explicit transactions for multi-step writes requiring atomicity.
 - Add indexes intentionally for new query paths.

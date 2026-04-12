@@ -6,6 +6,7 @@ import type {
   SupportConversationListResponse,
   SupportConversationStatus,
   SupportConversationTimeline,
+  SupportReaction,
 } from "@shared/types";
 import { useCallback, useEffect, useState } from "react";
 
@@ -169,6 +170,19 @@ export function useSupportInbox() {
     [runMutation]
   );
 
+  const toggleReaction = useCallback(
+    async (conversationId: string, eventId: string, emojiName: string, emojiUnicode: string | null) =>
+      trpcMutation<
+        { conversationId: string; eventId: string; emojiName: string; emojiUnicode: string | null },
+        SupportReaction[]
+      >(
+        "supportInbox.toggleReaction",
+        { conversationId, eventId, emojiName, emojiUnicode },
+        { withCsrf: true }
+      ),
+    []
+  );
+
   useEffect(() => {
     refreshList().catch(() => {
       setListError("Failed to load support inbox");
@@ -200,6 +214,7 @@ export function useSupportInbox() {
     setSelectedConversationId,
     timelineData,
     timelineError,
+    toggleReaction,
     updateConversationStatus,
   };
 }

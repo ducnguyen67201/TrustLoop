@@ -1,7 +1,10 @@
 import { avatarColor, senderInitials } from "@/components/support/avatar-utils";
+import { useCustomerProfile } from "@/components/support/customer-profile-context";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { RiAttachmentLine, RiDownloadLine } from "@remixicon/react";
 import { SUPPORT_CONVERSATION_EVENT_SOURCE } from "@shared/types";
-import type { SupportConversationTimelineEvent } from "@shared/types";
+import type { SupportConversationTimelineEvent, SupportTimelineAttachment } from "@shared/types";
 
 function formatThreadTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -19,6 +22,42 @@ function threadSourceLabel(eventSource: string): string {
     default:
       return eventSource;
   }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const IMAGE_MIMETYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+function ThreadAttachment({ attachment }: { attachment: SupportTimelineAttachment }) {
+  if (attachment.uploadState !== "UPLOADED") return null;
+  const url = `/api/support/attachments/${attachment.id}`;
+  const isImage = IMAGE_MIMETYPES.has(attachment.mimeType);
+
+  if (isImage) {
+    return (
+      <img
+        src={url}
+        alt={attachment.originalFilename ?? "Image attachment"}
+        className="mt-1 max-h-[200px] max-w-full rounded-sm"
+        loading="lazy"
+      />
+    );
+  }
+
+  return (
+    <div className="mt-1 inline-flex items-center gap-2 rounded-md border px-2 py-1 bg-background text-xs">
+      <RiAttachmentLine className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className="truncate">{attachment.originalFilename ?? "File"}</span>
+      <span className="text-muted-foreground">{formatFileSize(attachment.sizeBytes)}</span>
+      <a href={url} download={attachment.originalFilename ?? "file"} className="shrink-0 p-0.5 rounded hover:bg-muted">
+        <RiDownloadLine className="h-3.5 w-3.5 text-muted-foreground" />
+      </a>
+    </div>
+  );
 }
 
 interface MessageThreadProps {
@@ -45,6 +84,7 @@ export function MessageThread({ replies, onReplyToThread }: MessageThreadProps) 
 
         const isOperator = reply.eventSource === SUPPORT_CONVERSATION_EVENT_SOURCE.operator;
         const name = slackUser ?? threadSourceLabel(reply.eventSource);
+        const attachments = reply.attachments ?? [];
 
         return (
           <div key={reply.id} className="flex gap-2">
@@ -64,6 +104,9 @@ export function MessageThread({ replies, onReplyToThread }: MessageThreadProps) 
                 </span>
               </div>
               {messageText ? <p className="text-sm whitespace-pre-wrap">{messageText}</p> : null}
+              {attachments.map((a) => (
+                <ThreadAttachment key={a.id} attachment={a} />
+              ))}
             </div>
           </div>
         );

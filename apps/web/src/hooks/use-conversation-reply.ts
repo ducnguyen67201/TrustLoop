@@ -39,6 +39,7 @@ export interface UseConversationReplyResult {
   // Handlers
   handleSendReply: (messageText: string, replyToId?: string, attachmentIds?: string[]) => Promise<void>;
   handleRetryDelivery: (deliveryAttemptId: string) => void;
+  handleToggleReaction: (eventId: string, emojiName: string, emojiUnicode: string | null) => void;
 
   // Shared mutation flag from the inbox hook
   isMutating: boolean;
@@ -71,6 +72,13 @@ export function useConversationReply(conversationId: string): UseConversationRep
     [inbox, polling]
   );
 
+  const handleToggleReaction = useCallback(
+    (eventId: string, emojiName: string, emojiUnicode: string | null) => {
+      void inbox.toggleReaction(conversationId, eventId, emojiName, emojiUnicode).then(() => polling.refresh());
+    },
+    [conversationId, inbox, polling]
+  );
+
   const clearSendError = useCallback(() => setSendError(null), []);
 
   // Wrap polling.refresh to narrow its return type — callers of this
@@ -93,6 +101,7 @@ export function useConversationReply(conversationId: string): UseConversationRep
     clearSendError,
     handleSendReply,
     handleRetryDelivery,
+    handleToggleReaction,
     isMutating: inbox.isMutating,
   };
 }

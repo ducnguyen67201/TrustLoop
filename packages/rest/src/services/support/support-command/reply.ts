@@ -27,6 +27,7 @@ import { buildCommandResponse } from "./_shared";
 
 interface SupportReplyPayload {
   attachments: SupportSendReplyCommand["attachments"];
+  attachmentIds?: string[];
   messageText: string;
 }
 
@@ -42,6 +43,8 @@ interface SupportDeliverySenderRequest {
     threadTs: string;
   };
   workspaceId: string;
+  agentName?: string;
+  agentAvatarUrl?: string;
 }
 
 type SupportDeliverySender = (input: SupportDeliverySenderRequest) => Promise<{
@@ -339,24 +342,39 @@ async function sendReplyWithRecordedAttempt(
         })
       : null;
 
-    const delivery = await sender({
-      provider: "SLACK",
-      workspaceId: params.workspaceId,
-      installationId: conversation.installation.id,
-      installationMetadata: conversation.installation.metadata,
-      thread: {
-        teamId: conversation.teamId,
-        channelId: conversation.channelId,
-        threadTs: resolvedThreadTs,
-      },
-      messageText: params.payload.messageText,
-      attachments: params.payload.attachments,
-      agentName: agent?.name ?? undefined,
-      agentAvatarUrl: agent?.avatarUrl ?? undefined,
-    });
+    const hasText = params.payload.messageText.trim().length > 0;
+    const hasFiles =
+      params.payload.attachmentIds !== undefined &&
+      params.payload.attachmentIds.length > 0;
 
-    if (params.payload.attachmentIds && params.payload.attachmentIds.length > 0) {
-      for (const attachmentId of params.payload.attachmentIds) {
+    let delivery: { providerMessageId: string; deliveredAt: string };
+
+    if (hasText) {
+      delivery = await sender({
+        provider: "SLACK",
+        workspaceId: params.workspaceId,
+        installationId: conversation.installation.id,
+        installationMetadata: conversation.installation.metadata,
+        thread: {
+          teamId: conversation.teamId,
+          channelId: conversation.channelId,
+          threadTs: resolvedThreadTs,
+        },
+        messageText: params.payload.messageText,
+        attachments: params.payload.attachments,
+        agentName: agent?.name ?? undefined,
+        agentAvatarUrl: agent?.avatarUrl ?? undefined,
+      });
+    } else {
+      // File-only send: no text message to post, synthetic delivery result
+      delivery = {
+        providerMessageId: resolvedThreadTs,
+        deliveredAt: new Date().toISOString(),
+      };
+    }
+
+    if (hasFiles) {
+      for (const attachmentId of params.payload.attachmentIds!) {
         const attachment = await prisma.supportMessageAttachment.findFirst({
           where: { id: attachmentId, workspaceId: params.workspaceId, deletedAt: null },
           select: { fileData: true, originalFilename: true, mimeType: true },
@@ -416,6 +434,7 @@ async function sendReplyWithRecordedAttempt(
           eventType: "DELIVERY_SUCCEEDED",
           eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.operator,
           summary: "Reply delivered to Slack",
+          ...(parentEventId ? { parentEventId } : {}),
           detailsJson: {
             actorUserId: params.actorUserId,
             commandId: params.commandId,

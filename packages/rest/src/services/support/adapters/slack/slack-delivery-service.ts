@@ -194,3 +194,73 @@ export async function uploadFileToThread(input: {
 
   return getUrlJson.file_id;
 }
+
+interface SlackReactionRequest {
+  installationMetadata?: unknown;
+  channel: string;
+  timestamp: string;
+  name: string;
+}
+
+interface SlackReactionResponse {
+  ok?: boolean;
+  error?: string;
+}
+
+export async function addReaction(input: SlackReactionRequest): Promise<void> {
+  const token = resolveSlackBotToken(input.installationMetadata);
+  const response = await fetch("https://slack.com/api/reactions.add", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({
+      channel: input.channel,
+      timestamp: input.timestamp,
+      name: input.name,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new TransientExternalError(`Slack reactions.add failed with HTTP ${response.status}`);
+  }
+
+  const json = (await response.json()) as SlackReactionResponse;
+  if (!json.ok) {
+    const errorCode = json.error ?? "unknown_slack_error";
+    if (errorCode === "already_reacted") return;
+    const message = `Slack reactions.add failed: ${errorCode}`;
+    if (isTransientSlackError(errorCode)) throw new TransientExternalError(message);
+    throw new PermanentExternalError(message);
+  }
+}
+
+export async function removeReaction(input: SlackReactionRequest): Promise<void> {
+  const token = resolveSlackBotToken(input.installationMetadata);
+  const response = await fetch("https://slack.com/api/reactions.remove", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({
+      channel: input.channel,
+      timestamp: input.timestamp,
+      name: input.name,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new TransientExternalError(`Slack reactions.remove failed with HTTP ${response.status}`);
+  }
+
+  const json = (await response.json()) as SlackReactionResponse;
+  if (!json.ok) {
+    const errorCode = json.error ?? "unknown_slack_error";
+    if (errorCode === "no_reaction") return;
+    const message = `Slack reactions.remove failed: ${errorCode}`;
+    if (isTransientSlackError(errorCode)) throw new TransientExternalError(message);
+    throw new PermanentExternalError(message);
+  }
+}

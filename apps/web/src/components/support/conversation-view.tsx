@@ -48,6 +48,7 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
     sendError,
     handleSendReply,
     handleRetryDelivery,
+    handleToggleReaction,
     isMutating,
   } = reply;
 
@@ -112,6 +113,8 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
             isMutating={isMutating}
             onRetryDelivery={handleRetryDelivery}
             onSetReplyToEventId={setReplyToEventId}
+            onToggleReaction={handleToggleReaction}
+            currentUserId={auth.session?.user.id ?? null}
           />
 
           <ReplyComposer

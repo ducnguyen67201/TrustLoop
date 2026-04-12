@@ -1,13 +1,16 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import {
   RiAttachmentLine,
   RiCloseLine,
+  RiEmotionLine,
   RiLoopLeftLine,
   RiSendPlaneLine,
 } from "@remixicon/react";
+import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { toast } from "sonner";
 import { useCallback, useRef, useState } from "react";
 
@@ -46,7 +49,28 @@ export function ReplyComposer({
   const [draft, setDraft] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleEmojiSelect = useCallback((emojiData: EmojiClickData) => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const updated = draft.slice(0, start) + emojiData.emoji + draft.slice(end);
+      setDraft(updated);
+      requestAnimationFrame(() => {
+        const cursor = start + emojiData.emoji.length;
+        textarea.selectionStart = cursor;
+        textarea.selectionEnd = cursor;
+        textarea.focus();
+      });
+    } else {
+      setDraft((prev) => prev + emojiData.emoji);
+    }
+    setEmojiPickerOpen(false);
+  }, [draft]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const newFiles = Array.from(files);
@@ -103,7 +127,7 @@ export function ReplyComposer({
     }
 
     await onSendReply(
-      text || " ",
+      text,
       replyToEventId ?? undefined,
       uploadedIds.length > 0 ? uploadedIds : undefined
     );
@@ -137,7 +161,7 @@ export function ReplyComposer({
   }
 
   return (
-    <div className="border-t px-4 py-3">
+    <div className="px-4 py-3">
       {replyToEventId ? (
         <div className="text-muted-foreground mb-2 flex items-center gap-2 text-xs">
           <span>Replying to thread ↩</span>
@@ -152,8 +176,8 @@ export function ReplyComposer({
       ) : null}
 
       <div
-        className={`flex gap-2 rounded-lg border-2 transition-colors duration-120 ${
-          isDragOver ? "border-primary bg-primary/5" : "border-transparent"
+        className={`flex gap-2 rounded-lg border transition-colors duration-120 ${
+          isDragOver ? "border-primary bg-primary/5" : "border-border"
         }`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -166,11 +190,12 @@ export function ReplyComposer({
             </div>
           ) : (
             <Textarea
+              ref={textareaRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={replyToEventId ? "Reply to thread..." : "Reply to conversation..."}
-              className="min-h-20 flex-1 resize-none border-0 focus-visible:ring-0"
+              className="min-h-10 flex-1 resize-none border-0 focus-visible:ring-0"
               aria-label={replyToEventId ? "Reply to thread" : "Reply to conversation"}
               disabled={isMutating}
             />
@@ -200,22 +225,50 @@ export function ReplyComposer({
           ) : null}
         </div>
 
-        <div className="flex flex-col justify-end gap-1 p-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isMutating}
-            aria-label="Attach files"
-            className="h-8 w-8"
-          >
-            <RiAttachmentLine className="h-4 w-4" />
-          </Button>
+        <div className="flex items-center justify-between border-t px-2 py-1">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isMutating}
+              aria-label="Attach files"
+              className="h-7 w-7"
+            >
+              <RiAttachmentLine className="h-4 w-4" />
+            </Button>
+            <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={isMutating}
+                  aria-label="Insert emoji"
+                  className="h-7 w-7"
+                >
+                  <RiEmotionLine className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="start"
+                className="w-auto border-0 bg-transparent p-0 shadow-none ring-0"
+              >
+                <EmojiPicker
+                  onEmojiClick={handleEmojiSelect}
+                  autoFocusSearch={false}
+                  height={350}
+                  width={320}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
           <Button
             size="icon"
             onClick={() => void handleSend()}
             disabled={isMutating || (draft.trim().length === 0 && attachedFiles.length === 0)}
-            className="h-8 w-8"
+            className="h-7 w-7"
             aria-label="Send"
           >
             <RiSendPlaneLine className="h-4 w-4" />

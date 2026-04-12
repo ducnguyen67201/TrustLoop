@@ -1,4 +1,5 @@
 import { supportThreadReferenceSchema } from "@shared/types/support/support-adapter.schema";
+import { supportReactionSchema } from "@shared/types/support/support-reaction.schema";
 import { z } from "zod";
 
 /** Default grouping window configuration for standalone message grouping. */
@@ -102,6 +103,7 @@ export const supportConversationTimelineEventSchema = z.object({
   /// In that degraded state the inbox renders flat, which is the same
   /// behavior as pre-v0.1.6.0 and is preferable to a 500.
   parentEventId: z.string().nullish(),
+  reactions: z.array(supportReactionSchema).default([]),
   createdAt: z.iso.datetime(),
 });
 

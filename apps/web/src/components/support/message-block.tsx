@@ -1,16 +1,19 @@
 import { avatarColor, senderInitials } from "@/components/support/avatar-utils";
 import { useCurrentUser, useCustomerProfile } from "@/components/support/customer-profile-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { RiAttachmentLine, RiAlertLine, RiCloseLine, RiDownloadLine, RiReplyLine } from "@remixicon/react";
+import { RiAttachmentLine, RiAlertLine, RiCloseLine, RiDownloadLine, RiEmotionLine, RiReplyLine } from "@remixicon/react";
 import { SUPPORT_CONVERSATION_EVENT_SOURCE } from "@shared/types";
 import type {
   SupportConversationTimelineEvent,
+  SupportReaction,
   SupportTimelineAttachment,
 } from "@shared/types";
-import { useState } from "react";
+import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
+import { useCallback, useState } from "react";
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -165,7 +168,7 @@ function PreviewableAttachment({ attachment }: { attachment: SupportTimelineAtta
 
       {canPreview ? (
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-[80%] w-[80%] h-[92vh] max-h-[92vh] p-0 overflow-hidden flex flex-col">
+          <DialogContent showCloseButton={false} className="sm:max-w-[80%] w-[80%] h-[92vh] max-h-[92vh] p-0 overflow-hidden flex flex-col">
             <div className="flex items-center justify-between border-b px-4 py-2">
               <span className="text-sm font-medium truncate">{attachment.originalFilename}</span>
               <div className="flex items-center gap-1">
@@ -176,6 +179,12 @@ function PreviewableAttachment({ attachment }: { attachment: SupportTimelineAtta
                 >
                   <RiDownloadLine className="h-4 w-4" />
                 </a>
+                <DialogClose asChild>
+                  <button type="button" className="p-1.5 rounded hover:bg-muted">
+                    <RiCloseLine className="h-4 w-4" />
+                    <span className="sr-only">Close</span>
+                  </button>
+                </DialogClose>
               </div>
             </div>
             <div className="flex-1 overflow-auto">
@@ -192,20 +201,86 @@ function PreviewableAttachment({ attachment }: { attachment: SupportTimelineAtta
   );
 }
 
+interface ReactionBadgesProps {
+  reactions: SupportReaction[];
+  currentUserId: string | null;
+  onToggle: (emojiName: string, emojiUnicode: string | null) => void;
+}
+
+function ReactionBadges({ reactions, currentUserId, onToggle }: ReactionBadgesProps) {
+  if (reactions.length === 0) return null;
+
+  const grouped = new Map<string, { unicode: string | null; count: number; hasOwn: boolean }>();
+  for (const r of reactions) {
+    const entry = grouped.get(r.emojiName);
+    if (entry) {
+      entry.count += 1;
+      if (r.actorUserId === currentUserId) entry.hasOwn = true;
+    } else {
+      grouped.set(r.emojiName, {
+        unicode: r.emojiUnicode,
+        count: 1,
+        hasOwn: r.actorUserId === currentUserId,
+      });
+    }
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {[...grouped.entries()].map(([name, { unicode, count, hasOwn }]) => (
+        <button
+          key={name}
+          type="button"
+          onClick={() => onToggle(name, unicode)}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
+            hasOwn
+              ? "border-primary/40 bg-primary/10 text-foreground"
+              : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
+          )}
+          title={name}
+        >
+          <span>{unicode ?? `:${name}:`}</span>
+          {count > 1 ? <span>{count}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface MessageBlockProps {
   event: SupportConversationTimelineEvent;
   showHeader: boolean;
   onReplyToThread: () => void;
+  onToggleReaction?: (eventId: string, emojiName: string, emojiUnicode: string | null) => void;
+  currentUserId?: string | null;
   children?: React.ReactNode;
 }
 
-export function MessageBlock({ event, showHeader, onReplyToThread, children }: MessageBlockProps) {
+export function MessageBlock({ event, showHeader, onReplyToThread, onToggleReaction, currentUserId, children }: MessageBlockProps) {
   const messageText = extractMessageText(event);
   const isOperator = event.eventSource === SUPPORT_CONVERSATION_EVENT_SOURCE.operator;
   const slackUserId =
     typeof event.detailsJson?.slackUserId === "string" ? event.detailsJson.slackUserId : null;
   const profile = useCustomerProfile(slackUserId);
   const currentUser = useCurrentUser();
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
+
+  const handleReactionEmojiSelect = useCallback(
+    (emojiData: EmojiClickData) => {
+      setReactionPickerOpen(false);
+      const slackName = emojiData.names[0]?.replace(/ /g, "_").toLowerCase() ?? emojiData.unified;
+      onToggleReaction?.(event.id, slackName, emojiData.emoji);
+    },
+    [event.id, onToggleReaction]
+  );
+
+  const handleReactionBadgeToggle = useCallback(
+    (emojiName: string, emojiUnicode: string | null) => {
+      onToggleReaction?.(event.id, emojiName, emojiUnicode);
+    },
+    [event.id, onToggleReaction]
+  );
 
   const name = isOperator
     ? (currentUser.name ? `${currentUser.name} (you)` : "You")
@@ -213,6 +288,7 @@ export function MessageBlock({ event, showHeader, onReplyToThread, children }: M
   const avatarUrl = isOperator ? currentUser.avatarUrl : (profile?.avatarUrl ?? null);
   const hasThread = Boolean(children);
   const attachments = event.attachments ?? [];
+  const reactions = event.reactions ?? [];
 
   return (
     <article className="group/msg" aria-label={`${name} at ${formatTime(event.createdAt)}`}>
@@ -265,15 +341,48 @@ export function MessageBlock({ event, showHeader, onReplyToThread, children }: M
             </div>
           ) : null}
 
+          <ReactionBadges
+            reactions={reactions}
+            currentUserId={currentUserId ?? null}
+            onToggle={handleReactionBadgeToggle}
+          />
+
           {!hasThread ? (
-            <button
-              type="button"
-              onClick={onReplyToThread}
-              className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/msg:opacity-100"
-            >
-              <RiReplyLine className="h-3 w-3" />
-              Reply in thread
-            </button>
+            <div className="mt-0.5 flex items-center gap-2 opacity-0 transition-opacity group-hover/msg:opacity-100">
+              <button
+                type="button"
+                onClick={onReplyToThread}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-foreground"
+              >
+                <RiReplyLine className="h-3 w-3" />
+                Reply in thread
+              </button>
+              {onToggleReaction ? (
+                <Popover open={reactionPickerOpen} onOpenChange={setReactionPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                    >
+                      <RiEmotionLine className="h-3 w-3" />
+                      React
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="top"
+                    align="start"
+                    className="w-auto border-0 bg-transparent p-0 shadow-none ring-0"
+                  >
+                    <EmojiPicker
+                      onEmojiClick={handleReactionEmojiSelect}
+                      autoFocusSearch={false}
+                      height={350}
+                      width={320}
+                    />
+                  </PopoverContent>
+                </Popover>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </div>

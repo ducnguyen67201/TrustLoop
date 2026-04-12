@@ -216,6 +216,7 @@ model SupportConversationEvent {
   parent         SupportConversationEvent?      @relation("SupportConversationEventParent", fields: [parentEventId], references: [id], onDelete: SetNull)
   children       SupportConversationEvent[]     @relation("SupportConversationEventParent")
   attachments    SupportMessageAttachment[]
+  reactions      SupportMessageReaction[]
   createdAt      DateTime                       @default(now())
 
   @@index([conversationId, createdAt])
@@ -363,4 +364,22 @@ model SupportCustomerProfile {
   @@unique([installationId, externalUserId])
   @@index([workspaceId, provider])
   @@index([installationId])
+}
+
+model SupportMessageReaction {
+  id           String                    @id @default(cuid())
+  workspaceId  String
+  eventId      String
+  emojiName    String
+  emojiUnicode String?
+  actorUserId  String
+  slackSynced  Boolean                   @default(false)
+  workspace    Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event        SupportConversationEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  actor        User                      @relation("SupportMessageReactionActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                  @default(now())
+
+  @@unique([eventId, emojiName, actorUserId])
+  @@index([eventId])
+  @@index([workspaceId])
 }
