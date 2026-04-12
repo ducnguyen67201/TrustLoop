@@ -86,7 +86,7 @@ export async function mirrorSupportAttachment(input: {
       MAX_INBOUND_BYTES
     );
 
-    await supportAttachments.store(input.attachmentId, buffer);
+    await supportAttachments.store(input.attachmentId, new Uint8Array(buffer));
   } catch (err) {
     if (err instanceof PermanentExternalError) {
       await supportAttachments.markFailed(

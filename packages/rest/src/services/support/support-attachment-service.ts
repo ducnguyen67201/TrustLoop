@@ -15,7 +15,7 @@ import { PermanentExternalError, TransientExternalError } from "@shared/types";
 
 export async function store(
   attachmentId: string,
-  fileData: Buffer,
+  fileData: Uint8Array<ArrayBuffer>,
   workspaceId?: string
 ): Promise<void> {
   if (workspaceId) {

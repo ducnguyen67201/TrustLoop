@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     direction: "OUTBOUND",
   });
 
-  await supportAttachments.store(attachmentId, buffer, session.activeWorkspaceId);
+  await supportAttachments.store(attachmentId, new Uint8Array(buffer), session.activeWorkspaceId);
 
   return NextResponse.json({ attachmentId });
 }
