@@ -6,10 +6,7 @@ export async function refreshCustomerProfile(input: {
   installationId: string;
   slackUserId: string;
 }): Promise<void> {
-  const cached = await slackUser.getCachedProfile(
-    input.installationId,
-    input.slackUserId
-  );
+  const cached = await slackUser.getCachedProfile(input.installationId, input.slackUserId);
 
   if (cached) {
     return;

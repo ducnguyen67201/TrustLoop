@@ -1,6 +1,6 @@
+import type * as triggerActivities from "@/domains/support/support-analysis-trigger.activity";
 import type * as mirrorActivities from "@/domains/support/support-attachment-mirror.activity";
 import type * as profileActivities from "@/domains/support/support-customer-profile.activity";
-import type * as triggerActivities from "@/domains/support/support-analysis-trigger.activity";
 import type * as supportActivities from "@/domains/support/support.activity";
 import type { SupportWorkflowInput, SupportWorkflowResult } from "@shared/types";
 import { getExternalWorkflowHandle, proxyActivities, startChild } from "@temporalio/workflow";
