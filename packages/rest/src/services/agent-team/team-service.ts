@@ -1,5 +1,11 @@
 import { prisma } from "@shared/database";
 import {
+  type AgentTeam,
+  type CreateAgentTeamInput,
+  type DeleteAgentTeamInput,
+  type ListAgentTeamsResponse,
+  type SetDefaultAgentTeamInput,
+  type UpdateAgentTeamInput,
   ValidationError,
   agentTeamSchema,
   createAgentTeamInputSchema,
@@ -7,12 +13,6 @@ import {
   listAgentTeamsResponseSchema,
   setDefaultAgentTeamInputSchema,
   updateAgentTeamInputSchema,
-  type AgentTeam,
-  type CreateAgentTeamInput,
-  type DeleteAgentTeamInput,
-  type ListAgentTeamsResponse,
-  type SetDefaultAgentTeamInput,
-  type UpdateAgentTeamInput,
 } from "@shared/types";
 
 export async function list(workspaceId: string): Promise<ListAgentTeamsResponse> {

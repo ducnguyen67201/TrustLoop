@@ -1,15 +1,15 @@
 import { prisma } from "@shared/database";
+import * as teams from "@shared/rest/services/agent-team/team-service";
 import {
+  type AddAgentTeamRoleInput,
+  type AgentTeam,
+  type RemoveAgentTeamRoleInput,
+  type UpdateAgentTeamRoleInput,
   ValidationError,
   addAgentTeamRoleInputSchema,
   removeAgentTeamRoleInputSchema,
   updateAgentTeamRoleInputSchema,
-  type AgentTeam,
-  type AddAgentTeamRoleInput,
-  type RemoveAgentTeamRoleInput,
-  type UpdateAgentTeamRoleInput,
 } from "@shared/types";
-import * as teams from "@shared/rest/services/agent-team/team-service";
 
 export async function add(workspaceId: string, input: AddAgentTeamRoleInput): Promise<AgentTeam> {
   const parsed = addAgentTeamRoleInputSchema.parse(input);

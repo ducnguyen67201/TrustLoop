@@ -1,14 +1,14 @@
 import { prisma } from "@shared/database";
+import * as teams from "@shared/rest/services/agent-team/team-service";
 import {
-  ValidationError,
-  addAgentTeamEdgeInputSchema,
-  removeAgentTeamEdgeInputSchema,
   type AddAgentTeamEdgeInput,
   type AgentTeam,
   type AgentTeamEdge,
   type RemoveAgentTeamEdgeInput,
+  ValidationError,
+  addAgentTeamEdgeInputSchema,
+  removeAgentTeamEdgeInputSchema,
 } from "@shared/types";
-import * as teams from "@shared/rest/services/agent-team/team-service";
 
 export async function add(workspaceId: string, input: AddAgentTeamEdgeInput): Promise<AgentTeam> {
   const parsed = addAgentTeamEdgeInputSchema.parse(input);
@@ -25,7 +25,10 @@ export async function add(workspaceId: string, input: AddAgentTeamEdgeInput): Pr
       sortOrder: team.edges.length,
     },
   ];
-  assertAcyclic(team.roles.map((role) => role.id), nextEdges);
+  assertAcyclic(
+    team.roles.map((role) => role.id),
+    nextEdges
+  );
 
   await prisma.agentTeamEdge.create({
     data: {
@@ -66,7 +69,11 @@ export async function remove(
   return teams.get(workspaceId, edge.teamId);
 }
 
-function assertRolesBelongToTeam(team: AgentTeam, sourceRoleId: string, targetRoleId: string): void {
+function assertRolesBelongToTeam(
+  team: AgentTeam,
+  sourceRoleId: string,
+  targetRoleId: string
+): void {
   const roleIds = new Set(team.roles.map((role) => role.id));
   if (!roleIds.has(sourceRoleId) || !roleIds.has(targetRoleId)) {
     throw new ValidationError("Source and target roles must belong to the selected team");
