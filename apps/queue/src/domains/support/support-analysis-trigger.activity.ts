@@ -38,7 +38,9 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
 
   if (expiredAnchors.length === 0) return [];
 
-  const candidateIds = expiredAnchors.map((a) => a.conversationId);
+  const candidateIds = expiredAnchors.map(
+    (anchor: { conversationId: string }) => anchor.conversationId
+  );
 
   // Filter out conversations that already have an analysis
   const alreadyAnalyzed = await prisma.supportAnalysis.findMany({
@@ -52,7 +54,9 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
     distinct: ["conversationId"],
   });
 
-  const analyzedSet = new Set(alreadyAnalyzed.map((a) => a.conversationId));
+  const analyzedSet = new Set(
+    alreadyAnalyzed.map((analysis: { conversationId: string }) => analysis.conversationId)
+  );
 
   // Filter out DONE conversations
   const activeConversations = await prisma.supportConversation.findMany({
@@ -63,7 +67,9 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
     select: { id: true },
   });
 
-  return activeConversations.filter((c) => !analyzedSet.has(c.id)).map((c) => c.id);
+  return activeConversations
+    .filter((conversation: { id: string }) => !analyzedSet.has(conversation.id))
+    .map((conversation: { id: string }) => conversation.id);
 }
 
 /**
@@ -74,6 +80,11 @@ export async function dispatchAnalysis(input: {
   workspaceId: string;
   conversationId: string;
 }): Promise<void> {
+  const autoEnabled = await shouldAutoTrigger(input.workspaceId);
+  if (!autoEnabled) {
+    return;
+  }
+
   try {
     await temporalWorkflowDispatcher.startSupportAnalysisWorkflow({
       workspaceId: input.workspaceId,
