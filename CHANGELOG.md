@@ -2,6 +2,11 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.1.7.1] - 2026-04-12
+
+### Added
+- **Slack Functionality P0 engineering spec** landed at `docs/domains/support/spec-slack-functionality-p0.md`. Execution source of truth for the next Slack inbox push: mirror inbound customer files to Cloudflare R2, deliver outbound replies with real Slack file uploads and human agent identity (`chat:write.customize`), cache customer identity per install, and survive Slack Connect + reinstall windows without silent degradation. Covers schema (`SupportMessageAttachment` + `SupportCustomerProfile` + `SupportAttachment{Direction,UploadState,LifecyclePolicy}` enums + `SupportInstallation.oauthScopes` column), the workflow-dispatches-activity mirror pattern, Slack Connect `file_access: check_file_info` stub handling, single-message atomicity via `files.completeUploadExternal` `initial_comment` with a two-entry fallback path, first-party session-cookie auth for `/api/support/attachments/*` (out of `/api/rest/*`), full responsive + a11y spec calibrated against DESIGN.md, 25MB outbound / 100MB inbound size caps, and a nightly R2 garbage-collection sweeper for soft-deleted attachments. Flags a P0 pre-work PR: `slack-oauth-service.ts` currently upserts `SupportInstallation` rows on `providerInstallationId = appId` (Slack App ID), which collides across tenants and must be fixed before this work lands.
+
 ## [0.1.7.0] - 2026-04-12
 
 ### Changed
