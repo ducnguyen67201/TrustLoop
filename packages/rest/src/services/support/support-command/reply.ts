@@ -27,6 +27,7 @@ import { buildCommandResponse } from "./_shared";
 
 interface SupportReplyPayload {
   attachments: SupportSendReplyCommand["attachments"];
+  attachmentIds?: string[];
   messageText: string;
 }
 
@@ -42,6 +43,8 @@ interface SupportDeliverySenderRequest {
     threadTs: string;
   };
   workspaceId: string;
+  agentName?: string;
+  agentAvatarUrl?: string;
 }
 
 type SupportDeliverySender = (input: SupportDeliverySenderRequest) => Promise<{
@@ -332,19 +335,96 @@ async function sendReplyWithRecordedAttempt(
   });
 
   try {
-    const delivery = await sender({
-      provider: "SLACK",
-      workspaceId: params.workspaceId,
-      installationId: conversation.installation.id,
-      installationMetadata: conversation.installation.metadata,
-      thread: {
-        teamId: conversation.teamId,
-        channelId: conversation.channelId,
-        threadTs: resolvedThreadTs,
-      },
-      messageText: params.payload.messageText,
-      attachments: params.payload.attachments,
-    });
+    const agent = params.actorUserId
+      ? await prisma.user.findUnique({
+          where: { id: params.actorUserId },
+          select: { name: true, avatarUrl: true },
+        })
+      : null;
+
+    const hasText = params.payload.messageText.trim().length > 0;
+    const hasFiles =
+      params.payload.attachmentIds !== undefined && params.payload.attachmentIds.length > 0;
+
+    let delivery: { providerMessageId: string; deliveredAt: string };
+
+    if (hasText) {
+      delivery = await sender({
+        provider: "SLACK",
+        workspaceId: params.workspaceId,
+        installationId: conversation.installation.id,
+        installationMetadata: conversation.installation.metadata,
+        thread: {
+          teamId: conversation.teamId,
+          channelId: conversation.channelId,
+          threadTs: resolvedThreadTs,
+        },
+        messageText: params.payload.messageText,
+        attachments: params.payload.attachments,
+        agentName: agent?.name ?? undefined,
+        agentAvatarUrl: agent?.avatarUrl ?? undefined,
+      });
+    } else {
+      // File-only send: no text message to post, synthetic delivery result
+      delivery = {
+        providerMessageId: resolvedThreadTs,
+        deliveredAt: new Date().toISOString(),
+      };
+    }
+
+    let fileUploadSuccessCount = 0;
+    const failedFileNames: string[] = [];
+    if (hasFiles) {
+      const ids = params.payload.attachmentIds ?? [];
+      for (const attachmentId of ids) {
+        const attachment = await prisma.supportMessageAttachment.findFirst({
+          where: { id: attachmentId, workspaceId: params.workspaceId, deletedAt: null },
+          select: { fileData: true, originalFilename: true, mimeType: true },
+        });
+        if (attachment?.fileData) {
+          try {
+            await slackDelivery.uploadFileToThread({
+              installationMetadata: conversation.installation.metadata,
+              channelId: conversation.channelId,
+              threadTs: resolvedThreadTs,
+              filename: attachment.originalFilename ?? "attachment",
+              fileData: Buffer.from(attachment.fileData),
+            });
+            fileUploadSuccessCount++;
+          } catch (err) {
+            console.warn("[support] file upload to Slack failed", {
+              attachmentId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            failedFileNames.push(attachment.originalFilename ?? attachmentId);
+          }
+        }
+      }
+    }
+
+    if (!hasText && hasFiles && fileUploadSuccessCount === 0) {
+      await prisma.supportDeliveryAttempt.update({
+        where: { id: initialAttempt.id },
+        data: { state: "FAILED", nextRetryAt: null },
+      });
+      throw new Error("All file uploads to Slack failed");
+    }
+
+    if (failedFileNames.length > 0) {
+      await prisma.supportConversationEvent.create({
+        data: {
+          workspaceId: params.workspaceId,
+          conversationId: params.conversationId,
+          eventType: "DELIVERY_WARNING",
+          eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.system,
+          summary: `${failedFileNames.length} file(s) failed to upload to Slack`,
+          detailsJson: {
+            commandId: params.commandId,
+            failedFiles: failedFileNames,
+          },
+        },
+      });
+    }
 
     const deliveredAt = new Date(delivery.deliveredAt);
     await prisma.$transaction(async (tx) => {
@@ -375,22 +455,34 @@ async function sendReplyWithRecordedAttempt(
         },
       });
 
-      await tx.supportConversationEvent.create({
+      const deliveryEvent = await tx.supportConversationEvent.create({
         data: {
           workspaceId: params.workspaceId,
           conversationId: params.conversationId,
           eventType: "DELIVERY_SUCCEEDED",
           eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.operator,
           summary: "Reply delivered to Slack",
+          ...(parentEventId ? { parentEventId } : {}),
           detailsJson: {
             actorUserId: params.actorUserId,
             commandId: params.commandId,
             deliveredAt: delivery.deliveredAt,
             deliveryAttemptId: initialAttempt.id,
             providerMessageId: delivery.providerMessageId,
+            messageText: params.payload.messageText,
           },
         },
       });
+
+      if (params.payload.attachmentIds && params.payload.attachmentIds.length > 0) {
+        await tx.supportMessageAttachment.updateMany({
+          where: {
+            id: { in: params.payload.attachmentIds },
+            workspaceId: params.workspaceId,
+          },
+          data: { eventId: deliveryEvent.id },
+        });
+      }
 
       // If we posted into a Slack thread whose ts differs from the
       // conversation's canonical root, register an alias so future
@@ -480,6 +572,12 @@ export async function sendReply(
   input: SupportSendReplyCommand,
   sender: SupportDeliverySender = slackDelivery.sendThreadReply
 ): Promise<SupportCommandResponse> {
+  const hasText = input.messageText.trim().length > 0;
+  const hasFiles = input.attachmentIds !== undefined && input.attachmentIds.length > 0;
+  if (!hasText && !hasFiles) {
+    throw new ValidationError("Reply must contain text or at least one attachment");
+  }
+
   const commandId = randomUUID();
   const conversation = await loadConversationDeliveryContext(
     input.workspaceId,
@@ -496,6 +594,7 @@ export async function sendReply(
       payload: {
         messageText: input.messageText,
         attachments: input.attachments,
+        attachmentIds: input.attachmentIds,
       },
       replyToEventId: input.replyToEventId,
       workspaceId: input.workspaceId,

@@ -91,6 +91,8 @@ export async function runSupportPipeline(
     return {
       ingressEventId: input.ingressEventId,
       conversationId: existingConversation?.id ?? null,
+      slackUserId: null,
+      pendingAttachments: [],
       status: WORKFLOW_PROCESSING_STATUS.processed,
       processedAt: ingressEvent.processedAt.toISOString(),
     };
@@ -136,6 +138,8 @@ export async function runSupportPipeline(
     return {
       ingressEventId: input.ingressEventId,
       conversationId: null,
+      slackUserId: null,
+      pendingAttachments: [],
       status: WORKFLOW_PROCESSING_STATUS.processed,
       processedAt: droppedAt.toISOString(),
     };
@@ -157,7 +161,7 @@ export async function runSupportPipeline(
   const maxWindowMinutes =
     (installationMeta?.maxGroupingWindowMinutes as number) ?? GROUPING_DEFAULTS.maxWindowMinutes;
 
-  const conversation = await prisma.$transaction(async (tx) => {
+  const txResult = await prisma.$transaction(async (tx) => {
     // Resolve the threadTs for the canonical key.
     //
     // Priority:
@@ -292,7 +296,7 @@ export async function runSupportPipeline(
     // thread-parent resolver) and stays mirrored in detailsJson for
     // forensic lookup. Conditional spread still protects against a
     // stale Prisma client that doesn't know about the column.
-    await tx.supportConversationEvent.create({
+    const event = await tx.supportConversationEvent.create({
       data: {
         workspaceId: input.workspaceId,
         conversationId: upsertedConversation.id,
@@ -314,6 +318,57 @@ export async function runSupportPipeline(
       },
     });
 
+    const pendingAttachments: Array<{
+      attachmentId: string;
+      downloadUrl: string | null;
+      fileAccess: string | null;
+    }> = [];
+
+    const MAX_INBOUND_BYTES = 100 * 1024 * 1024;
+
+    for (const file of normalized.rawFiles) {
+      if (file.size > MAX_INBOUND_BYTES) {
+        await tx.supportMessageAttachment.create({
+          data: {
+            workspaceId: input.workspaceId,
+            conversationId: upsertedConversation.id,
+            eventId: event.id,
+            provider: "SLACK",
+            providerFileId: file.id,
+            mimeType: file.mimetype,
+            sizeBytes: file.size,
+            originalFilename: file.name,
+            direction: "INBOUND",
+            uploadState: "FAILED",
+            errorCode: "size_exceeded",
+          },
+        });
+        continue;
+      }
+
+      const row = await tx.supportMessageAttachment.create({
+        data: {
+          workspaceId: input.workspaceId,
+          conversationId: upsertedConversation.id,
+          eventId: event.id,
+          provider: "SLACK",
+          providerFileId: file.id,
+          mimeType: file.mimetype,
+          sizeBytes: file.size,
+          originalFilename: file.name,
+          direction: "INBOUND",
+          uploadState: "PENDING",
+        },
+        select: { id: true },
+      });
+
+      pendingAttachments.push({
+        attachmentId: row.id,
+        downloadUrl: file.urlPrivateDownload,
+        fileAccess: file.fileAccess,
+      });
+    }
+
     await tx.supportIngressEvent.update({
       where: {
         id: ingressEvent.id,
@@ -324,12 +379,14 @@ export async function runSupportPipeline(
       },
     });
 
-    return upsertedConversation;
+    return { conversation: upsertedConversation, pendingAttachments };
   });
 
   return {
     ingressEventId: input.ingressEventId,
-    conversationId: conversation.id,
+    conversationId: txResult.conversation.id,
+    slackUserId: normalized.slackUserId,
+    pendingAttachments: txResult.pendingAttachments,
     status: WORKFLOW_PROCESSING_STATUS.processed,
     processedAt: now.toISOString(),
   };

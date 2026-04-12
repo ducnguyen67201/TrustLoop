@@ -1,4 +1,6 @@
 import type * as triggerActivities from "@/domains/support/support-analysis-trigger.activity";
+import type * as mirrorActivities from "@/domains/support/support-attachment-mirror.activity";
+import type * as profileActivities from "@/domains/support/support-customer-profile.activity";
 import type * as supportActivities from "@/domains/support/support.activity";
 import type { SupportWorkflowInput, SupportWorkflowResult } from "@shared/types";
 import { getExternalWorkflowHandle, proxyActivities, startChild } from "@temporalio/workflow";
@@ -14,10 +16,52 @@ const { shouldAutoTrigger } = proxyActivities<typeof triggerActivities>({
   retry: { maximumAttempts: 2 },
 });
 
+const { refreshCustomerProfile } = proxyActivities<typeof profileActivities>({
+  startToCloseTimeout: "30 seconds",
+  retry: { maximumAttempts: 2 },
+});
+
+const { mirrorSupportAttachment } = proxyActivities<typeof mirrorActivities>({
+  startToCloseTimeout: "2 minutes",
+  retry: { maximumAttempts: 3 },
+});
+
 export async function supportInboxWorkflow(
   input: SupportWorkflowInput
 ): Promise<SupportWorkflowResult> {
   const result = await runSupportPipeline(input);
+
+  const sideEffects: Promise<void>[] = [];
+
+  if (result.slackUserId) {
+    sideEffects.push(
+      refreshCustomerProfile({
+        workspaceId: input.workspaceId,
+        installationId: input.installationId,
+        slackUserId: result.slackUserId,
+      })
+    );
+  }
+
+  for (const pending of result.pendingAttachments ?? []) {
+    sideEffects.push(
+      mirrorSupportAttachment({
+        attachmentId: pending.attachmentId,
+        installationId: input.installationId,
+        downloadUrl: pending.downloadUrl,
+        fileAccess: pending.fileAccess,
+      })
+    );
+  }
+
+  const settled = await Promise.allSettled(sideEffects);
+  for (const outcome of settled) {
+    if (outcome.status === "rejected") {
+      console.warn("[support-workflow] side-effect failed", {
+        error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+      });
+    }
+  }
 
   if (result.conversationId) {
     // Check workspace setting: AUTO or MANUAL

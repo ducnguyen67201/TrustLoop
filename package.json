@@ -31,12 +31,18 @@
     "db:new-workspace": "npm --workspace @shared/database run db:new-workspace --",
     "openapi:generate": "npm --workspace @shared/rest run openapi:generate",
     "openapi:check": "npm --workspace @shared/rest run openapi:check",
-    "clean:artifacts": "rm -rf .turbo apps/*/.turbo packages/*/.turbo apps/*/dist packages/*/dist apps/web/.next coverage && find . -name '*.tsbuildinfo' -type f -delete"
+    "clean:artifacts": "rm -rf .turbo apps/*/.turbo packages/*/.turbo apps/*/dist packages/*/dist apps/web/.next coverage && find . -name '*.tsbuildinfo' -type f -delete",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,css}": "biome check --fix --no-errors-on-unmatched"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@typescript/native-preview": "^7.0.0-dev.20260329.1",
     "@types/node": "^22.14.1",
+    "@typescript/native-preview": "^7.0.0-dev.20260329.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "tsx": "^4.20.6",
     "turbo": "^2.5.0",
     "typescript": "^5.9.0",

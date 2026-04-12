@@ -2,7 +2,11 @@
 
 import { useConversationPolling } from "@/hooks/use-conversation-polling";
 import { useSupportInbox } from "@/hooks/use-support-inbox";
-import type { SupportConversation, SupportConversationTimelineEvent } from "@shared/types";
+import type {
+  SupportConversation,
+  SupportConversationTimelineEvent,
+  SupportCustomerProfileSummary,
+} from "@shared/types";
 import { useCallback, useMemo, useState } from "react";
 
 /**
@@ -25,6 +29,7 @@ export interface UseConversationReplyResult {
   // Timeline data
   conversation: SupportConversation | null;
   events: SupportConversationTimelineEvent[];
+  customerProfiles: Record<string, SupportCustomerProfileSummary>;
   isLoading: boolean;
   pollingError: string | null;
   refresh: () => Promise<void>;
@@ -36,8 +41,13 @@ export interface UseConversationReplyResult {
   clearSendError: () => void;
 
   // Handlers
-  handleSendReply: (messageText: string, replyToId?: string) => Promise<void>;
+  handleSendReply: (
+    messageText: string,
+    replyToId?: string,
+    attachmentIds?: string[]
+  ) => Promise<void>;
   handleRetryDelivery: (deliveryAttemptId: string) => void;
+  handleToggleReaction: (eventId: string, emojiName: string, emojiUnicode: string | null) => void;
 
   // Shared mutation flag from the inbox hook
   isMutating: boolean;
@@ -50,10 +60,10 @@ export function useConversationReply(conversationId: string): UseConversationRep
   const [sendError, setSendError] = useState<string | null>(null);
 
   const handleSendReply = useCallback(
-    async (messageText: string, replyToId?: string) => {
+    async (messageText: string, replyToId?: string, attachmentIds?: string[]) => {
       setSendError(null);
       try {
-        await inbox.sendReply(conversationId, messageText, replyToId);
+        await inbox.sendReply(conversationId, messageText, replyToId, attachmentIds);
         setReplyToEventId(null);
         await polling.refresh();
       } catch (err) {
@@ -70,6 +80,15 @@ export function useConversationReply(conversationId: string): UseConversationRep
     [inbox, polling]
   );
 
+  const handleToggleReaction = useCallback(
+    (eventId: string, emojiName: string, emojiUnicode: string | null) => {
+      void inbox
+        .toggleReaction(conversationId, eventId, emojiName, emojiUnicode)
+        .then(() => polling.refresh());
+    },
+    [conversationId, inbox, polling]
+  );
+
   const clearSendError = useCallback(() => setSendError(null), []);
 
   // Wrap polling.refresh to narrow its return type — callers of this
@@ -82,6 +101,10 @@ export function useConversationReply(conversationId: string): UseConversationRep
   return {
     conversation: polling.timelineData?.conversation ?? null,
     events: useMemo(() => polling.timelineData?.events ?? [], [polling.timelineData]),
+    customerProfiles: useMemo(
+      () => polling.timelineData?.customerProfiles ?? {},
+      [polling.timelineData]
+    ),
     isLoading: polling.isLoading,
     pollingError: polling.error,
     refresh,
@@ -91,6 +114,7 @@ export function useConversationReply(conversationId: string): UseConversationRep
     clearSendError,
     handleSendReply,
     handleRetryDelivery,
+    handleToggleReaction,
     isMutating: inbox.isMutating,
   };
 }

@@ -81,18 +81,18 @@ describe("shouldDropIngressEvent", () => {
       ).toBe(true);
     });
 
-    it("lets through bot messages with null slackUserId when botUserId is set", () => {
-      // Edge case: the bot event somehow has no `user` field but installation
-      // has a known botUserId. The mismatch (null !== set) means this is NOT
-      // our echo, so we let it through. In practice, Slack always includes
-      // `user` on bot_message events, so this is defensive.
+    it("drops bot messages with null slackUserId even when botUserId is set", () => {
+      // Bot-authored message with no user ID. This happens when our own
+      // chat.postMessage uses chat:write.customize (username/icon_url) —
+      // Slack's echo event omits the user field. Real external bots always
+      // have a user/bot_id. Drop as our own echo.
       expect(
         shouldDropIngressEvent({
           authorRoleBucket: "BOT",
           slackUserId: null,
           installationBotUserId: "U0TRUSTLOOP",
         })
-      ).toBe(false);
+      ).toBe(true);
     });
   });
 

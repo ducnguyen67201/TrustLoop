@@ -6,6 +6,7 @@ import type {
   SupportConversationListResponse,
   SupportConversationStatus,
   SupportConversationTimeline,
+  SupportReaction,
 } from "@shared/types";
 import { useCallback, useEffect, useState } from "react";
 
@@ -158,14 +159,38 @@ export function useSupportInbox() {
   );
 
   const sendReply = useCallback(
-    async (conversationId: string, messageText: string, replyToEventId?: string) =>
+    async (
+      conversationId: string,
+      messageText: string,
+      replyToEventId?: string,
+      attachmentIds?: string[]
+    ) =>
       runMutation("supportInbox.sendReply", {
         conversationId,
         messageText,
         attachments: [],
+        attachmentIds: attachmentIds ?? [],
         ...(replyToEventId ? { replyToEventId } : {}),
       }),
     [runMutation]
+  );
+
+  const toggleReaction = useCallback(
+    async (
+      conversationId: string,
+      eventId: string,
+      emojiName: string,
+      emojiUnicode: string | null
+    ) =>
+      trpcMutation<
+        { conversationId: string; eventId: string; emojiName: string; emojiUnicode: string | null },
+        SupportReaction[]
+      >(
+        "supportInbox.toggleReaction",
+        { conversationId, eventId, emojiName, emojiUnicode },
+        { withCsrf: true }
+      ),
+    []
   );
 
   useEffect(() => {
@@ -199,6 +224,7 @@ export function useSupportInbox() {
     setSelectedConversationId,
     timelineData,
     timelineError,
+    toggleReaction,
     updateConversationStatus,
   };
 }

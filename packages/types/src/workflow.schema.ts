@@ -19,9 +19,17 @@ export const supportWorkflowInputSchema = z.object({
   canonicalIdempotencyKey: z.string().trim().min(1),
 });
 
+export const pendingAttachmentSchema = z.object({
+  attachmentId: z.string().min(1),
+  downloadUrl: z.string().nullable(),
+  fileAccess: z.string().nullable(),
+});
+
 export const supportWorkflowResultSchema = z.object({
   ingressEventId: z.string(),
   conversationId: z.string().min(1).nullable(),
+  slackUserId: z.string().min(1).nullable().default(null),
+  pendingAttachments: z.array(pendingAttachmentSchema).default([]),
   status: workflowProcessingStatusSchema,
   processedAt: z.iso.datetime(),
 });

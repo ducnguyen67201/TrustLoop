@@ -9,12 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { SupportConversationTimelineEvent } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const MESSAGE_EVENT_TYPES = new Set(["MESSAGE_RECEIVED", "DELIVERY_ATTEMPTED", "NOTE"]);
+const MESSAGE_EVENT_TYPES = new Set(["MESSAGE_RECEIVED", "DELIVERY_SUCCEEDED", "NOTE"]);
 
 const INLINE_ANNOTATION_TYPES = new Set(["DELIVERY_FAILED"]);
 
 const SIDEBAR_ONLY_EVENT_TYPES = new Set([
-  "DELIVERY_SUCCEEDED",
+  "DELIVERY_ATTEMPTED",
   "STATUS_CHANGED",
   "ASSIGNEE_CHANGED",
   "ANALYSIS_COMPLETED",
@@ -60,6 +60,8 @@ interface MessageListProps {
   isMutating: boolean;
   onRetryDelivery: (deliveryAttemptId: string) => void;
   onSetReplyToEventId: (eventId: string | null) => void;
+  onToggleReaction: (eventId: string, emojiName: string, emojiUnicode: string | null) => void;
+  currentUserId: string | null;
 }
 
 /**
@@ -72,6 +74,8 @@ export function MessageList({
   isMutating,
   onRetryDelivery,
   onSetReplyToEventId,
+  onToggleReaction,
+  currentUserId,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
@@ -183,7 +187,9 @@ export function MessageList({
             }
 
             if (MESSAGE_EVENT_TYPES.has(event.eventType)) {
-              const replies = childrenByParent.get(event.id) ?? [];
+              const replies = (childrenByParent.get(event.id) ?? []).filter((r) =>
+                MESSAGE_EVENT_TYPES.has(r.eventType)
+              );
 
               nodes.push(<div key={`spacer-${event.id}`} className="h-3" />);
 
@@ -193,6 +199,8 @@ export function MessageList({
                     event={event}
                     showHeader
                     onReplyToThread={() => onSetReplyToEventId(event.id)}
+                    onToggleReaction={onToggleReaction}
+                    currentUserId={currentUserId}
                   >
                     {replies.length > 0 ? (
                       <MessageThread

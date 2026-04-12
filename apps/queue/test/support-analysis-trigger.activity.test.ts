@@ -29,30 +29,25 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("support-analysis-trigger activity", () => {
-  it("reports auto trigger enabled only when the workspace is in automatic mode", async () => {
+describe("shouldAutoTrigger", () => {
+  it("returns true when workspace is in automatic mode", async () => {
     findUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.auto });
     await expect(shouldAutoTrigger("ws_auto")).resolves.toBe(true);
+  });
 
+  it("returns false when workspace is in manual mode", async () => {
     findUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.manual });
     await expect(shouldAutoTrigger("ws_manual")).resolves.toBe(false);
+  });
 
+  it("returns false when workspace is not found", async () => {
     findUnique.mockResolvedValueOnce(null);
     await expect(shouldAutoTrigger("ws_missing")).resolves.toBe(false);
   });
+});
 
-  it("skips workflow dispatch when the workspace has switched to manual mode", async () => {
-    findUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.manual });
-
-    await dispatchAnalysis({
-      workspaceId: "ws_123",
-      conversationId: "conv_123",
-    });
-
-    expect(startSupportAnalysisWorkflow).not.toHaveBeenCalled();
-  });
-
-  it("dispatches auto analysis when automatic mode is still enabled", async () => {
+describe("dispatchAnalysis", () => {
+  it("dispatches when automatic mode is enabled", async () => {
     findUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.auto });
 
     await dispatchAnalysis({
@@ -67,7 +62,18 @@ describe("support-analysis-trigger activity", () => {
     });
   });
 
-  it("swallows duplicate workflow errors after the dispatch gate passes", async () => {
+  it("skips dispatch when workspace has switched to manual mode", async () => {
+    findUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.manual });
+
+    await dispatchAnalysis({
+      workspaceId: "ws_123",
+      conversationId: "conv_123",
+    });
+
+    expect(startSupportAnalysisWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("swallows duplicate workflow errors", async () => {
     findUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.auto });
     startSupportAnalysisWorkflow.mockRejectedValueOnce(new Error("Workflow already started"));
 
