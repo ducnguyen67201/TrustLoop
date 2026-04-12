@@ -123,8 +123,8 @@ export async function getCachedProfile(
   isBot: boolean;
   isExternal: boolean;
 } | null> {
-  const row = await prisma.supportCustomerProfile.findUnique({
-    where: { installationId_externalUserId: { installationId, externalUserId } },
+  const row = await prisma.supportCustomerProfile.findFirst({
+    where: { installationId, externalUserId, deletedAt: null },
   });
 
   if (!row) {
@@ -173,21 +173,22 @@ export async function refreshProfile(
     const errorCode = json.error ?? "unknown_error";
 
     if (errorCode === "user_not_visible") {
-      await prisma.supportCustomerProfile.upsert({
-        where: { installationId_externalUserId: { installationId, externalUserId } },
-        create: {
-          workspaceId,
-          installationId,
-          provider: "SLACK",
-          externalUserId,
-          isExternal: true,
-          profileFetchedAt: new Date(),
-        },
-        update: {
-          isExternal: true,
-          profileFetchedAt: new Date(),
-        },
+      const existing = await prisma.supportCustomerProfile.findFirst({
+        where: { installationId, externalUserId, deletedAt: null },
       });
+      if (existing) {
+        await prisma.supportCustomerProfile.update({
+          where: { id: existing.id },
+          data: { isExternal: true, profileFetchedAt: new Date() },
+        });
+      } else {
+        await prisma.supportCustomerProfile.create({
+          data: {
+            workspaceId, installationId, provider: "SLACK", externalUserId,
+            isExternal: true, profileFetchedAt: new Date(),
+          },
+        });
+      }
       return;
     }
 
@@ -218,27 +219,33 @@ export async function refreshProfile(
     }
   }
 
-  await prisma.supportCustomerProfile.upsert({
-    where: { installationId_externalUserId: { installationId, externalUserId } },
-    create: {
-      workspaceId,
-      installationId,
-      provider: "SLACK",
-      externalUserId,
-      displayName,
-      realName: user?.real_name ?? user?.profile?.real_name ?? null,
-      avatarUrl,
-      isBot,
-      isExternal: user?.is_stranger === true,
-      profileFetchedAt: new Date(),
-    },
-    update: {
-      displayName,
-      realName: user?.real_name ?? user?.profile?.real_name ?? null,
-      avatarUrl,
-      isBot,
-      isExternal: user?.is_stranger === true,
-      profileFetchedAt: new Date(),
-    },
+  const profileData = {
+    displayName,
+    realName: user?.real_name ?? user?.profile?.real_name ?? null,
+    avatarUrl,
+    isBot,
+    isExternal: user?.is_stranger === true,
+    profileFetchedAt: new Date(),
+  };
+
+  const existing = await prisma.supportCustomerProfile.findFirst({
+    where: { installationId, externalUserId, deletedAt: null },
   });
+
+  if (existing) {
+    await prisma.supportCustomerProfile.update({
+      where: { id: existing.id },
+      data: profileData,
+    });
+  } else {
+    await prisma.supportCustomerProfile.create({
+      data: {
+        workspaceId,
+        installationId,
+        provider: "SLACK",
+        externalUserId,
+        ...profileData,
+      },
+    });
+  }
 }
