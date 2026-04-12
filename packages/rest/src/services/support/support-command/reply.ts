@@ -332,6 +332,13 @@ async function sendReplyWithRecordedAttempt(
   });
 
   try {
+    const agent = params.actorUserId
+      ? await prisma.user.findUnique({
+          where: { id: params.actorUserId },
+          select: { name: true, avatarUrl: true },
+        })
+      : null;
+
     const delivery = await sender({
       provider: "SLACK",
       workspaceId: params.workspaceId,
@@ -344,6 +351,8 @@ async function sendReplyWithRecordedAttempt(
       },
       messageText: params.payload.messageText,
       attachments: params.payload.attachments,
+      agentName: agent?.name ?? undefined,
+      agentAvatarUrl: agent?.avatarUrl ?? undefined,
     });
 
     const deliveredAt = new Date(delivery.deliveredAt);

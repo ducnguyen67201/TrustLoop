@@ -21,6 +21,8 @@ import { PermanentExternalError, TransientExternalError } from "@shared/types";
 
 interface SlackSendRequest extends SupportAdapterSendRequest {
   installationMetadata?: unknown;
+  agentName?: string | null;
+  agentAvatarUrl?: string | null;
 }
 
 interface SlackChatPostMessageResponse {
@@ -99,6 +101,8 @@ export async function sendThreadReply(input: SlackSendRequest): Promise<SupportA
       text: buildSlackMessageText(input.messageText, input.attachments),
       unfurl_links: false,
       unfurl_media: false,
+      ...(input.agentName ? { username: input.agentName } : {}),
+      ...(input.agentAvatarUrl ? { icon_url: input.agentAvatarUrl } : {}),
     }),
   });
 
