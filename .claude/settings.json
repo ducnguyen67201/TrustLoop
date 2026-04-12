@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "command": "git submodule update --init --recursive",
+        "description": "Initialize git submodules (gstack skills)"
+      }
+    ]
+  }
+}
