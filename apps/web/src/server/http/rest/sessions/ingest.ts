@@ -118,29 +118,41 @@ const innerHandler = withWorkspaceApiKeyAuth(async (request, ctx) => {
       const hasRrweb = payload.rrwebEvents !== undefined;
 
       await prisma.$transaction(async (tx) => {
-        // Upsert the session record
-        const sessionRecord = await tx.sessionRecord.upsert({
-          where: {
-            workspaceId_sessionId: { workspaceId, sessionId: payload.sessionId },
-          },
-          create: {
-            workspaceId,
-            sessionId: payload.sessionId,
-            userId: payload.userId ?? null,
-            userEmail: payload.userEmail ?? null,
-            startedAt: earliestEventTime,
-            lastEventAt: latestEventTime,
-            eventCount: payload.structuredEvents.length,
-            hasReplayData: hasRrweb,
-          },
-          update: {
-            lastEventAt: latestEventTime,
-            eventCount: { increment: payload.structuredEvents.length },
-            ...(hasRrweb ? { hasReplayData: true } : {}),
-            ...(payload.userId ? { userId: payload.userId } : {}),
-            ...(payload.userEmail ? { userEmail: payload.userEmail } : {}),
-          },
+        // Find-or-create manually: upsert cannot target the partial unique
+        // index on (workspaceId, sessionId) WHERE deletedAt IS NULL. Postgres
+        // rejects ON CONFLICT against partial indexes, so Prisma's upsert
+        // helper fails at runtime even though the schema's @@unique compiles.
+        // See CLAUDE.md → Soft Delete Rules.
+        const existing = await tx.sessionRecord.findFirst({
+          where: { workspaceId, sessionId: payload.sessionId, deletedAt: null },
+          select: { id: true, eventCount: true },
         });
+
+        const sessionRecord = existing
+          ? await tx.sessionRecord.update({
+              where: { id: existing.id },
+              data: {
+                lastEventAt: latestEventTime,
+                eventCount: { increment: payload.structuredEvents.length },
+                ...(hasRrweb ? { hasReplayData: true } : {}),
+                ...(payload.userId ? { userId: payload.userId } : {}),
+                ...(payload.userEmail ? { userEmail: payload.userEmail } : {}),
+              },
+              select: { id: true, eventCount: true },
+            })
+          : await tx.sessionRecord.create({
+              data: {
+                workspaceId,
+                sessionId: payload.sessionId,
+                userId: payload.userId ?? null,
+                userEmail: payload.userEmail ?? null,
+                startedAt: earliestEventTime,
+                lastEventAt: latestEventTime,
+                eventCount: payload.structuredEvents.length,
+                hasReplayData: hasRrweb,
+              },
+              select: { id: true, eventCount: true },
+            });
 
         // Enforce per-session event cap to prevent unbounded growth
         if (sessionRecord.eventCount >= MAX_EVENTS_PER_SESSION) {
