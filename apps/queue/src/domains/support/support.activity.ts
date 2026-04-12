@@ -91,6 +91,7 @@ export async function runSupportPipeline(
     return {
       ingressEventId: input.ingressEventId,
       conversationId: existingConversation?.id ?? null,
+      slackUserId: null,
       status: WORKFLOW_PROCESSING_STATUS.processed,
       processedAt: ingressEvent.processedAt.toISOString(),
     };
@@ -136,6 +137,7 @@ export async function runSupportPipeline(
     return {
       ingressEventId: input.ingressEventId,
       conversationId: null,
+      slackUserId: null,
       status: WORKFLOW_PROCESSING_STATUS.processed,
       processedAt: droppedAt.toISOString(),
     };
@@ -330,6 +332,7 @@ export async function runSupportPipeline(
   return {
     ingressEventId: input.ingressEventId,
     conversationId: conversation.id,
+    slackUserId: normalized.slackUserId,
     status: WORKFLOW_PROCESSING_STATUS.processed,
     processedAt: now.toISOString(),
   };

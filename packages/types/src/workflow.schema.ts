@@ -22,6 +22,7 @@ export const supportWorkflowInputSchema = z.object({
 export const supportWorkflowResultSchema = z.object({
   ingressEventId: z.string(),
   conversationId: z.string().min(1).nullable(),
+  slackUserId: z.string().min(1).nullable().default(null),
   status: workflowProcessingStatusSchema,
   processedAt: z.iso.datetime(),
 });

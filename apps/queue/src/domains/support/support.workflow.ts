@@ -1,3 +1,4 @@
+import type * as profileActivities from "@/domains/support/support-customer-profile.activity";
 import type * as triggerActivities from "@/domains/support/support-analysis-trigger.activity";
 import type * as supportActivities from "@/domains/support/support.activity";
 import type { SupportWorkflowInput, SupportWorkflowResult } from "@shared/types";
@@ -14,10 +15,23 @@ const { shouldAutoTrigger } = proxyActivities<typeof triggerActivities>({
   retry: { maximumAttempts: 2 },
 });
 
+const { refreshCustomerProfile } = proxyActivities<typeof profileActivities>({
+  startToCloseTimeout: "30 seconds",
+  retry: { maximumAttempts: 2 },
+});
+
 export async function supportInboxWorkflow(
   input: SupportWorkflowInput
 ): Promise<SupportWorkflowResult> {
   const result = await runSupportPipeline(input);
+
+  if (result.slackUserId) {
+    refreshCustomerProfile({
+      workspaceId: input.workspaceId,
+      installationId: input.installationId,
+      slackUserId: result.slackUserId,
+    }).catch(() => {});
+  }
 
   if (result.conversationId) {
     // Check workspace setting: AUTO or MANUAL
