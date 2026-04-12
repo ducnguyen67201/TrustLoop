@@ -13,7 +13,7 @@ export const supportToggleReactionInputSchema = z.object({
   workspaceId: z.string().min(1),
   conversationId: z.string().min(1),
   eventId: z.string().min(1),
-  emojiName: z.string().min(1),
+  emojiName: z.string().min(1).max(100).regex(/^[a-z0-9_+\-]+$/),
   emojiUnicode: z.string().nullable().default(null),
   actorUserId: z.string().min(1),
 });

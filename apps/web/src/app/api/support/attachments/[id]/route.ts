@@ -24,15 +24,26 @@ export async function GET(
     );
   }
 
+  const SAFE_INLINE_TYPES = new Set([
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+    "application/pdf", "text/plain",
+  ]);
+  const isSafeInline = SAFE_INLINE_TYPES.has(result.mimeType);
+  const contentType = isSafeInline ? result.mimeType : "application/octet-stream";
+  const disposition = isSafeInline ? "inline" : "attachment";
+  const safeFilename = result.filename
+    ? encodeURIComponent(result.filename).replace(/%20/g, "+")
+    : null;
+
   return new NextResponse(result.data, {
     status: 200,
     headers: {
-      "Content-Type": result.mimeType,
+      "Content-Type": contentType,
       "Content-Length": String(result.data.length),
       "Cache-Control": "private, max-age=240",
-      ...(result.filename
-        ? { "Content-Disposition": `inline; filename="${result.filename}"` }
-        : {}),
+      "Content-Disposition": safeFilename
+        ? `${disposition}; filename*=UTF-8''${safeFilename}`
+        : disposition,
     },
   });
 }

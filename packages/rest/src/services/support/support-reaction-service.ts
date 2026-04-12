@@ -56,61 +56,71 @@ export async function toggle(input: SupportToggleReactionInput): Promise<Support
     throw new TRPCError({ code: "NOT_FOUND", message: "Event not found" });
   }
 
-  const existing = await prisma.supportMessageReaction.findUnique({
-    where: {
-      eventId_emojiName_actorUserId: {
-        eventId: input.eventId,
-        emojiName: input.emojiName,
-        actorUserId: input.actorUserId,
-      },
-    },
-  });
-
   const slackTs = resolveSlackTimestamp(event);
   const canSyncSlack = event.conversation.installation.provider === "SLACK" && slackTs !== null;
 
-  if (existing) {
-    await prisma.supportMessageReaction.delete({ where: { id: existing.id } });
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.supportMessageReaction.findUnique({
+      where: {
+        eventId_emojiName_actorUserId: {
+          eventId: input.eventId,
+          emojiName: input.emojiName,
+          actorUserId: input.actorUserId,
+        },
+      },
+    });
 
-    if (canSyncSlack) {
-      try {
-        await slackDelivery.removeReaction({
-          installationMetadata: event.conversation.installation.metadata,
-          channel: event.conversation.channelId,
-          timestamp: slackTs,
-          name: input.emojiName,
-        });
-      } catch {
-        // Best-effort Slack sync — don't fail the local toggle
-      }
+    if (existing) {
+      await tx.supportMessageReaction.delete({ where: { id: existing.id } });
+    } else {
+      await tx.supportMessageReaction.create({
+        data: {
+          workspaceId: input.workspaceId,
+          eventId: input.eventId,
+          emojiName: input.emojiName,
+          emojiUnicode: input.emojiUnicode,
+          actorUserId: input.actorUserId,
+          slackSynced: false,
+        },
+      });
     }
-  } else {
-    let slackSynced = false;
+  });
 
-    if (canSyncSlack) {
-      try {
+  // Best-effort Slack sync outside the transaction
+  if (canSyncSlack) {
+    const nowExists = await prisma.supportMessageReaction.findUnique({
+      where: {
+        eventId_emojiName_actorUserId: {
+          eventId: input.eventId,
+          emojiName: input.emojiName,
+          actorUserId: input.actorUserId,
+        },
+      },
+    });
+
+    try {
+      if (nowExists) {
         await slackDelivery.addReaction({
           installationMetadata: event.conversation.installation.metadata,
           channel: event.conversation.channelId,
           timestamp: slackTs,
           name: input.emojiName,
         });
-        slackSynced = true;
-      } catch {
-        // Best-effort Slack sync — still store the local reaction
+        await prisma.supportMessageReaction.update({
+          where: { id: nowExists.id },
+          data: { slackSynced: true },
+        });
+      } else {
+        await slackDelivery.removeReaction({
+          installationMetadata: event.conversation.installation.metadata,
+          channel: event.conversation.channelId,
+          timestamp: slackTs,
+          name: input.emojiName,
+        });
       }
+    } catch {
+      // Best-effort Slack sync — don't fail the local toggle
     }
-
-    await prisma.supportMessageReaction.create({
-      data: {
-        workspaceId: input.workspaceId,
-        eventId: input.eventId,
-        emojiName: input.emojiName,
-        emojiUnicode: input.emojiUnicode,
-        actorUserId: input.actorUserId,
-        slackSynced,
-      },
-    });
   }
 
   const reactions = await prisma.supportMessageReaction.findMany({

@@ -28,6 +28,7 @@ interface SlackUsersInfoResponse {
       display_name?: string;
       real_name?: string;
       image_72?: string;
+      bot_id?: string;
     };
   };
 }
@@ -205,9 +206,10 @@ export async function refreshProfile(
   let displayName = user?.profile?.display_name ?? null;
   let avatarUrl = user?.profile?.image_72 ?? null;
 
-  if (isBot && user?.id) {
+  const botId = user?.profile?.bot_id;
+  if (isBot && botId) {
     const botResp = await fetch(
-      `https://slack.com/api/bots.info?bot=${encodeURIComponent(user.id)}`,
+      `https://slack.com/api/bots.info?bot=${encodeURIComponent(botId)}`,
       { method: "GET", headers: { Authorization: `Bearer ${token}` } }
     );
     if (botResp.ok) {

@@ -226,6 +226,22 @@ export async function completeInstall(
 
   const providerInstallationId = `${oauthResult.appId}:${oauthResult.teamId}`;
 
+  // Migrate legacy installations keyed by appId alone to the new
+  // appId:teamId format. This prevents duplicate rows on re-install.
+  const legacyId = oauthResult.appId;
+  if (legacyId !== providerInstallationId) {
+    const legacy = await prisma.supportInstallation.findFirst({
+      where: { provider: "SLACK", providerInstallationId: legacyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (legacy) {
+      await prisma.supportInstallation.update({
+        where: { id: legacy.id },
+        data: { providerInstallationId },
+      });
+    }
+  }
+
   const installation = await softUpsert(prisma.supportInstallation, {
     where: { provider: "SLACK", providerInstallationId },
     create: { provider: "SLACK", providerInstallationId, ...installData },

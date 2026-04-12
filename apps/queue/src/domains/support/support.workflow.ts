@@ -31,21 +31,36 @@ export async function supportInboxWorkflow(
 ): Promise<SupportWorkflowResult> {
   const result = await runSupportPipeline(input);
 
+  const sideEffects: Promise<void>[] = [];
+
   if (result.slackUserId) {
-    refreshCustomerProfile({
-      workspaceId: input.workspaceId,
-      installationId: input.installationId,
-      slackUserId: result.slackUserId,
-    }).catch(() => {});
+    sideEffects.push(
+      refreshCustomerProfile({
+        workspaceId: input.workspaceId,
+        installationId: input.installationId,
+        slackUserId: result.slackUserId,
+      })
+    );
   }
 
   for (const pending of result.pendingAttachments ?? []) {
-    mirrorSupportAttachment({
-      attachmentId: pending.attachmentId,
-      installationId: input.installationId,
-      downloadUrl: pending.downloadUrl,
-      fileAccess: pending.fileAccess,
-    }).catch(() => {});
+    sideEffects.push(
+      mirrorSupportAttachment({
+        attachmentId: pending.attachmentId,
+        installationId: input.installationId,
+        downloadUrl: pending.downloadUrl,
+        fileAccess: pending.fileAccess,
+      })
+    );
+  }
+
+  const settled = await Promise.allSettled(sideEffects);
+  for (const outcome of settled) {
+    if (outcome.status === "rejected") {
+      console.warn("[support-workflow] side-effect failed", {
+        error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+      });
+    }
   }
 
   if (result.conversationId) {

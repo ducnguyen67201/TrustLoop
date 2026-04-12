@@ -16,8 +16,18 @@ import { PermanentExternalError, TransientExternalError } from "@shared/types";
 export async function store(
   attachmentId: string,
   fileData: Buffer,
-  mimeType: string
+  workspaceId?: string
 ): Promise<void> {
+  if (workspaceId) {
+    const row = await prisma.supportMessageAttachment.findFirst({
+      where: { id: attachmentId, workspaceId },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new PermanentExternalError("Attachment not found in workspace");
+    }
+  }
+
   await prisma.supportMessageAttachment.update({
     where: { id: attachmentId },
     data: {
@@ -110,11 +120,23 @@ export async function markUploaded(
   });
 }
 
+const SLACK_FILE_HOSTS = new Set([
+  "files.slack.com",
+  "files-origin.slack.com",
+]);
+
 export async function downloadFromSlack(
   url: string,
   botToken: string,
   maxBytes: number
 ): Promise<Buffer> {
+  const parsed = new URL(url);
+  if (!SLACK_FILE_HOSTS.has(parsed.hostname)) {
+    throw new PermanentExternalError(
+      `Refusing to download from non-Slack host: ${parsed.hostname}`
+    );
+  }
+
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${botToken}` },
   });

@@ -24,13 +24,7 @@ function threadSourceLabel(eventSource: string): string {
   }
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-const IMAGE_MIMETYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+import { IMAGE_MIMETYPES, formatFileSize } from "@/lib/attachment-utils";
 
 function ThreadAttachment({ attachment }: { attachment: SupportTimelineAttachment }) {
   if (attachment.uploadState !== "UPLOADED") return null;

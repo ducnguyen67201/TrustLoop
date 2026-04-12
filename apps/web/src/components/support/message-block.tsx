@@ -12,8 +12,11 @@ import type {
   SupportReaction,
   SupportTimelineAttachment,
 } from "@shared/types";
-import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
+import type { EmojiClickData } from "emoji-picker-react";
+import dynamic from "next/dynamic";
 import { useCallback, useState } from "react";
+
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -22,13 +25,7 @@ function formatTime(value: string): string {
   }).format(new Date(value));
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-const IMAGE_MIMETYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+import { EMOJI_PICKER_HEIGHT, EMOJI_PICKER_WIDTH, IMAGE_MIMETYPES, formatFileSize } from "@/lib/attachment-utils";
 
 export function extractSenderKey(event: SupportConversationTimelineEvent): string {
   const slackUserId =
@@ -376,8 +373,8 @@ export function MessageBlock({ event, showHeader, onReplyToThread, onToggleReact
                     <EmojiPicker
                       onEmojiClick={handleReactionEmojiSelect}
                       autoFocusSearch={false}
-                      height={350}
-                      width={320}
+                      height={EMOJI_PICKER_HEIGHT}
+                      width={EMOJI_PICKER_WIDTH}
                     />
                   </PopoverContent>
                 </Popover>

@@ -74,6 +74,11 @@ export async function dispatchAnalysis(input: {
   workspaceId: string;
   conversationId: string;
 }): Promise<void> {
+  const autoEnabled = await shouldAutoTrigger(input.workspaceId);
+  if (!autoEnabled) {
+    return;
+  }
+
   try {
     await temporalWorkflowDispatcher.startSupportAnalysisWorkflow({
       workspaceId: input.workspaceId,

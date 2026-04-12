@@ -92,7 +92,13 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
   }
 
   return (
-    <CustomerProfileProvider profiles={customerProfiles} currentUser={{ name: (auth.session?.user as Record<string, unknown> | undefined)?.name as string ?? null, avatarUrl: (auth.session?.user as Record<string, unknown> | undefined)?.avatarUrl as string ?? null }}>
+    <CustomerProfileProvider
+      profiles={customerProfiles}
+      currentUser={{
+        name: auth.session?.user.name ?? null,
+        avatarUrl: auth.session?.user.avatarUrl ?? null,
+      }}
+    >
     <div className="flex h-full flex-col">
       {/* Full-width header */}
       <ConversationHeader

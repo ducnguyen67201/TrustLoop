@@ -373,8 +373,11 @@ async function sendReplyWithRecordedAttempt(
       };
     }
 
+    let fileUploadSuccessCount = 0;
+    const failedFileNames: string[] = [];
     if (hasFiles) {
-      for (const attachmentId of params.payload.attachmentIds!) {
+      const ids = params.payload.attachmentIds ?? [];
+      for (const attachmentId of ids) {
         const attachment = await prisma.supportMessageAttachment.findFirst({
           where: { id: attachmentId, workspaceId: params.workspaceId, deletedAt: null },
           select: { fileData: true, originalFilename: true, mimeType: true },
@@ -388,14 +391,40 @@ async function sendReplyWithRecordedAttempt(
               filename: attachment.originalFilename ?? "attachment",
               fileData: Buffer.from(attachment.fileData),
             });
+            fileUploadSuccessCount++;
           } catch (err) {
             console.warn("[support] file upload to Slack failed", {
               attachmentId,
               error: err instanceof Error ? err.message : String(err),
             });
+            failedFileNames.push(attachment.originalFilename ?? attachmentId);
           }
         }
       }
+    }
+
+    if (!hasText && hasFiles && fileUploadSuccessCount === 0) {
+      await prisma.supportDeliveryAttempt.update({
+        where: { id: initialAttempt.id },
+        data: { state: "FAILED", nextRetryAt: null },
+      });
+      throw new Error("All file uploads to Slack failed");
+    }
+
+    if (failedFileNames.length > 0) {
+      await prisma.supportConversationEvent.create({
+        data: {
+          workspaceId: params.workspaceId,
+          conversationId: params.conversationId,
+          eventType: "DELIVERY_WARNING",
+          eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.system,
+          summary: `${failedFileNames.length} file(s) failed to upload to Slack`,
+          detailsJson: {
+            commandId: params.commandId,
+            failedFiles: failedFileNames,
+          },
+        },
+      });
     }
 
     const deliveredAt = new Date(delivery.deliveredAt);
@@ -544,6 +573,12 @@ export async function sendReply(
   input: SupportSendReplyCommand,
   sender: SupportDeliverySender = slackDelivery.sendThreadReply
 ): Promise<SupportCommandResponse> {
+  const hasText = input.messageText.trim().length > 0;
+  const hasFiles = input.attachmentIds !== undefined && input.attachmentIds.length > 0;
+  if (!hasText && !hasFiles) {
+    throw new ValidationError("Reply must contain text or at least one attachment");
+  }
+
   const commandId = randomUUID();
   const conversation = await loadConversationDeliveryContext(
     input.workspaceId,

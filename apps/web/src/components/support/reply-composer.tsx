@@ -10,9 +10,13 @@ import {
   RiLoopLeftLine,
   RiSendPlaneLine,
 } from "@remixicon/react";
-import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
+import type { EmojiClickData } from "emoji-picker-react";
+import dynamic from "next/dynamic";
+import { getStoredCsrfToken } from "@/lib/trpc-http";
 import { toast } from "sonner";
 import { useCallback, useRef, useState } from "react";
+
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
 const MAX_FILES = 5;
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -23,11 +27,7 @@ interface AttachedFile {
   status: "pending" | "ready";
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+import { EMOJI_PICKER_HEIGHT, EMOJI_PICKER_WIDTH, formatFileSize } from "@/lib/attachment-utils";
 
 interface ReplyComposerProps {
   isMutating: boolean;
@@ -111,19 +111,30 @@ export function ReplyComposer({
     const text = draft.trim();
     if (text.length === 0 && attachedFiles.length === 0) return;
 
-    const uploadedIds: string[] = [];
-    for (const af of attachedFiles) {
-      const formData = new FormData();
-      formData.append("file", af.file);
-      formData.append("conversationId", conversationId);
-      const resp = await fetch("/api/support/attachments/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (resp.ok) {
+    const csrfToken = getStoredCsrfToken();
+    const uploadResults = await Promise.allSettled(
+      attachedFiles.map(async (af) => {
+        const formData = new FormData();
+        formData.append("file", af.file);
+        formData.append("conversationId", conversationId);
+        const resp = await fetch("/api/support/attachments/upload", {
+          method: "POST",
+          body: formData,
+          headers: csrfToken ? { "x-trustloop-csrf": csrfToken } : {},
+        });
+        if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
         const data = (await resp.json()) as { attachmentId: string };
-        uploadedIds.push(data.attachmentId);
-      }
+        return data.attachmentId;
+      })
+    );
+
+    const uploadedIds = uploadResults
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+      .map((r) => r.value);
+
+    const failedCount = uploadResults.filter((r) => r.status === "rejected").length;
+    if (failedCount > 0) {
+      toast.error(`${failedCount} file(s) failed to upload`);
     }
 
     await onSendReply(
@@ -257,8 +268,8 @@ export function ReplyComposer({
                 <EmojiPicker
                   onEmojiClick={handleEmojiSelect}
                   autoFocusSearch={false}
-                  height={350}
-                  width={320}
+                  height={EMOJI_PICKER_HEIGHT}
+                  width={EMOJI_PICKER_WIDTH}
                 />
               </PopoverContent>
             </Popover>

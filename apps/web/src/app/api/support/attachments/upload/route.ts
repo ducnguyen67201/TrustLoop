@@ -1,4 +1,4 @@
-import { resolveSessionFromRequest } from "@shared/rest/security/session";
+import { assertCsrf, resolveSessionFromRequest } from "@shared/rest/security/session";
 import * as supportAttachments from "@shared/rest/services/support/support-attachment-service";
 import { NextResponse } from "next/server";
 
@@ -13,6 +13,13 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!assertCsrf(request, session.csrfToken)) {
+    return NextResponse.json(
+      { error: { message: "CSRF validation failed", code: "FORBIDDEN" } },
+      { status: 403 }
+    );
+  }
+
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
   const conversationId = formData.get("conversationId") as string | null;
@@ -21,6 +28,18 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: { message: "Missing file or conversationId", code: "BAD_REQUEST" } },
       { status: 400 }
+    );
+  }
+
+  const { prisma } = await import("@shared/database");
+  const conversation = await prisma.supportConversation.findFirst({
+    where: { id: conversationId, workspaceId: session.activeWorkspaceId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!conversation) {
+    return NextResponse.json(
+      { error: { message: "Conversation not found", code: "NOT_FOUND" } },
+      { status: 404 }
     );
   }
 
@@ -36,7 +55,7 @@ export async function POST(request: Request) {
   const attachmentId = await supportAttachments.createPending({
     workspaceId: session.activeWorkspaceId,
     conversationId,
-    eventId: null as unknown as string,
+    eventId: null,
     provider: "SLACK",
     providerFileId: null,
     mimeType: file.type || "application/octet-stream",
@@ -45,7 +64,7 @@ export async function POST(request: Request) {
     direction: "OUTBOUND",
   });
 
-  await supportAttachments.store(attachmentId, buffer, file.type || "application/octet-stream");
+  await supportAttachments.store(attachmentId, buffer, session.activeWorkspaceId);
 
   return NextResponse.json({ attachmentId });
 }
