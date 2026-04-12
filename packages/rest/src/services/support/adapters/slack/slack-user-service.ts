@@ -185,8 +185,12 @@ export async function refreshProfile(
       } else {
         await prisma.supportCustomerProfile.create({
           data: {
-            workspaceId, installationId, provider: "SLACK", externalUserId,
-            isExternal: true, profileFetchedAt: new Date(),
+            workspaceId,
+            installationId,
+            provider: "SLACK",
+            externalUserId,
+            isExternal: true,
+            profileFetchedAt: new Date(),
           },
         });
       }

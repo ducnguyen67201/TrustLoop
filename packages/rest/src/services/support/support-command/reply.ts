@@ -344,8 +344,7 @@ async function sendReplyWithRecordedAttempt(
 
     const hasText = params.payload.messageText.trim().length > 0;
     const hasFiles =
-      params.payload.attachmentIds !== undefined &&
-      params.payload.attachmentIds.length > 0;
+      params.payload.attachmentIds !== undefined && params.payload.attachmentIds.length > 0;
 
     let delivery: { providerMessageId: string; deliveredAt: string };
 

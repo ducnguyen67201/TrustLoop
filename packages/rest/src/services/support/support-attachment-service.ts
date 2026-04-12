@@ -97,20 +97,14 @@ export async function createPending(input: {
   return row.id;
 }
 
-export async function markFailed(
-  attachmentId: string,
-  errorCode: string
-): Promise<void> {
+export async function markFailed(attachmentId: string, errorCode: string): Promise<void> {
   await prisma.supportMessageAttachment.update({
     where: { id: attachmentId },
     data: { uploadState: "FAILED", errorCode },
   });
 }
 
-export async function markUploaded(
-  attachmentId: string,
-  providerFileId?: string
-): Promise<void> {
+export async function markUploaded(attachmentId: string, providerFileId?: string): Promise<void> {
   await prisma.supportMessageAttachment.update({
     where: { id: attachmentId },
     data: {
@@ -120,10 +114,7 @@ export async function markUploaded(
   });
 }
 
-const SLACK_FILE_HOSTS = new Set([
-  "files.slack.com",
-  "files-origin.slack.com",
-]);
+const SLACK_FILE_HOSTS = new Set(["files.slack.com", "files-origin.slack.com"]);
 
 export async function downloadFromSlack(
   url: string,
@@ -143,13 +134,9 @@ export async function downloadFromSlack(
 
   if (!response.ok) {
     if (response.status === 403 || response.status === 404) {
-      throw new PermanentExternalError(
-        `Slack file download failed: HTTP ${response.status}`
-      );
+      throw new PermanentExternalError(`Slack file download failed: HTTP ${response.status}`);
     }
-    throw new TransientExternalError(
-      `Slack file download failed: HTTP ${response.status}`
-    );
+    throw new TransientExternalError(`Slack file download failed: HTTP ${response.status}`);
   }
 
   const arrayBuffer = await response.arrayBuffer();

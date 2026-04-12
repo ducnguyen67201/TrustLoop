@@ -176,7 +176,11 @@ export async function getConversationTimeline(
       })),
       createdAt: event.createdAt.toISOString(),
     })),
-    customerProfiles: await buildCustomerProfileMap(workspaceId, conversation.installationId, conversation.events),
+    customerProfiles: await buildCustomerProfileMap(
+      workspaceId,
+      conversation.installationId,
+      conversation.events
+    ),
   });
 }
 
@@ -184,7 +188,19 @@ async function buildCustomerProfileMap(
   workspaceId: string,
   installationId: string,
   events: Array<{ detailsJson: unknown }>
-): Promise<Record<string, { externalUserId: string; displayName: string | null; realName: string | null; avatarUrl: string | null; isBot: boolean; isExternal: boolean }>> {
+): Promise<
+  Record<
+    string,
+    {
+      externalUserId: string;
+      displayName: string | null;
+      realName: string | null;
+      avatarUrl: string | null;
+      isBot: boolean;
+      isExternal: boolean;
+    }
+  >
+> {
   const userIds = new Set<string>();
   for (const event of events) {
     if (event.detailsJson && typeof event.detailsJson === "object") {
@@ -215,7 +231,7 @@ async function buildCustomerProfileMap(
     },
   });
 
-  const map: Record<string, typeof profiles[number]> = {};
+  const map: Record<string, (typeof profiles)[number]> = {};
   for (const profile of profiles) {
     map[profile.externalUserId] = profile;
   }

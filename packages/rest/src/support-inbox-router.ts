@@ -110,10 +110,10 @@ export const supportInboxRouter = router({
           actorUserId: true,
           commandType: true,
         })
-        .refine(
-          (data) => data.messageText.length > 0 || data.attachmentIds.length > 0,
-          { message: "Either messageText or attachmentIds must be provided", path: ["messageText"] }
-        )
+        .refine((data) => data.messageText.length > 0 || data.attachmentIds.length > 0, {
+          message: "Either messageText or attachmentIds must be provided",
+          path: ["messageText"],
+        })
     )
     .mutation(({ ctx, input }) =>
       supportCommand.sendReply({

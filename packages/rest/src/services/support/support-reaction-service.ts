@@ -1,7 +1,7 @@
 import { prisma } from "@shared/database";
+import * as slackDelivery from "@shared/rest/services/support/adapters/slack/slack-delivery-service";
 import type { SupportReaction, SupportToggleReactionInput } from "@shared/types";
 import { TRPCError } from "@trpc/server";
-import * as slackDelivery from "@shared/rest/services/support/adapters/slack/slack-delivery-service";
 
 // ---------------------------------------------------------------------------
 // supportReaction service
@@ -22,7 +22,11 @@ function resolveSlackTimestamp(event: {
 }): string | null {
   if (event.messageTs) return event.messageTs;
 
-  if (event.eventType === "DELIVERY_SUCCEEDED" && typeof event.detailsJson === "object" && event.detailsJson !== null) {
+  if (
+    event.eventType === "DELIVERY_SUCCEEDED" &&
+    typeof event.detailsJson === "object" &&
+    event.detailsJson !== null
+  ) {
     const details = event.detailsJson as Record<string, unknown>;
     if (typeof details.providerMessageId === "string" && details.providerMessageId.length > 0) {
       return details.providerMessageId;
@@ -34,7 +38,11 @@ function resolveSlackTimestamp(event: {
 
 export async function toggle(input: SupportToggleReactionInput): Promise<SupportReaction[]> {
   const event = await prisma.supportConversationEvent.findFirst({
-    where: { id: input.eventId, conversationId: input.conversationId, workspaceId: input.workspaceId },
+    where: {
+      id: input.eventId,
+      conversationId: input.conversationId,
+      workspaceId: input.workspaceId,
+    },
     select: {
       id: true,
       messageTs: true,

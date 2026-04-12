@@ -147,13 +147,21 @@ export async function uploadFileToThread(input: {
   );
 
   if (!getUrlResp.ok) {
-    throw new TransientExternalError(`files.getUploadURLExternal failed: HTTP ${getUrlResp.status}`);
+    throw new TransientExternalError(
+      `files.getUploadURLExternal failed: HTTP ${getUrlResp.status}`
+    );
   }
 
-  const getUrlJson = (await getUrlResp.json()) as { ok?: boolean; error?: string; upload_url?: string; file_id?: string };
+  const getUrlJson = (await getUrlResp.json()) as {
+    ok?: boolean;
+    error?: string;
+    upload_url?: string;
+    file_id?: string;
+  };
   if (!getUrlJson.ok || !getUrlJson.upload_url || !getUrlJson.file_id) {
     const err = getUrlJson.error ?? "unknown";
-    if (isTransientSlackError(err)) throw new TransientExternalError(`files.getUploadURLExternal: ${err}`);
+    if (isTransientSlackError(err))
+      throw new TransientExternalError(`files.getUploadURLExternal: ${err}`);
     throw new PermanentExternalError(`files.getUploadURLExternal: ${err}`);
   }
 
@@ -182,13 +190,16 @@ export async function uploadFileToThread(input: {
   });
 
   if (!completeResp.ok) {
-    throw new TransientExternalError(`files.completeUploadExternal failed: HTTP ${completeResp.status}`);
+    throw new TransientExternalError(
+      `files.completeUploadExternal failed: HTTP ${completeResp.status}`
+    );
   }
 
   const completeJson = (await completeResp.json()) as { ok?: boolean; error?: string };
   if (!completeJson.ok) {
     const err = completeJson.error ?? "unknown";
-    if (isTransientSlackError(err)) throw new TransientExternalError(`files.completeUploadExternal: ${err}`);
+    if (isTransientSlackError(err))
+      throw new TransientExternalError(`files.completeUploadExternal: ${err}`);
     throw new PermanentExternalError(`files.completeUploadExternal: ${err}`);
   }
 
