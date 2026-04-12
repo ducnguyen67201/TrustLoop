@@ -44,5 +44,12 @@ export function shouldDropIngressEvent(params: {
     // other-bot passthrough.
     return true;
   }
+  if (!params.slackUserId) {
+    // Bot-authored message with no user ID. This happens when our own
+    // chat.postMessage uses chat:write.customize (username/icon_url) —
+    // Slack's echo event omits the user field. Real external bots always
+    // have a user/bot_id. Drop it as our own echo.
+    return true;
+  }
   return params.slackUserId === params.installationBotUserId;
 }
