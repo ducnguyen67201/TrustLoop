@@ -1,8 +1,8 @@
-import { workflowProcessingStatusSchema } from "@shared/types/status/workflow-status";
 import {
   agentTeamRunWorkflowInputSchema,
   agentTeamRunWorkflowResultSchema,
 } from "@shared/types/agent-team/agent-team.schema";
+import { workflowProcessingStatusSchema } from "@shared/types/status/workflow-status";
 import {
   analysisResultStatusSchema,
   analysisTriggerTypeSchema,

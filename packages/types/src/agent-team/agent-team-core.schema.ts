@@ -1,7 +1,4 @@
-import {
-  AGENT_PROVIDER,
-  agentProviderSchema,
-} from "@shared/types/support/agent-provider.schema";
+import { AGENT_PROVIDER, agentProviderSchema } from "@shared/types/support/agent-provider.schema";
 import { z } from "zod";
 
 export const AGENT_TEAM_RUN_STATUS = {
