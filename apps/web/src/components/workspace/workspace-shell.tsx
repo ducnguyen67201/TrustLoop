@@ -21,6 +21,7 @@ import {
 import { DarkModeToggle } from "@/components/workspace/dark-mode-toggle";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import {
+  workspaceInsightsPath,
   workspaceRootPath,
   workspaceSessionsPath,
   workspaceSettingsPath,
@@ -62,6 +63,7 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
   const settingsPath = workspaceSettingsPath(workspaceId);
   const supportPath = workspaceSupportPath(workspaceId);
   const sessionsPath = workspaceSessionsPath(workspaceId);
+  const insightsPath = workspaceInsightsPath(workspaceId);
 
   const mainNavItems: NavItem[] = [
     {
@@ -82,15 +84,15 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
       icon: RiPlayCircleLine,
       isActive: pathname === sessionsPath || pathname.startsWith(`${sessionsPath}/`),
     },
+    {
+      href: insightsPath,
+      label: "Insights",
+      icon: RiLineChartLine,
+      isActive: pathname === insightsPath || pathname.startsWith(`${insightsPath}/`),
+    },
   ];
 
   const secondaryNavItems: NavItem[] = [
-    {
-      href: rootPath,
-      label: "Analytics",
-      icon: RiLineChartLine,
-      isActive: pathname === rootPath,
-    },
     {
       href: rootPath,
       label: "Projects",
