@@ -7,7 +7,10 @@ import {
 } from "@/domains/agent-team/agent-team-run-routing";
 import { type Prisma, prisma } from "@shared/database";
 import { env } from "@shared/env";
+import { logRecordedEvents, recordEvent } from "@shared/rest/services/agent-team/run-event-service";
 import {
+  AGENT_TEAM_EVENT_ACTOR_SYSTEM,
+  AGENT_TEAM_EVENT_KIND,
   AGENT_TEAM_FACT_STATUS,
   AGENT_TEAM_MESSAGE_KIND,
   AGENT_TEAM_OPEN_QUESTION_STATUS,
@@ -83,14 +86,21 @@ export async function initializeRunState(
 ): Promise<ClaimNextQueuedInboxResult> {
   const initialRole = selectInitialRole(input.teamSnapshot);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.agentTeamRun.update({
+  const recordedEvent = await prisma.$transaction(async (tx) => {
+    const run = await tx.agentTeamRun.update({
       where: { id: input.runId },
       data: {
         status: AGENT_TEAM_RUN_STATUS.running,
         startedAt: new Date(),
         completedAt: null,
         errorMessage: null,
+      },
+      select: {
+        id: true,
+        workspaceId: true,
+        teamId: true,
+        conversationId: true,
+        analysisId: true,
       },
     });
 
@@ -121,7 +131,21 @@ export async function initializeRunState(
         unreadCount: 0,
       },
     });
+
+    return recordEvent(tx, {
+      kind: AGENT_TEAM_EVENT_KIND.runStarted,
+      runId: run.id,
+      workspaceId: run.workspaceId,
+      actor: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+      payload: {
+        teamId: run.teamId,
+        conversationId: run.conversationId,
+        analysisId: run.analysisId,
+      },
+    });
   });
+
+  logRecordedEvents([recordedEvent]);
 
   return { roleSlug: initialRole.slug };
 }
@@ -371,17 +395,34 @@ export async function getRunProgress(runId: string): Promise<RunProgressSnapshot
 }
 
 export async function markRunCompleted(runId: string): Promise<void> {
-  await prisma.agentTeamRun.update({
-    where: { id: runId },
-    data: {
-      status: AGENT_TEAM_RUN_STATUS.completed,
-      completedAt: new Date(),
-      errorMessage: null,
-    },
+  const event = await prisma.$transaction(async (tx) => {
+    const run = await tx.agentTeamRun.update({
+      where: { id: runId },
+      data: {
+        status: AGENT_TEAM_RUN_STATUS.completed,
+        completedAt: new Date(),
+        errorMessage: null,
+      },
+      select: { id: true, workspaceId: true, startedAt: true, completedAt: true },
+    });
+    const messageCount = await tx.agentTeamMessage.count({ where: { runId } });
+    return recordEvent(tx, {
+      kind: AGENT_TEAM_EVENT_KIND.runSucceeded,
+      runId: run.id,
+      workspaceId: run.workspaceId,
+      actor: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+      payload: {
+        durationMs: computeDurationMs(run.startedAt, run.completedAt),
+        messageCount,
+      },
+    });
   });
+  logRecordedEvents([event]);
 }
 
 export async function markRunWaiting(runId: string): Promise<void> {
+  // Waiting is a re-entrant pause, not a terminal state. No event emitted;
+  // the next initializeRunState/claimNext cycle will emit role_queued events.
   await prisma.agentTeamRun.update({
     where: { id: runId },
     data: {
@@ -392,14 +433,36 @@ export async function markRunWaiting(runId: string): Promise<void> {
 }
 
 export async function markRunFailed(input: { runId: string; errorMessage: string }): Promise<void> {
-  await prisma.agentTeamRun.update({
-    where: { id: input.runId },
-    data: {
-      status: AGENT_TEAM_RUN_STATUS.failed,
-      completedAt: new Date(),
-      errorMessage: input.errorMessage,
-    },
+  const event = await prisma.$transaction(async (tx) => {
+    const run = await tx.agentTeamRun.update({
+      where: { id: input.runId },
+      data: {
+        status: AGENT_TEAM_RUN_STATUS.failed,
+        completedAt: new Date(),
+        errorMessage: input.errorMessage,
+      },
+      select: { id: true, workspaceId: true, startedAt: true, completedAt: true },
+    });
+    const messageCount = await tx.agentTeamMessage.count({ where: { runId: input.runId } });
+    return recordEvent(tx, {
+      kind: AGENT_TEAM_EVENT_KIND.runFailed,
+      runId: run.id,
+      workspaceId: run.workspaceId,
+      actor: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+      payload: {
+        durationMs: computeDurationMs(run.startedAt, run.completedAt),
+        messageCount,
+        errorMessage: input.errorMessage,
+      },
+    });
   });
+  logRecordedEvents([event]);
+}
+
+function computeDurationMs(startedAt: Date | null, completedAt: Date | null): number {
+  if (!startedAt || !completedAt) return 0;
+  const delta = completedAt.getTime() - startedAt.getTime();
+  return delta < 0 ? 0 : delta;
 }
 
 function normalizeTurnMessages(

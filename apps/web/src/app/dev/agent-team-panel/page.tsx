@@ -21,10 +21,7 @@ export default function AgentTeamPanelPreviewPage() {
         </div>
 
         <div className="rounded-lg border bg-card p-4">
-          <AgentTeamPanel
-            conversationId="conversation_preview"
-            workspaceId="workspace_preview"
-          />
+          <AgentTeamPanel conversationId="conversation_preview" workspaceId="workspace_preview" />
         </div>
       </div>
     </main>

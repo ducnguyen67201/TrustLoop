@@ -271,7 +271,7 @@ export const agentTeamRunEventDraftSchema = z.discriminatedUnion("kind", [
     workspaceId: z.string().min(1),
     actor: agentTeamEventActorSchema,
     payload: toolCalledPayload,
-    truncated: z.boolean().default(false),
+    truncated: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal(AGENT_TEAM_EVENT_KIND.toolReturned),
@@ -280,7 +280,7 @@ export const agentTeamRunEventDraftSchema = z.discriminatedUnion("kind", [
     actor: agentTeamEventActorSchema,
     latencyMs: z.number().int().nonnegative().nullable().optional(),
     payload: toolReturnedPayload,
-    truncated: z.boolean().default(false),
+    truncated: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal(AGENT_TEAM_EVENT_KIND.error),

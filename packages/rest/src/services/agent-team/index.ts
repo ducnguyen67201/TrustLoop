@@ -8,6 +8,18 @@ export {
   update as updateAgentTeamRole,
 } from "@shared/rest/services/agent-team/role-service";
 export {
+  logRecordedEvents,
+  parseEvent,
+  recordEvent,
+  recordEvents,
+} from "@shared/rest/services/agent-team/run-event-service";
+export {
+  projectFact,
+  projectInboxTransition,
+  projectMessage,
+  projectQuestion,
+} from "@shared/rest/services/agent-team/run-event-service/projectors";
+export {
   getRun as getAgentTeamRun,
   getLatestRunForConversation as getLatestAgentTeamRunForConversation,
   start as startAgentTeamRun,
