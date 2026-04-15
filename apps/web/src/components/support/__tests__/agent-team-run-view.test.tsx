@@ -110,17 +110,17 @@ describe("AgentTeamRunView", () => {
     expect(screen.getByText("running")).toBeTruthy();
     expect(screen.getByText(/Review this fix/i)).toBeTruthy();
 
-    const factsTab = screen.getByRole("tab", { name: "Facts" });
+    const factsTab = screen.getByRole("tab", { name: /Facts/ });
     fireEvent.mouseDown(factsTab);
     fireEvent.click(factsTab);
     expect(screen.getByText(/Slack reply threading fails/i)).toBeTruthy();
 
-    const questionsTab = screen.getByRole("tab", { name: "Questions" });
+    const questionsTab = screen.getByRole("tab", { name: /Questions/ });
     fireEvent.mouseDown(questionsTab);
     fireEvent.click(questionsTab);
     expect(screen.getByText(/regression coverage/i)).toBeTruthy();
 
-    const inboxesTab = screen.getByRole("tab", { name: "Inboxes" });
+    const inboxesTab = screen.getByRole("tab", { name: /Inboxes/ });
     fireEvent.mouseDown(inboxesTab);
     fireEvent.click(inboxesTab);
     expect(screen.getByText(/architect:proposal:Review this fix/i)).toBeTruthy();
