@@ -1,3 +1,4 @@
+export { archiveAgentTeamEvents } from "@/domains/agent-team/agent-team-archive.activity";
 export {
   claimNextQueuedInbox,
   getRunProgress,

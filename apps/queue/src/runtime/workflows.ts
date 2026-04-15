@@ -1,3 +1,4 @@
+export { agentTeamArchiveWorkflow } from "../domains/agent-team/agent-team-archive.workflow";
 export { agentTeamRunWorkflow } from "../domains/agent-team/agent-team-run.workflow";
 export { fixPrWorkflow } from "../domains/codex/fix-pr.workflow";
 export { purgeDeletedRecordsWorkflow } from "../domains/maintenance/purge.workflow";
