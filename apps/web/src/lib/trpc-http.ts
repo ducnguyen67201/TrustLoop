@@ -47,8 +47,10 @@ function resolveTrpcData<TData>(payload: TrpcSuccessPayload<TData>): TData | und
   }
 
   if (typeof data === "object" && data !== null && "json" in data) {
-    const jsonData = (data as { json?: TData }).json;
-    return jsonData ?? (data as TData);
+    const wrapped = data as { json?: TData };
+    if ("json" in wrapped) {
+      return wrapped.json;
+    }
   }
 
   return data as TData;

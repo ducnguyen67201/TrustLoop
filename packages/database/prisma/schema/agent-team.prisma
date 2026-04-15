@@ -1,0 +1,164 @@
+model AgentTeam {
+  id          String          @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  isDefault   Boolean         @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  roles     AgentTeamRole[]
+  edges     AgentTeamEdge[]
+  runs      AgentTeamRun[]
+
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  @@unique([workspaceId, name])
+  @@index([workspaceId, isDefault])
+}
+
+model AgentTeamRole {
+  id                   String             @id @default(cuid())
+  teamId               String
+  slug                 String
+  label                String
+  description          String?
+  provider             String             @default("openai")
+  model                String?
+  toolIds              String[]
+  systemPromptOverride String?            @db.Text
+  maxSteps             Int                @default(8)
+  sortOrder            Int                @default(0)
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  team        AgentTeam          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sourceEdges AgentTeamEdge[]    @relation("AgentTeamEdgeSource")
+  targetEdges AgentTeamEdge[]    @relation("AgentTeamEdgeTarget")
+
+  @@unique([teamId, slug])
+  @@index([teamId, sortOrder])
+}
+
+model AgentTeamEdge {
+  id           String   @id @default(cuid())
+  teamId       String
+  sourceRoleId String
+  targetRoleId String
+  condition    String?  @db.Text
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  team       AgentTeam     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sourceRole AgentTeamRole @relation("AgentTeamEdgeSource", fields: [sourceRoleId], references: [id], onDelete: Cascade)
+  targetRole AgentTeamRole @relation("AgentTeamEdgeTarget", fields: [targetRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, sourceRoleId, targetRoleId])
+  @@index([teamId, sortOrder])
+}
+
+model AgentTeamRun {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  teamId         String
+  conversationId String?
+  analysisId     String?
+  status         String   @default("queued")
+  teamSnapshot   Json
+  workflowId     String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace     Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  team          AgentTeam               @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  messages      AgentTeamMessage[]
+  roleInboxes   AgentTeamRoleInbox[]
+  facts         AgentTeamFact[]
+  openQuestions AgentTeamOpenQuestion[]
+
+  @@index([workspaceId, status])
+  @@index([conversationId])
+  @@index([analysisId])
+}
+
+model AgentTeamMessage {
+  id              String            @id @default(cuid())
+  runId           String
+  threadId        String
+  fromRoleSlug    String
+  fromRoleLabel   String
+  toRoleSlug      String
+  kind            String
+  subject         String
+  content         String            @db.Text
+  parentMessageId String?
+  refs            Json?
+  toolName        String?
+  metadata        Json?
+  createdAt       DateTime          @default(now())
+
+  run     AgentTeamRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  parent  AgentTeamMessage?  @relation("AgentTeamMessageParent", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  replies AgentTeamMessage[] @relation("AgentTeamMessageParent")
+
+  @@index([runId, createdAt])
+  @@index([runId, toRoleSlug, createdAt])
+  @@index([runId, threadId, createdAt])
+  @@index([parentMessageId])
+}
+
+model AgentTeamRoleInbox {
+  id                String   @id @default(cuid())
+  runId             String
+  roleSlug          String
+  state             String   @default("idle")
+  lastReadMessageId String?
+  wakeReason        String?
+  unreadCount       Int      @default(0)
+  lastWokenAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  run AgentTeamRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, roleSlug])
+  @@index([runId, state, updatedAt])
+}
+
+model AgentTeamFact {
+  id               String   @id @default(cuid())
+  runId            String
+  statement        String   @db.Text
+  confidence       Float
+  sourceMessageIds Json
+  acceptedBy       Json
+  status           String   @default("proposed")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  run AgentTeamRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, status, createdAt])
+}
+
+model AgentTeamOpenQuestion {
+  id              String   @id @default(cuid())
+  runId           String
+  askedByRoleSlug String
+  ownerRoleSlug   String
+  question        String   @db.Text
+  blockingRoles   Json
+  status          String   @default("open")
+  sourceMessageId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  run AgentTeamRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, ownerRoleSlug, status, createdAt])
+}

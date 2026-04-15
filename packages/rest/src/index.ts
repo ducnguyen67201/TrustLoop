@@ -1,3 +1,4 @@
+export * from "@shared/rest/agent-team-router";
 export * from "@shared/rest/auth-router";
 export * from "@shared/rest/codex/index";
 export * from "@shared/rest/context";

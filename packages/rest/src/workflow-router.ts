@@ -23,5 +23,9 @@ export async function dispatchWorkflow(
     return dispatcher.startRepositoryIndexWorkflow(parsed.payload);
   }
 
+  if (parsed.type === "agent-team-run") {
+    return dispatcher.startAgentTeamRunWorkflow(parsed.payload);
+  }
+
   return dispatcher.startCodexWorkflow(parsed.payload);
 }

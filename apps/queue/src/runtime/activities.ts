@@ -1,3 +1,14 @@
+export {
+  claimNextQueuedInbox,
+  getRunProgress,
+  initializeRunState,
+  loadTurnContext,
+  markRunCompleted,
+  markRunFailed,
+  markRunWaiting,
+  persistRoleTurnResult,
+  runTeamTurnActivity,
+} from "@/domains/agent-team/agent-team-run.activity";
 export { runFixPrPipeline } from "@/domains/codex/fix-pr.activity";
 export { runPurgeDeletedRecords } from "@/domains/maintenance/purge.activity";
 export {

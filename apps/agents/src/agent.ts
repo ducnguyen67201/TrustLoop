@@ -2,13 +2,26 @@ import { Agent } from "@mastra/core/agent";
 import {
   AGENT_PROVIDER,
   AGENT_PROVIDER_DEFAULTS,
+  AGENT_TEAM_MESSAGE_KIND,
+  AGENT_TEAM_TARGET,
   type AgentProviderConfig,
+  type AgentTeamDialogueMessageDraft,
+  type AgentTeamRole,
+  type AgentTeamRoleTurnInput,
+  type AgentTeamRoleTurnOutput,
+  type AgentTeamToolId,
   type AnalyzeRequest,
   type AnalyzeResponse,
   type SessionDigest,
   type ToneConfig,
   agentProviderConfigSchema,
+  agentTeamDialogueMessageDraftSchema,
+  agentTeamFactDraftSchema,
+  agentTeamRoleTurnOutputSchema,
+  agentTeamTargetSchema,
+  compressedAgentTeamTurnOutputSchema,
   compressedAnalysisOutputSchema,
+  reconstructAgentTeamTurnOutput,
   reconstructAnalysisOutput,
 } from "@shared/types";
 
@@ -18,11 +31,19 @@ import {
   buildSupportAgentSystemPrompt,
 } from "./prompts/support-analysis";
 import { resolveModel } from "./providers";
+import { getRoleMaxSteps, getRoleSystemPrompt, getRoleToolIds } from "./roles/role-registry";
 import { createPullRequestTool } from "./tools/create-pr";
 import { searchCodeTool } from "./tools/search-code";
 import { searchSentryTool } from "./tools/search-sentry";
 
 const DEFAULT_MAX_STEPS = 8;
+const DEFAULT_TEAM_MAX_STEPS = 6;
+
+const AVAILABLE_TOOLS = {
+  searchCode: searchCodeTool,
+  searchSentry: searchSentryTool,
+  createPullRequest: createPullRequestTool,
+} as const;
 
 // ── Agent Factory ───────────────────────────────────────────────────
 //
@@ -55,11 +76,17 @@ function createSupportAgent(
     name: "TrustLoop AI Support Agent",
     instructions,
     model: resolveModel(providerConfig),
-    tools: {
-      searchCode: searchCodeTool,
-      searchSentry: searchSentryTool,
-      createPullRequest: createPullRequestTool,
-    },
+    tools: AVAILABLE_TOOLS,
+  });
+}
+
+function createAgentForRole(role: AgentTeamRole, providerConfig: AgentProviderConfig) {
+  return new Agent({
+    id: `trustloop-agent-team-${role.slug}`,
+    name: role.label,
+    instructions: getRoleSystemPrompt(role),
+    model: resolveModel(providerConfig),
+    tools: pickToolsForRole(role),
   });
 }
 
@@ -109,6 +136,36 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
   };
 }
 
+export async function runTeamTurn(
+  request: AgentTeamRoleTurnInput
+): Promise<AgentTeamRoleTurnOutput> {
+  const startTime = Date.now();
+  const providerConfig = agentProviderConfigSchema.parse({
+    provider: request.role.provider,
+    model: request.role.model ?? undefined,
+  });
+  const modelName = providerConfig.model ?? getDefaultModel(providerConfig.provider);
+  const maxSteps = getRoleMaxSteps(request.role) ?? DEFAULT_TEAM_MAX_STEPS;
+
+  const agent = createAgentForRole(request.role, providerConfig);
+  const userMessage = buildTeamTurnUserMessage(request);
+  const result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
+  const output = parseTeamTurnOutput(result.text);
+  const toolCalls = extractToolCalls(result);
+  const meta = {
+    provider: providerConfig.provider,
+    model: modelName,
+    totalDurationMs: Date.now() - startTime,
+    turnCount: result.steps?.length ?? 0,
+  };
+
+  return agentTeamRoleTurnOutputSchema.parse({
+    ...output,
+    messages: buildToolTraceMessages(toolCalls).concat(output.messages),
+    meta,
+  });
+}
+
 // ── Private Helpers ─────────────────────────────────────────────────
 
 function resolveProviderConfig(request: AnalyzeRequest): AgentProviderConfig {
@@ -134,6 +191,40 @@ function parseAgentOutput(rawOutput: string | undefined) {
   return reconstructAnalysisOutput(compressed);
 }
 
+function parseTeamTurnOutput(rawOutput: string | undefined) {
+  if (!rawOutput) {
+    throw new Error("Agent team role produced no output after completing the loop");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawOutput);
+  } catch {
+    throw new Error(`Agent team role returned non-JSON response: ${rawOutput.slice(0, 200)}`);
+  }
+
+  const compressed = compressedAgentTeamTurnOutputSchema.parse(parsed);
+  const reconstructed = reconstructAgentTeamTurnOutput(compressed);
+
+  return {
+    messages: reconstructed.messages.map((message) =>
+      agentTeamDialogueMessageDraftSchema.parse({
+        toRoleSlug: agentTeamTargetSchema.parse(message.toRoleSlug),
+        kind: message.kind,
+        subject: message.subject,
+        content: message.content,
+        parentMessageId: message.parentMessageId,
+        refs: message.refs,
+      })
+    ),
+    proposedFacts: reconstructed.proposedFacts.map((fact) => agentTeamFactDraftSchema.parse(fact)),
+    resolvedQuestionIds: reconstructed.resolvedQuestionIds,
+    nextSuggestedRoles: reconstructed.nextSuggestedRoles,
+    done: reconstructed.done,
+    blockedReason: reconstructed.blockedReason,
+  };
+}
+
 interface RawToolResult {
   toolName?: string;
   name?: string;
@@ -156,4 +247,100 @@ function extractToolCalls(result: unknown) {
 
 function getDefaultModel(provider: string): string {
   return AGENT_PROVIDER_DEFAULTS[provider]?.model ?? "gpt-4o";
+}
+
+function pickToolsForRole(role: AgentTeamRole) {
+  return Object.fromEntries(
+    getRoleToolIds(role).map((toolId) => [toolId, AVAILABLE_TOOLS[toolId]])
+  ) as { [Key in AgentTeamToolId]?: (typeof AVAILABLE_TOOLS)[Key] };
+}
+
+function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
+  const inbox = formatDialogueMessages(request.inbox, "No addressed inbox messages.");
+  const recentThread = formatDialogueMessages(request.recentThread, "No recent team messages.");
+  const acceptedFacts =
+    request.acceptedFacts.length === 0
+      ? "No accepted facts."
+      : request.acceptedFacts
+          .map(
+            (fact, index) =>
+              `${index + 1}. (${fact.confidence.toFixed(2)}) ${fact.statement} [acceptedBy=${fact.acceptedBy.join(",") || "none"}]`
+          )
+          .join("\n");
+  const openQuestions =
+    request.openQuestions.length === 0
+      ? "No open questions owned by this role."
+      : request.openQuestions
+          .map(
+            (question, index) =>
+              `${index + 1}. [${question.id}] askedBy=${question.askedByRoleSlug} question=${question.question}`
+          )
+          .join("\n");
+  const sessionDigest = request.sessionDigest
+    ? JSON.stringify(request.sessionDigest, null, 2)
+    : "None";
+
+  return `WORKSPACE_ID: ${request.workspaceId}
+RUN_ID: ${request.runId}
+CONVERSATION_ID: ${request.conversationId ?? "standalone"}
+ROLE: ${request.role.slug}
+
+## Request Summary
+${request.requestSummary}
+
+## Inbox
+${inbox}
+
+## Accepted Facts
+${acceptedFacts}
+
+## Open Questions
+${openQuestions}
+
+## Recent Team Thread
+${recentThread}
+
+## Session Digest
+${sessionDigest}`;
+}
+
+function buildToolTraceMessages(
+  toolCalls: ReturnType<typeof extractToolCalls>
+): AgentTeamDialogueMessageDraft[] {
+  return toolCalls.flatMap((toolCall) => [
+    {
+      toRoleSlug: AGENT_TEAM_TARGET.broadcast,
+      kind: AGENT_TEAM_MESSAGE_KIND.toolCall,
+      subject: `${toolCall.tool} input`,
+      content: JSON.stringify(toolCall.input),
+      refs: [],
+      toolName: toolCall.tool,
+      metadata: { durationMs: toolCall.durationMs },
+    },
+    {
+      toRoleSlug: AGENT_TEAM_TARGET.broadcast,
+      kind: AGENT_TEAM_MESSAGE_KIND.toolResult,
+      subject: `${toolCall.tool} result`,
+      content: toolCall.output,
+      refs: [],
+      toolName: toolCall.tool,
+      metadata: { durationMs: toolCall.durationMs },
+    },
+  ]);
+}
+
+function formatDialogueMessages(
+  messages: AgentTeamRoleTurnInput["recentThread"],
+  emptyMessage: string
+): string {
+  if (messages.length === 0) {
+    return emptyMessage;
+  }
+
+  return messages
+    .map(
+      (message, index) =>
+        `${index + 1}. [${message.fromRoleLabel} -> ${message.toRoleSlug} :: ${message.kind}] ${message.subject}\n${message.content}`
+    )
+    .join("\n\n");
 }

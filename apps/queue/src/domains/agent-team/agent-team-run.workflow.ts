@@ -1,0 +1,117 @@
+import { MAX_AGENT_TEAM_TURNS } from "@/domains/agent-team/agent-team-run-routing";
+import type * as agentTeamActivities from "@/domains/agent-team/agent-team-run.activity";
+import {
+  AGENT_TEAM_RUN_STATUS,
+  type AgentTeamRunWorkflowInput,
+  type AgentTeamRunWorkflowResult,
+} from "@shared/types";
+import { proxyActivities } from "@temporalio/workflow";
+
+const lifecycleActivities = proxyActivities<typeof agentTeamActivities>({
+  startToCloseTimeout: "30 seconds",
+  retry: { maximumAttempts: 1 },
+});
+
+const turnActivities = proxyActivities<typeof agentTeamActivities>({
+  startToCloseTimeout: "5 minutes",
+  heartbeatTimeout: "45 seconds",
+  retry: { maximumAttempts: 2 },
+});
+
+export async function agentTeamRunWorkflow(
+  input: AgentTeamRunWorkflowInput
+): Promise<AgentTeamRunWorkflowResult> {
+  await lifecycleActivities.initializeRunState({
+    runId: input.runId,
+    teamSnapshot: input.teamSnapshot,
+  });
+
+  let progress = await lifecycleActivities.getRunProgress(input.runId);
+  let turnCount = 0;
+
+  try {
+    while (turnCount < MAX_AGENT_TEAM_TURNS) {
+      const nextInbox = await turnActivities.claimNextQueuedInbox(input.runId);
+
+      if (!nextInbox) {
+        progress = await lifecycleActivities.getRunProgress(input.runId);
+
+        if (progress.openQuestionCount > 0 || progress.blockedInboxCount > 0) {
+          await lifecycleActivities.markRunWaiting(input.runId);
+          return {
+            runId: input.runId,
+            status: AGENT_TEAM_RUN_STATUS.waiting,
+            messageCount: progress.messageCount,
+            completedRoleSlugs: progress.completedRoleSlugs,
+          };
+        }
+
+        await lifecycleActivities.markRunCompleted(input.runId);
+        return {
+          runId: input.runId,
+          status: AGENT_TEAM_RUN_STATUS.completed,
+          messageCount: progress.messageCount,
+          completedRoleSlugs: progress.completedRoleSlugs,
+        };
+      }
+
+      const role = findRole(input, nextInbox.roleSlug);
+      const context = await turnActivities.loadTurnContext({
+        runId: input.runId,
+        roleSlug: nextInbox.roleSlug,
+      });
+      const result = await turnActivities.runTeamTurnActivity({
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        runId: input.runId,
+        role,
+        requestSummary: input.threadSnapshot,
+        inbox: context.inbox,
+        acceptedFacts: context.acceptedFacts,
+        openQuestions: context.openQuestions,
+        recentThread: context.recentThread,
+        sessionDigest: input.sessionDigest ?? null,
+      });
+
+      progress = await turnActivities.persistRoleTurnResult({
+        runId: input.runId,
+        role,
+        result,
+      });
+
+      turnCount += 1;
+    }
+
+    const errorMessage = `Agent team run exceeded the ${MAX_AGENT_TEAM_TURNS} turn budget`;
+    await lifecycleActivities.markRunFailed({ runId: input.runId, errorMessage });
+
+    return {
+      runId: input.runId,
+      status: AGENT_TEAM_RUN_STATUS.failed,
+      messageCount: progress.messageCount,
+      completedRoleSlugs: progress.completedRoleSlugs,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await lifecycleActivities.markRunFailed({ runId: input.runId, errorMessage });
+
+    return {
+      runId: input.runId,
+      status: AGENT_TEAM_RUN_STATUS.failed,
+      messageCount: progress.messageCount,
+      completedRoleSlugs: progress.completedRoleSlugs,
+    };
+  }
+}
+
+function findRole(
+  input: AgentTeamRunWorkflowInput,
+  roleSlug: AgentTeamRunWorkflowResult["completedRoleSlugs"][number]
+) {
+  const role = input.teamSnapshot.roles.find((candidate) => candidate.slug === roleSlug);
+  if (!role) {
+    throw new Error(`Agent team workflow could not find role ${roleSlug} in the team snapshot`);
+  }
+
+  return role;
+}

@@ -66,6 +66,13 @@ export function workspaceAiAnalysisPath(workspaceId: string): string {
 }
 
 /**
+ * Returns the agent-team settings path for a workspace.
+ */
+export function workspaceAgentTeamPath(workspaceId: string): string {
+  return `${workspaceSettingsPath(workspaceId)}/agent-team`;
+}
+
+/**
  * Returns the GitHub indexing settings path for a workspace.
  */
 export function workspaceGithubPath(workspaceId: string): string {

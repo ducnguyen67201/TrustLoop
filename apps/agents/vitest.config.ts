@@ -1,7 +1,5 @@
 import path from "node:path";
-import { defineConfig } from "vitest/config";
-
-export default defineConfig({
+export default {
   resolve: {
     alias: {
       "@/": `${path.resolve(__dirname, "src")}/`,
@@ -15,4 +13,4 @@ export default defineConfig({
       "@shared/env": path.resolve(__dirname, "../../packages/env/src/index.ts"),
     },
   },
-});
+};

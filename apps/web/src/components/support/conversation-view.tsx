@@ -1,7 +1,7 @@
 "use client";
 
 import { ConversationHeader } from "@/components/support/conversation-header";
-import { ConversationPropertiesSidebar } from "@/components/support/conversation-properties-sidebar";
+import { ConversationInsightsPanel } from "@/components/support/conversation-insights-panel";
 import { CustomerProfileProvider } from "@/components/support/customer-profile-context";
 import { MessageList } from "@/components/support/message-list";
 import { ReplyComposer } from "@/components/support/reply-composer";
@@ -134,7 +134,7 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
           </div>
 
           {/* Right: properties sidebar */}
-          <ConversationPropertiesSidebar
+          <ConversationInsightsPanel
             conversation={conversation}
             events={events}
             isMutating={isMutating}

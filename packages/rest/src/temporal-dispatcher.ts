@@ -1,5 +1,6 @@
 import { env } from "@shared/env";
 import {
+  type AgentTeamRunWorkflowInput,
   type CodexWorkflowInput,
   type RepositoryIndexWorkflowInput,
   type SupportAnalysisWorkflowInput,
@@ -15,6 +16,7 @@ export interface WorkflowDispatcher {
   startSupportAnalysisWorkflow(
     input: SupportAnalysisWorkflowInput
   ): Promise<WorkflowDispatchResponse>;
+  startAgentTeamRunWorkflow(input: AgentTeamRunWorkflowInput): Promise<WorkflowDispatchResponse>;
   startRepositoryIndexWorkflow(
     input: RepositoryIndexWorkflowInput
   ): Promise<WorkflowDispatchResponse>;
@@ -68,6 +70,21 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
     const client = await getClient();
     const workflowId = `repository-index-${input.syncRequestId}`;
     const handle = await client.workflow.start(workflowNames.repositoryIndex, {
+      args: [input],
+      taskQueue: env.CODEX_TASK_QUEUE,
+      workflowId,
+    });
+
+    return workflowDispatchResponseSchema.parse({
+      workflowId,
+      runId: handle.firstExecutionRunId,
+      queue: env.CODEX_TASK_QUEUE,
+    });
+  },
+  async startAgentTeamRunWorkflow(input) {
+    const client = await getClient();
+    const workflowId = `agent-team-run-${input.runId}`;
+    const handle = await client.workflow.start(workflowNames.agentTeamRun, {
       args: [input],
       taskQueue: env.CODEX_TASK_QUEUE,
       workflowId,

@@ -1,0 +1,74 @@
+import * as edges from "@shared/rest/services/agent-team/edge-service";
+import * as roles from "@shared/rest/services/agent-team/role-service";
+import * as agentTeamRuns from "@shared/rest/services/agent-team/run-service";
+import * as teams from "@shared/rest/services/agent-team/team-service";
+import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
+import { router, workspaceProcedure, workspaceRoleProcedure } from "@shared/rest/trpc";
+import {
+  WORKSPACE_ROLE,
+  addAgentTeamEdgeInputSchema,
+  addAgentTeamRoleInputSchema,
+  createAgentTeamInputSchema,
+  deleteAgentTeamInputSchema,
+  getAgentTeamInputSchema,
+  getAgentTeamRunInputSchema,
+  getLatestAgentTeamRunInputSchema,
+  removeAgentTeamEdgeInputSchema,
+  removeAgentTeamRoleInputSchema,
+  setDefaultAgentTeamInputSchema,
+  startAgentTeamRunInputSchema,
+  updateAgentTeamInputSchema,
+  updateAgentTeamRoleInputSchema,
+} from "@shared/types";
+
+export function createAgentTeamRouter(dispatcher: WorkflowDispatcher) {
+  return router({
+    list: workspaceProcedure.query(({ ctx }) => teams.list(ctx.workspaceId)),
+    get: workspaceProcedure
+      .input(getAgentTeamInputSchema)
+      .query(({ ctx, input }) => teams.get(ctx.workspaceId, input.teamId)),
+    create: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(createAgentTeamInputSchema)
+      .mutation(({ ctx, input }) => teams.create(ctx.workspaceId, input)),
+    update: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(updateAgentTeamInputSchema)
+      .mutation(({ ctx, input }) => teams.update(ctx.workspaceId, input)),
+    delete: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(deleteAgentTeamInputSchema)
+      .mutation(({ ctx, input }) => teams.remove(ctx.workspaceId, input)),
+    setDefault: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(setDefaultAgentTeamInputSchema)
+      .mutation(({ ctx, input }) => teams.setDefault(ctx.workspaceId, input)),
+    addRole: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(addAgentTeamRoleInputSchema)
+      .mutation(({ ctx, input }) => roles.add(ctx.workspaceId, input)),
+    updateRole: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(updateAgentTeamRoleInputSchema)
+      .mutation(({ ctx, input }) => roles.update(ctx.workspaceId, input)),
+    removeRole: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(removeAgentTeamRoleInputSchema)
+      .mutation(({ ctx, input }) => roles.remove(ctx.workspaceId, input)),
+    addEdge: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(addAgentTeamEdgeInputSchema)
+      .mutation(({ ctx, input }) => edges.add(ctx.workspaceId, input)),
+    removeEdge: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(removeAgentTeamEdgeInputSchema)
+      .mutation(({ ctx, input }) => edges.remove(ctx.workspaceId, input)),
+    startRun: workspaceProcedure
+      .input(startAgentTeamRunInputSchema)
+      .mutation(({ ctx, input }) =>
+        agentTeamRuns.start({ ...input, workspaceId: ctx.workspaceId }, dispatcher)
+      ),
+    getLatestRunForConversation: workspaceProcedure
+      .input(getLatestAgentTeamRunInputSchema)
+      .query(({ ctx, input }) =>
+        agentTeamRuns.getLatestRunForConversation({
+          ...input,
+          workspaceId: ctx.workspaceId,
+        })
+      ),
+    getRun: workspaceProcedure
+      .input(getAgentTeamRunInputSchema)
+      .query(({ ctx, input }) => agentTeamRuns.getRun({ ...input, workspaceId: ctx.workspaceId })),
+  });
+}
