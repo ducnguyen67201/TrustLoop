@@ -1,4 +1,5 @@
 export { archiveAgentTeamEvents } from "@/domains/agent-team/agent-team-archive.activity";
+export { rollupAgentTeamMetricsForDay } from "@/domains/agent-team/agent-team-metrics-rollup.activity";
 export {
   claimNextQueuedInbox,
   getRunProgress,
