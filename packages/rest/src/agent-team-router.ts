@@ -18,6 +18,7 @@ import {
   setDefaultAgentTeamInputSchema,
   startAgentTeamRunInputSchema,
   updateAgentTeamInputSchema,
+  updateAgentTeamLayoutInputSchema,
   updateAgentTeamRoleInputSchema,
 } from "@shared/types";
 
@@ -48,6 +49,9 @@ export function createAgentTeamRouter(dispatcher: WorkflowDispatcher) {
     removeRole: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
       .input(removeAgentTeamRoleInputSchema)
       .mutation(({ ctx, input }) => roles.remove(ctx.workspaceId, input)),
+    updateLayout: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(updateAgentTeamLayoutInputSchema)
+      .mutation(({ ctx, input }) => roles.updateLayout(ctx.workspaceId, input)),
     addEdge: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
       .input(addAgentTeamEdgeInputSchema)
       .mutation(({ ctx, input }) => edges.add(ctx.workspaceId, input)),

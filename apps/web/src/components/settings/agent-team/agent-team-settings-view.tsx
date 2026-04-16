@@ -87,6 +87,8 @@ export function AgentTeamSettingsView() {
               onRemoveRole={agentTeams.removeRole}
               onAddEdge={agentTeams.addEdge}
               onRemoveEdge={agentTeams.removeEdge}
+              onUpdateLayout={agentTeams.updateLayout}
+              onReloadTeam={agentTeams.reloadTeam}
             />
           </div>
         </main>

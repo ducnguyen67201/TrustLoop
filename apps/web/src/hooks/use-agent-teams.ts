@@ -11,8 +11,32 @@ import type {
   RemoveAgentTeamEdgeInput,
   RemoveAgentTeamRoleInput,
   SetDefaultAgentTeamInput,
+  UpdateAgentTeamLayoutInput,
 } from "@shared/types";
 import { useCallback, useEffect, useState } from "react";
+
+export class AgentTeamLayoutConflictError extends Error {
+  latestTeam: AgentTeam;
+
+  constructor(message: string, latestTeam: AgentTeam) {
+    super(message);
+    this.name = "AgentTeamLayoutConflictError";
+    this.latestTeam = latestTeam;
+  }
+}
+
+function replaceTeam(
+  current: ListAgentTeamsResponse | null,
+  nextTeam: AgentTeam
+): ListAgentTeamsResponse | null {
+  if (!current) {
+    return current;
+  }
+
+  return {
+    teams: current.teams.map((team) => (team.id === nextTeam.id ? nextTeam : team)),
+  };
+}
 
 /**
  * Loads and mutates workspace agent-team configuration for settings screens.
@@ -36,6 +60,19 @@ export function useAgentTeams() {
       setIsLoading(false);
     }
   }, []);
+
+  const getTeam = useCallback(async (teamId: string) => {
+    return trpcQuery<AgentTeam, { teamId: string }>("agentTeam.get", { teamId });
+  }, []);
+
+  const reloadTeam = useCallback(
+    async (teamId: string) => {
+      const team = await getTeam(teamId);
+      setData((current) => replaceTeam(current, team));
+      return team;
+    },
+    [getTeam]
+  );
 
   const createTeam = useCallback(
     async (input: CreateAgentTeamInput) => {
@@ -79,52 +116,77 @@ export function useAgentTeams() {
     [refresh]
   );
 
-  const addRole = useCallback(
-    async (input: AddAgentTeamRoleInput) => {
-      setError(null);
-      await trpcMutation<AddAgentTeamRoleInput, AgentTeam>("agentTeam.addRole", input, {
+  const addRole = useCallback(async (input: AddAgentTeamRoleInput) => {
+    setError(null);
+    const updatedTeam = await trpcMutation<AddAgentTeamRoleInput, AgentTeam>(
+      "agentTeam.addRole",
+      input,
+      {
         withCsrf: true,
-      });
-      await refresh();
-    },
-    [refresh]
-  );
+      }
+    );
+    setData((current) => replaceTeam(current, updatedTeam));
+  }, []);
 
-  const removeRole = useCallback(
-    async (roleId: string) => {
-      setError(null);
-      await trpcMutation<RemoveAgentTeamRoleInput, AgentTeam>(
-        "agentTeam.removeRole",
-        { roleId },
-        { withCsrf: true }
-      );
-      await refresh();
-    },
-    [refresh]
-  );
+  const removeRole = useCallback(async (roleId: string) => {
+    setError(null);
+    const updatedTeam = await trpcMutation<RemoveAgentTeamRoleInput, AgentTeam>(
+      "agentTeam.removeRole",
+      { roleId },
+      { withCsrf: true }
+    );
+    setData((current) => replaceTeam(current, updatedTeam));
+  }, []);
 
-  const addEdge = useCallback(
-    async (input: AddAgentTeamEdgeInput) => {
-      setError(null);
-      await trpcMutation<AddAgentTeamEdgeInput, AgentTeam>("agentTeam.addEdge", input, {
+  const addEdge = useCallback(async (input: AddAgentTeamEdgeInput) => {
+    setError(null);
+    const updatedTeam = await trpcMutation<AddAgentTeamEdgeInput, AgentTeam>(
+      "agentTeam.addEdge",
+      input,
+      {
         withCsrf: true,
-      });
-      await refresh();
-    },
-    [refresh]
-  );
+      }
+    );
+    setData((current) => replaceTeam(current, updatedTeam));
+    return updatedTeam;
+  }, []);
 
-  const removeEdge = useCallback(
-    async (edgeId: string) => {
+  const removeEdge = useCallback(async (edgeId: string) => {
+    setError(null);
+    const updatedTeam = await trpcMutation<RemoveAgentTeamEdgeInput, AgentTeam>(
+      "agentTeam.removeEdge",
+      { edgeId },
+      { withCsrf: true }
+    );
+    setData((current) => replaceTeam(current, updatedTeam));
+    return updatedTeam;
+  }, []);
+
+  const updateLayout = useCallback(
+    async (input: UpdateAgentTeamLayoutInput) => {
       setError(null);
-      await trpcMutation<RemoveAgentTeamEdgeInput, AgentTeam>(
-        "agentTeam.removeEdge",
-        { edgeId },
-        { withCsrf: true }
-      );
-      await refresh();
+
+      try {
+        const updatedTeam = await trpcMutation<UpdateAgentTeamLayoutInput, AgentTeam>(
+          "agentTeam.updateLayout",
+          input,
+          { withCsrf: true }
+        );
+        setData((current) => replaceTeam(current, updatedTeam));
+        return updatedTeam;
+      } catch (mutationError) {
+        const message =
+          mutationError instanceof Error ? mutationError.message : "Failed to save team layout";
+
+        if (message.includes("Layout changed elsewhere")) {
+          const latestTeam = await getTeam(input.teamId);
+          throw new AgentTeamLayoutConflictError(message, latestTeam);
+        }
+
+        throw mutationError;
+      }
     },
-    [refresh]
+    [getTeam]
   );
 
   useEffect(() => {
@@ -139,6 +201,7 @@ export function useAgentTeams() {
     isLoading,
     error,
     refresh,
+    reloadTeam,
     createTeam,
     deleteTeam,
     setDefaultTeam,
@@ -146,5 +209,6 @@ export function useAgentTeams() {
     removeRole,
     addEdge,
     removeEdge,
+    updateLayout,
   };
 }

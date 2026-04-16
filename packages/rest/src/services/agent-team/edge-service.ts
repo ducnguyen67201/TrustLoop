@@ -14,6 +14,7 @@ export async function add(workspaceId: string, input: AddAgentTeamEdgeInput): Pr
   const parsed = addAgentTeamEdgeInputSchema.parse(input);
   const team = await teams.get(workspaceId, parsed.teamId);
   assertRolesBelongToTeam(team, parsed.sourceRoleId, parsed.targetRoleId);
+  assertEdgeDoesNotExist(team, parsed.sourceRoleId, parsed.targetRoleId);
 
   const nextEdges: AgentTeamEdge[] = [
     ...team.edges,
@@ -30,14 +31,29 @@ export async function add(workspaceId: string, input: AddAgentTeamEdgeInput): Pr
     nextEdges
   );
 
-  await prisma.agentTeamEdge.create({
-    data: {
-      teamId: parsed.teamId,
-      sourceRoleId: parsed.sourceRoleId,
-      targetRoleId: parsed.targetRoleId,
-      sortOrder: team.edges.length,
-    },
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.agentTeamEdge.create({
+        data: {
+          teamId: parsed.teamId,
+          sourceRoleId: parsed.sourceRoleId,
+          targetRoleId: parsed.targetRoleId,
+          sortOrder: team.edges.length,
+        },
+      });
+
+      await tx.agentTeam.update({
+        where: { id: parsed.teamId },
+        data: { updatedAt: new Date() },
+      });
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new ValidationError("This connection already exists");
+    }
+
+    throw error;
+  }
 
   return teams.get(workspaceId, parsed.teamId);
 }
@@ -62,8 +78,15 @@ export async function remove(
     throw new ValidationError("Agent team edge not found");
   }
 
-  await prisma.agentTeamEdge.delete({
-    where: { id: parsed.edgeId },
+  await prisma.$transaction(async (tx) => {
+    await tx.agentTeamEdge.delete({
+      where: { id: parsed.edgeId },
+    });
+
+    await tx.agentTeam.update({
+      where: { id: edge.teamId },
+      data: { updatedAt: new Date() },
+    });
   });
 
   return teams.get(workspaceId, edge.teamId);
@@ -81,6 +104,16 @@ function assertRolesBelongToTeam(
 
   if (sourceRoleId === targetRoleId) {
     throw new ValidationError("Agent team edges cannot point a role to itself");
+  }
+}
+
+function assertEdgeDoesNotExist(team: AgentTeam, sourceRoleId: string, targetRoleId: string): void {
+  const exists = team.edges.some(
+    (edge) => edge.sourceRoleId === sourceRoleId && edge.targetRoleId === targetRoleId
+  );
+
+  if (exists) {
+    throw new ValidationError("This connection already exists");
   }
 }
 
@@ -114,4 +147,13 @@ function assertAcyclic(roleIds: string[], edges: AgentTeamEdge[]): void {
   if (visited !== roleIds.length) {
     throw new ValidationError("Agent team graph contains a cycle");
   }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown };
+  return candidate.code === "P2002";
 }

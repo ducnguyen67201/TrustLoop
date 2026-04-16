@@ -6,7 +6,6 @@ import {
   ALL_ROLE_SLUGS,
   ROLE_DEFAULT_TOOLS,
   ROLE_LABELS,
-  STANDARD_CONNECTIONS,
   getRoleVisual,
 } from "@/components/settings/agent-team/role-metadata";
 import { TeamGraphView } from "@/components/settings/agent-team/team-graph-view";
@@ -20,6 +19,7 @@ import {
   type AddAgentTeamRoleInput,
   type AgentTeam,
   type AgentTeamRoleSlug,
+  type UpdateAgentTeamLayoutInput,
 } from "@shared/types";
 import { useCallback, useMemo, useRef, useState } from "react";
 
@@ -28,8 +28,10 @@ interface TeamDetailSectionProps {
   canManage: boolean;
   onAddRole: (input: AddAgentTeamRoleInput) => Promise<void>;
   onRemoveRole: (roleId: string) => Promise<void>;
-  onAddEdge: (input: AddAgentTeamEdgeInput) => Promise<void>;
-  onRemoveEdge: (edgeId: string) => Promise<void>;
+  onAddEdge: (input: AddAgentTeamEdgeInput) => Promise<AgentTeam>;
+  onRemoveEdge: (edgeId: string) => Promise<AgentTeam>;
+  onUpdateLayout: (input: UpdateAgentTeamLayoutInput) => Promise<AgentTeam>;
+  onReloadTeam: (teamId: string) => Promise<AgentTeam>;
 }
 
 /**
@@ -43,9 +45,10 @@ export function TeamDetailSection({
   onRemoveRole,
   onAddEdge,
   onRemoveEdge,
+  onUpdateLayout,
+  onReloadTeam,
 }: TeamDetailSectionProps) {
   const addRoleRef = useRef<HTMLButtonElement>(null);
-  const addEdgeRef = useRef<HTMLButtonElement>(null);
   const [isAssembling, setIsAssembling] = useState(false);
 
   const existingSlugs = useMemo(() => {
@@ -133,13 +136,15 @@ export function TeamDetailSection({
       <TeamGraphView
         team={team}
         canManage={canManage}
+        onAddEdge={onAddEdge}
         onRemoveRole={onRemoveRole}
         onRemoveEdge={onRemoveEdge}
+        onUpdateLayout={onUpdateLayout}
+        onReloadTeam={onReloadTeam}
         onOpenAddRole={() => addRoleRef.current?.click()}
-        onOpenAddEdge={() => addEdgeRef.current?.click()}
       />
 
-      {/* Agent dock — shows available roles to add */}
+      {/* Support rail — addable agents stay visible, but the graph remains the workbench */}
       {canManage && missingSlugs.length > 0 ? (
         <div className="border border-border bg-card">
           <div className="flex items-center justify-between px-4 py-2 border-b border-border">
@@ -196,7 +201,6 @@ export function TeamDetailSection({
       {/* Hidden dialog triggers (opened by graph floating buttons) */}
       <div className="hidden">
         <AddRoleDialog teamId={team.id} onAddRole={onAddRole} triggerRef={addRoleRef} />
-        <AddEdgeDialog team={team} onAddEdge={onAddEdge} triggerRef={addEdgeRef} />
       </div>
 
       {/* Compact roles table */}

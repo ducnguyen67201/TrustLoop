@@ -25,7 +25,7 @@ import { useMemo, useState } from "react";
 
 interface AddEdgeDialogProps {
   team: AgentTeam;
-  onAddEdge: (input: AddAgentTeamEdgeInput) => Promise<void>;
+  onAddEdge: (input: AddAgentTeamEdgeInput) => Promise<AgentTeam>;
   triggerRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
@@ -95,7 +95,7 @@ export function AddEdgeDialog({ team, onAddEdge, triggerRef }: AddEdgeDialogProp
       setOpen(false);
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "";
-      if (message.includes("Unique constraint")) {
+      if (message.includes("already exists") || message.includes("Unique constraint")) {
         setError("This connection already exists.");
       } else if (message.includes("cycle") || message.includes("acyclic")) {
         setError("This connection would create a circular dependency.");

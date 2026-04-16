@@ -51,6 +51,21 @@ export const agentTeamToolIdValues = [
 
 export const agentTeamToolIdSchema = z.enum(agentTeamToolIdValues);
 
+export const agentTeamRoleCanvasPositionSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+});
+
+export const agentTeamRoleMetadataSchema = z
+  .object({
+    canvas: z
+      .object({
+        position: agentTeamRoleCanvasPositionSchema.optional(),
+      })
+      .optional(),
+  })
+  .catchall(z.unknown());
+
 export const agentTeamRoleSchema = z.object({
   id: z.string().min(1),
   teamId: z.string().min(1),
@@ -63,7 +78,7 @@ export const agentTeamRoleSchema = z.object({
   systemPromptOverride: z.string().nullable().optional(),
   maxSteps: z.number().int().positive().max(32).default(8),
   sortOrder: z.number().int().min(0).default(0),
-  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  metadata: agentTeamRoleMetadataSchema.nullable().optional(),
 });
 
 export const agentTeamEdgeSchema = z.object({
@@ -156,9 +171,25 @@ export const removeAgentTeamEdgeInputSchema = z.object({
   edgeId: z.string().min(1),
 });
 
+export const updateAgentTeamLayoutInputSchema = z.object({
+  teamId: z.string().min(1),
+  expectedUpdatedAt: z.iso.datetime(),
+  positions: z
+    .array(
+      z.object({
+        roleId: z.string().min(1),
+        x: z.number().finite(),
+        y: z.number().finite(),
+      })
+    )
+    .min(1),
+});
+
 export type AgentTeamRunStatus = z.infer<typeof agentTeamRunStatusSchema>;
 export type AgentTeamRoleSlug = z.infer<typeof agentTeamRoleSlugSchema>;
 export type AgentTeamToolId = z.infer<typeof agentTeamToolIdSchema>;
+export type AgentTeamRoleCanvasPosition = z.infer<typeof agentTeamRoleCanvasPositionSchema>;
+export type AgentTeamRoleMetadata = z.infer<typeof agentTeamRoleMetadataSchema>;
 export type AgentTeam = z.infer<typeof agentTeamSchema>;
 export type ListAgentTeamsResponse = z.infer<typeof listAgentTeamsResponseSchema>;
 export type AgentTeamRole = z.infer<typeof agentTeamRoleSchema>;
@@ -174,3 +205,4 @@ export type UpdateAgentTeamRoleInput = z.infer<typeof updateAgentTeamRoleInputSc
 export type RemoveAgentTeamRoleInput = z.infer<typeof removeAgentTeamRoleInputSchema>;
 export type AddAgentTeamEdgeInput = z.infer<typeof addAgentTeamEdgeInputSchema>;
 export type RemoveAgentTeamEdgeInput = z.infer<typeof removeAgentTeamEdgeInputSchema>;
+export type UpdateAgentTeamLayoutInput = z.infer<typeof updateAgentTeamLayoutInputSchema>;

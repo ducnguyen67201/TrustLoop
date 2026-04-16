@@ -59,7 +59,6 @@ This works for a static showcase, but it is already fighting the product require
 - Persist role positions
 - Keep cycle validation on the server
 - Keep the current role and run concepts unchanged
-- Preserve the demo / live-state highlighting on top of the new graph
 
 ### Out of scope
 
@@ -101,7 +100,7 @@ Agent Teams settings
 └─ Right column: selected team workspace
    ├─ header: name, description, default badge, role/connection counts
    ├─ graph workbench
-   │  ├─ compact toolbar: Add role, Auto-layout, Demo
+   │  ├─ compact toolbar: Add role, Auto-layout, Read only
    │  ├─ React Flow canvas
    │  └─ inline trust/error states
    └─ lower support rail
@@ -217,6 +216,7 @@ Add a dedicated mutation for drag persistence. Do not overload the existing role
 ```ts
 updateAgentTeamLayoutInputSchema = z.object({
   teamId: z.string().min(1),
+  expectedUpdatedAt: z.iso.datetime(),
   positions: z
     .array(
       z.object({
@@ -231,13 +231,15 @@ updateAgentTeamLayoutInputSchema = z.object({
 
 Add:
 
-- `packages/rest/src/services/agent-team/layout-service.ts`
+- `updateLayout(...)` in [`role-service.ts`](/Users/ducng/Desktop/workspace/TrustLoop/packages/rest/src/services/agent-team/role-service.ts:1)
 - `agentTeam.updateLayout` in [`agent-team-router.ts`](/Users/ducng/Desktop/workspace/TrustLoop/packages/rest/src/agent-team-router.ts:1)
 
 Service behavior:
 
 - validate every `roleId` belongs to `teamId`
+- reject stale writes when `expectedUpdatedAt` no longer matches `AgentTeam.updatedAt`
 - update positions in a single Prisma transaction
+- preserve unknown metadata keys while updating `canvas.position`
 - return the refreshed `AgentTeam`
 
 ### 6.3 No Prisma migration required
@@ -258,9 +260,7 @@ Extract the current monolith into focused pieces:
 
 - `team-graph-view.tsx` — container + React Flow integration
 - `team-graph-role-node.tsx` — custom node renderer matching current cards
-- `team-graph-handoff-edge.tsx` — custom edge renderer with arrow + selected state
 - `team-graph-layout.ts` — role/edge -> dagre layout helpers
-- `use-team-graph-state.ts` — local node/edge state, optimistic updates, debounced save
 
 ### 7.3 React Flow mapping
 
@@ -284,27 +284,19 @@ Position source:
 
 ### Edges → edges
 
-Each `AgentTeamEdge` becomes a React Flow edge:
+Each `AgentTeamEdge` becomes a built-in React Flow edge using the durable DB ID: `edge.id`.
 
-```ts
-type AgentTeamHandoffEdgeData = {
-  edgeId: string;
-  sourceLabel: string;
-  targetLabel: string;
-};
-```
-
-React Flow edge IDs should use the durable DB ID: `edge.id`.
+Use built-in edge selection and deletion behavior for v1. Do not add a custom edge component.
 
 ### 7.4 Interaction model
 
 - `onConnect` → call `agentTeam.addEdge`
 - `onNodesDelete` → call `agentTeam.removeRole`
 - `onEdgesDelete` → call `agentTeam.removeEdge`
-- `onNodeDragStop` → debounce `agentTeam.updateLayout`
+- `onNodeDragStop` → call `agentTeam.updateLayout`
 - `fitView` on initial mount only
 
-Do not persist layout on every mousemove. Save on drag stop, plus a short debounce for multi-node reposition bursts.
+Do not persist layout on every mousemove. Save on drag stop only.
 
 ### 7.5 Toolbar and controls
 
@@ -312,7 +304,7 @@ Keep a compact operator toolbar anchored to the graph workbench:
 
 - `Add role`
 - `Auto-layout`
-- `Demo`
+- `Read only` chip when edit permissions are unavailable
 
 React Flow should provide:
 
@@ -326,7 +318,6 @@ Toolbar rules:
 
 - `Add role` is the primary action and should use the strongest accent treatment.
 - `Auto-layout` is secondary and should read like a utility action.
-- `Demo` is tertiary and visually de-emphasized so the editor does not feel like a toy.
 - The toolbar should not look like floating chrome for its own sake. Keep it compact and left-aligned to the workbench.
 
 ### 7.6 Visual style
@@ -341,19 +332,16 @@ Preserve the current dark-card aesthetic from the custom implementation:
 
 React Flow should provide the mechanics. It should not change the established visual language.
 
-### 7.7 Demo and live-run overlay
+### 7.7 Workbench status bar
 
-Preserve the current simulated/live affordances:
+The graph editor should explain its local state inline:
 
-- active node pulse/glow
-- edge animation while a handoff is in flight
-- transient caption bar
+- `Saving layout`
+- `Connection blocked` for cycle validation failures
+- `Layout changed elsewhere` for optimistic concurrency rejection
+- `Read only` guidance when edit actions are unavailable
 
-Implementation detail:
-
-- drive active node / active edge state through node and edge `data`
-- keep the demo script logic outside the canvas library
-- remove the custom SVG orb system entirely once edge animation is handled by React Flow state + CSS
+Use global toasts only as secondary confirmation. The primary feedback stays attached to the graph workbench.
 
 ## 8) Hook and State Changes
 
@@ -363,6 +351,7 @@ Add:
 
 - `updateLayout(input)` mutation method
 - local patching of the selected team's role metadata after a successful layout save
+- targeted `agentTeam.get` reload only for stale-write recovery
 
 Do not trigger a full `refresh()` after every drag persistence call.
 
@@ -380,17 +369,19 @@ Add:
 - `updateAgentTeamLayoutInputSchema`
 - exported `UpdateAgentTeamLayoutInput` type
 
-### New service
+### Role service
 
-Add:
+Modify:
 
-- `packages/rest/src/services/agent-team/layout-service.ts`
+- [`packages/rest/src/services/agent-team/role-service.ts`](/Users/ducng/Desktop/workspace/TrustLoop/packages/rest/src/services/agent-team/role-service.ts:1)
 
 Responsibilities:
 
-- authorize via existing workspace scope in the router
+- own `updateLayout(...)`
 - validate membership of all roles in the team
+- reject stale writes using `AgentTeam.updatedAt`
 - batch update metadata positions in `$transaction`
+- bump `AgentTeam.updatedAt` for graph mutations so the optimistic concurrency token stays meaningful
 
 ### Router
 
@@ -411,19 +402,18 @@ No workflow or agent-service changes are required for this migration.
 | File | Purpose |
 |---|---|
 | `apps/web/src/components/settings/agent-team/team-graph-role-node.tsx` | Custom React Flow node |
-| `apps/web/src/components/settings/agent-team/team-graph-handoff-edge.tsx` | Custom React Flow edge |
 | `apps/web/src/components/settings/agent-team/team-graph-layout.ts` | Dagre layout helpers |
-| `apps/web/src/components/settings/agent-team/use-team-graph-state.ts` | Local graph state + layout persistence |
 
 ### Modified files
 
 | File | Change |
 |---|---|
 | [`apps/web/src/components/settings/agent-team/team-graph-view.tsx`](/Users/ducng/Desktop/workspace/TrustLoop/apps/web/src/components/settings/agent-team/team-graph-view.tsx:1) | Replace custom SVG editor with React Flow |
-| [`apps/web/src/components/settings/agent-team/team-detail-section.tsx`](/Users/ducng/Desktop/workspace/TrustLoop/apps/web/src/components/settings/agent-team/team-detail-section.tsx:1) | Remove `AddEdgeDialog` as the primary interaction; add auto-layout action |
+| [`apps/web/src/components/settings/agent-team/team-detail-section.tsx`](/Users/ducng/Desktop/workspace/TrustLoop/apps/web/src/components/settings/agent-team/team-detail-section.tsx:1) | Keep the graph as the dominant workspace and retain `AddEdgeDialog` as a fallback in the support rail |
 | [`apps/web/src/hooks/use-agent-teams.ts`](/Users/ducng/Desktop/workspace/TrustLoop/apps/web/src/hooks/use-agent-teams.ts:1) | Add `updateLayout` mutation and avoid full refetch on drag save |
 | [`packages/types/src/agent-team/agent-team-core.schema.ts`](/Users/ducng/Desktop/workspace/TrustLoop/packages/types/src/agent-team/agent-team-core.schema.ts:1) | Add typed metadata + layout input schema |
 | [`packages/rest/src/agent-team-router.ts`](/Users/ducng/Desktop/workspace/TrustLoop/packages/rest/src/agent-team-router.ts:1) | Add `updateLayout` procedure |
+| [`packages/rest/src/services/agent-team/role-service.ts`](/Users/ducng/Desktop/workspace/TrustLoop/packages/rest/src/services/agent-team/role-service.ts:1) | Persist layout and enforce optimistic concurrency |
 
 ## 11) Dependency Changes
 
@@ -455,9 +445,9 @@ Preferred path:
 
 ### Phase 3: UX cleanup
 
-- remove `AddEdgeDialog` from the main path
+- keep `AddEdgeDialog` as a fallback, not the main path
 - add auto-layout button
-- polish active/demo states
+- add inline graph status states for save, conflict, and connect errors
 
 This should land behind the existing agent-team settings page without a feature flag unless QA exposes regressions.
 
@@ -466,8 +456,9 @@ This should land behind the existing agent-team settings page without a feature 
 ### Unit
 
 - role metadata schema accepts legacy null metadata and new canvas positions
+- role service preserves unknown metadata keys when saving `canvas.position`
 - layout helper returns stable positions for disconnected and connected graphs
-- `layout-service` rejects cross-team role IDs
+- role service rejects stale layout writes
 
 ### Integration
 
@@ -498,7 +489,8 @@ This should land behind the existing agent-team settings page without a feature 
 - [ ] Users can create edges directly by dragging between roles
 - [ ] Users can drag roles and reload without losing layout
 - [ ] Existing server-side cycle protection remains intact
-- [ ] Current role-card look and demo/live states are preserved
+- [ ] Graph workbench shows inline save / conflict / connect-error states
+- [ ] Current role-card look is preserved without the old custom SVG system
 - [ ] Tests cover layout persistence and basic graph interactions
 
 ## GSTACK REVIEW REPORT

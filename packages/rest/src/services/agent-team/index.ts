@@ -5,6 +5,7 @@ export {
 export {
   add as addAgentTeamRole,
   remove as removeAgentTeamRole,
+  updateLayout as updateAgentTeamLayout,
   update as updateAgentTeamRole,
 } from "@shared/rest/services/agent-team/role-service";
 export {
