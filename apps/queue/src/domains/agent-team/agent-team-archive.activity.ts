@@ -5,9 +5,11 @@ import { heartbeat } from "@temporalio/activity";
 
 // How many months of future partitions to keep warm. Nightly rotation creates
 // future partitions proactively so inserts never hit a missing range. Six
-// months of forward margin tolerates a ~5-month scheduler outage before insert
-// failures start — the DEFAULT partition added by migration 20260416 catches
-// anything past that as a last-resort safety net.
+// months of forward margin tolerates a multi-month scheduler outage before
+// insert failures start. We intentionally do not also add a DEFAULT
+// partition — having rows in a default partition later makes CREATE TABLE …
+// PARTITION OF … FOR VALUES FROM … fail on any overlapping range, which
+// turns a recoverable situation into a manual-intervention one.
 const FUTURE_PARTITIONS_TO_KEEP = 6;
 
 // Parent table whose partitions we manage. Partition naming pattern:

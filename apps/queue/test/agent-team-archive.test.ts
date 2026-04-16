@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertSafePartitionName,
   cutoffDate,
   monthBoundary,
   parsePartitionBound,
@@ -58,5 +59,19 @@ describe("partitionName", () => {
     expect(partitionName(new Date("2026-01-01T00:00:00Z"))).toBe("AgentTeamRunEvent_202601");
     expect(partitionName(new Date("2026-09-01T00:00:00Z"))).toBe("AgentTeamRunEvent_202609");
     expect(partitionName(new Date("2026-12-01T00:00:00Z"))).toBe("AgentTeamRunEvent_202612");
+  });
+});
+
+describe("assertSafePartitionName", () => {
+  it("accepts the managed partition shape", () => {
+    expect(() => assertSafePartitionName("AgentTeamRunEvent_202604")).not.toThrow();
+  });
+
+  it("rejects any name that could smuggle SQL through raw DDL", () => {
+    expect(() => assertSafePartitionName('"; DROP TABLE "AgentTeamRunEvent" --')).toThrow();
+    expect(() => assertSafePartitionName("agentteamrunevent_202604")).toThrow();
+    expect(() => assertSafePartitionName("AgentTeamRunEvent_2026-04")).toThrow();
+    expect(() => assertSafePartitionName("AgentTeamRunEvent_")).toThrow();
+    expect(() => assertSafePartitionName("")).toThrow();
   });
 });
