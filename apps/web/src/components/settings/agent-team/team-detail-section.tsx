@@ -12,7 +12,7 @@ import { TeamGraphView } from "@/components/settings/agent-team/team-graph-view"
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RiArrowRightSLine, RiDeleteBinLine, RiFlashlightLine } from "@remixicon/react";
+import { RiFlashlightLine } from "@remixicon/react";
 import {
   AGENT_PROVIDER,
   type AddAgentTeamEdgeInput,
@@ -85,15 +85,6 @@ export function TeamDetailSection({
       for (const slug of missingSlugs) {
         await addSingleRole(slug);
       }
-
-      // Small delay to let state refresh after roles are created, then
-      // we need fresh role IDs to create edges.  The hook refetches after
-      // each addRole, so at this point the team data may be stale.  We
-      // skip edge creation here and let the user add connections via the
-      // dialog since we'd need the refreshed role IDs.
-      //
-      // In practice, a dedicated "assembleTeam" backend endpoint would be
-      // better.  For now, adding all roles is the main value.
     } finally {
       setIsAssembling(false);
     }
@@ -114,25 +105,34 @@ export function TeamDetailSection({
 
   return (
     <div className="space-y-4">
-      {/* Team header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
+      {/* Team header — one row of stats, no fake dividers */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">{team.name}</h2>
             {team.isDefault ? <Badge variant="secondary">Default</Badge> : null}
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {team.description || "No description provided."}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{team.roles.length} roles</span>
-          <span className="text-border">|</span>
-          <span>{team.edges.length} connections</span>
-        </div>
+        <dl className="flex shrink-0 items-center gap-5 text-xs text-muted-foreground">
+          <div className="flex flex-col">
+            <dt className="uppercase tracking-wide">Roles</dt>
+            <dd className="text-base font-medium tabular-nums text-foreground">
+              {team.roles.length}
+            </dd>
+          </div>
+          <div className="flex flex-col">
+            <dt className="uppercase tracking-wide">Connections</dt>
+            <dd className="text-base font-medium tabular-nums text-foreground">
+              {team.edges.length}
+            </dd>
+          </div>
+        </dl>
       </div>
 
-      {/* Visual graph */}
+      {/* Graph is the workbench — primary interaction surface */}
       <TeamGraphView
         team={team}
         canManage={canManage}
@@ -144,210 +144,71 @@ export function TeamDetailSection({
         onOpenAddRole={() => addRoleRef.current?.click()}
       />
 
-      {/* Support rail — addable agents stay visible, but the graph remains the workbench */}
-      {canManage && missingSlugs.length > 0 ? (
-        <div className="border border-border bg-card">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-            <span className="text-[0.65rem] uppercase tracking-widest text-muted-foreground font-medium">
-              Available Agents
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 text-[0.65rem]"
-              disabled={isAssembling}
-              onClick={() => void autoAssemble()}
-            >
-              <RiFlashlightLine className="w-3 h-3 mr-1" />
-              {isAssembling ? "Assembling..." : "Auto-Assemble Team"}
-            </Button>
-          </div>
-          <div className="flex gap-2 p-3 overflow-x-auto">
-            {missingSlugs.map((slug) => {
-              const visual = getRoleVisual(slug);
-              const Icon = visual.icon;
-              return (
-                <button
-                  key={slug}
-                  type="button"
-                  className="shrink-0 w-44 border border-border bg-background p-3 text-left transition-colors hover:border-primary/50 group"
-                  onClick={() => void addSingleRole(slug)}
+      {/* Compact action rail: quick-add agents + fallback connection dialog */}
+      {canManage ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4 py-3">
+            <div>
+              <CardTitle className="text-sm">
+                {missingSlugs.length > 0 ? "Add an agent" : "Roster complete"}
+              </CardTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {missingSlugs.length > 0
+                  ? `${missingSlugs.length} role${missingSlugs.length === 1 ? "" : "s"} available · drag between role ports to connect`
+                  : "All default roles added · drag between role ports to connect"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {missingSlugs.length > 0 ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isAssembling}
+                  onClick={() => void autoAssemble()}
                 >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div
-                      className="flex items-center justify-center w-5 h-5 rounded-full"
-                      style={{ backgroundColor: `${visual.color}1a`, color: visual.color }}
+                  <RiFlashlightLine className="mr-1.5 size-3.5" />
+                  {isAssembling ? "Assembling…" : "Auto-assemble"}
+                </Button>
+              ) : null}
+              <AddEdgeDialog team={team} onAddEdge={onAddEdge} />
+            </div>
+          </CardHeader>
+          {missingSlugs.length > 0 ? (
+            <CardContent className="flex flex-wrap gap-2 pb-4">
+              {missingSlugs.map((slug) => {
+                const visual = getRoleVisual(slug);
+                const Icon = visual.icon;
+                const accent = `color-mix(in oklch, ${visual.color} 14%, transparent)`;
+                return (
+                  <button
+                    key={slug}
+                    type="button"
+                    className="group inline-flex items-center gap-2 border border-border bg-background px-3 py-1.5 text-sm transition-colors hover:border-foreground/40"
+                    onClick={() => void addSingleRole(slug)}
+                    title={visual.flavorText}
+                  >
+                    <span
+                      className="flex size-5 items-center justify-center"
+                      style={{ backgroundColor: accent, color: visual.color }}
                     >
-                      <Icon className="w-3 h-3" />
-                    </div>
-                    <span className="text-xs font-medium uppercase">{ROLE_LABELS[slug]}</span>
-                  </div>
-                  <p className="text-[0.6rem] italic mb-1" style={{ color: `${visual.color}aa` }}>
-                    {visual.archetype}
-                  </p>
-                  <p className="text-[0.55rem] text-muted-foreground leading-relaxed line-clamp-2">
-                    {visual.flavorText}
-                  </p>
-                  <p className="text-[0.55rem] text-muted-foreground mt-1.5 group-hover:text-foreground transition-colors">
-                    Click to add
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                      <Icon className="size-3" />
+                    </span>
+                    <span className="font-medium">{ROLE_LABELS[slug]}</span>
+                    <span className="text-xs text-muted-foreground group-hover:text-foreground">
+                      + Add
+                    </span>
+                  </button>
+                );
+              })}
+            </CardContent>
+          ) : null}
+        </Card>
       ) : null}
 
-      {/* Hidden dialog triggers (opened by graph floating buttons) */}
+      {/* Hidden dialog trigger driven by graph toolbar */}
       <div className="hidden">
         <AddRoleDialog teamId={team.id} onAddRole={onAddRole} triggerRef={addRoleRef} />
       </div>
-
-      {/* Compact roles table */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 py-3">
-          <CardTitle className="text-sm">Roles</CardTitle>
-          {canManage ? <AddRoleDialog teamId={team.id} onAddRole={onAddRole} /> : null}
-        </CardHeader>
-        {team.roles.length > 0 ? (
-          <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {team.roles.map((role) => {
-                const visual = getRoleVisual(role.slug);
-                const Icon = visual.icon;
-
-                return (
-                  <div key={role.id} className="flex items-center gap-3 px-4 py-2.5 text-sm group">
-                    <div
-                      className="flex items-center justify-center w-6 h-6 rounded-full shrink-0"
-                      style={{
-                        backgroundColor: `${visual.color}1a`,
-                        color: visual.color,
-                      }}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium truncate">{role.label}</span>
-                        <Badge variant="outline" className="text-[0.6rem] px-1.5 py-0 shrink-0">
-                          {role.slug}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {role.model ? (
-                        <Badge variant="secondary" className="text-[0.6rem]">
-                          {role.model}
-                        </Badge>
-                      ) : null}
-                      {role.toolIds.map((toolId) => (
-                        <Badge key={toolId} variant="outline" className="text-[0.6rem]">
-                          {toolId}
-                        </Badge>
-                      ))}
-                      <span className="text-xs text-muted-foreground ml-1">
-                        {role.maxSteps} steps
-                      </span>
-                    </div>
-                    {canManage ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={() => void onRemoveRole(role.id)}
-                      >
-                        <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
-                      </Button>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        ) : (
-          <CardContent>
-            <p className="text-sm text-muted-foreground border border-dashed p-3">
-              No roles yet. Use the dock above or click &quot;Add role&quot; to get started.
-            </p>
-          </CardContent>
-        )}
-      </Card>
-
-      {/* Compact connections table */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 py-3">
-          <CardTitle className="text-sm">Connections</CardTitle>
-          {canManage ? <AddEdgeDialog team={team} onAddEdge={onAddEdge} /> : null}
-        </CardHeader>
-        {team.edges.length > 0 ? (
-          <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {team.edges.map((edge) => {
-                const sourceRole = team.roles.find((r) => r.id === edge.sourceRoleId);
-                const targetRole = team.roles.find((r) => r.id === edge.targetRoleId);
-                const sourceVisual = sourceRole ? getRoleVisual(sourceRole.slug) : null;
-                const targetVisual = targetRole ? getRoleVisual(targetRole.slug) : null;
-
-                return (
-                  <div key={edge.id} className="flex items-center gap-2 px-4 py-2.5 text-sm group">
-                    {sourceVisual ? (
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: sourceVisual.color }}
-                        />
-                        <span className="font-medium">
-                          {sourceRole?.label ?? edge.sourceRoleId}
-                        </span>
-                      </span>
-                    ) : (
-                      <span>{edge.sourceRoleId}</span>
-                    )}
-
-                    <RiArrowRightSLine className="w-4 h-4 text-muted-foreground shrink-0" />
-
-                    {targetVisual ? (
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: targetVisual.color }}
-                        />
-                        <span className="font-medium">
-                          {targetRole?.label ?? edge.targetRoleId}
-                        </span>
-                      </span>
-                    ) : (
-                      <span>{edge.targetRoleId}</span>
-                    )}
-
-                    <span className="flex-1" />
-
-                    <span className="text-xs text-muted-foreground">can message</span>
-
-                    {canManage ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={() => void onRemoveEdge(edge.id)}
-                      >
-                        <RiDeleteBinLine className="w-3.5 h-3.5 text-destructive" />
-                      </Button>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        ) : (
-          <CardContent>
-            <p className="text-sm text-muted-foreground border border-dashed p-3">
-              No connections yet. Connect roles to enable communication between agents.
-            </p>
-          </CardContent>
-        )}
-      </Card>
     </div>
   );
 }
