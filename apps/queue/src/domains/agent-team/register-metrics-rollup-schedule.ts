@@ -1,5 +1,5 @@
 import { env } from "@shared/env";
-import { Client, Connection } from "@temporalio/client";
+import { Client, type Connection } from "@temporalio/client";
 
 const SCHEDULE_ID = "agent-team-metrics-rollup";
 // Daily at 01:00 UTC — runs before archive so archive has metrics rolled up
@@ -7,14 +7,13 @@ const SCHEDULE_ID = "agent-team-metrics-rollup";
 const CRON_EXPRESSION = "0 1 * * *";
 
 /**
- * Register (or update) the Temporal schedule for the per-workspace metrics
- * rollup. Run once during deployment:
- *   npx tsx apps/queue/src/domains/agent-team/register-metrics-rollup-schedule.ts
+ * Idempotently register (or update) the Temporal schedule for the per-workspace
+ * metrics rollup. Safe to call repeatedly — used from worker startup so the
+ * rollup schedule cannot silently be missing on a fresh deploy.
  */
-async function main(): Promise<void> {
-  const connection = await Connection.connect({ address: env.TEMPORAL_ADDRESS });
-  const client = new Client({ connection, namespace: env.TEMPORAL_NAMESPACE });
-
+export async function registerAgentTeamMetricsRollupSchedule(
+  client: Client
+): Promise<{ existed: boolean }> {
   let alreadyExists = false;
   for await (const schedule of client.schedule.list()) {
     if (schedule.scheduleId === SCHEDULE_ID) {
@@ -29,26 +28,38 @@ async function main(): Promise<void> {
       ...prev,
       spec: { cronExpressions: [CRON_EXPRESSION] },
     }));
-    console.log(`Updated schedule "${SCHEDULE_ID}" → ${CRON_EXPRESSION}`);
-  } else {
-    await client.schedule.create({
-      scheduleId: SCHEDULE_ID,
-      spec: { cronExpressions: [CRON_EXPRESSION] },
-      action: {
-        type: "startWorkflow",
-        workflowType: "agentTeamMetricsRollupWorkflow",
-        taskQueue: env.TEMPORAL_TASK_QUEUE,
-        args: [{}],
-      },
-    });
-    console.log(`Created schedule "${SCHEDULE_ID}" → ${CRON_EXPRESSION}`);
+    return { existed: true };
   }
 
-  console.log("Agent-team metrics rollup will run daily at 01:00 UTC.");
+  await client.schedule.create({
+    scheduleId: SCHEDULE_ID,
+    spec: { cronExpressions: [CRON_EXPRESSION] },
+    action: {
+      type: "startWorkflow",
+      workflowType: "agentTeamMetricsRollupWorkflow",
+      taskQueue: env.TEMPORAL_TASK_QUEUE,
+      args: [{}],
+    },
+  });
+  return { existed: false };
+}
+
+async function main(): Promise<void> {
+  const { Connection } = await import("@temporalio/client");
+  const connection: Connection = await Connection.connect({ address: env.TEMPORAL_ADDRESS });
+  const client = new Client({ connection, namespace: env.TEMPORAL_NAMESPACE });
+
+  const { existed } = await registerAgentTeamMetricsRollupSchedule(client);
+  console.log(
+    `${existed ? "Updated" : "Created"} schedule "${SCHEDULE_ID}" → ${CRON_EXPRESSION} ` +
+      `(queue ${env.TEMPORAL_TASK_QUEUE})`
+  );
   await connection.close();
 }
 
-main().catch((err: unknown) => {
-  console.error("Failed to register agent-team metrics rollup schedule:", err);
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err: unknown) => {
+    console.error("Failed to register agent-team metrics rollup schedule:", err);
+    process.exit(1);
+  });
+}

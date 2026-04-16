@@ -1,15 +1,25 @@
+import { once } from "node:events";
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
 import { heartbeat } from "@temporalio/activity";
 
 // How many months of future partitions to keep warm. Nightly rotation creates
-// the next month's partition proactively so inserts never hit a missing range.
-const FUTURE_PARTITIONS_TO_KEEP = 3;
+// future partitions proactively so inserts never hit a missing range. Six
+// months of forward margin tolerates a ~5-month scheduler outage before insert
+// failures start — the DEFAULT partition added by migration 20260416 catches
+// anything past that as a last-resort safety net.
+const FUTURE_PARTITIONS_TO_KEEP = 6;
 
 // Parent table whose partitions we manage. Partition naming pattern:
 // "AgentTeamRunEvent_YYYYMM". Partition boundaries are first-of-month UTC.
 const PARENT_TABLE = "AgentTeamRunEvent";
 const PARTITION_PREFIX = "AgentTeamRunEvent_";
+
+// Defense-in-depth: every identifier spliced into raw DDL must match this
+// shape. Even though names are catalog-derived or built from Date math, a
+// future refactor that pipes user/config input through partitionName() must
+// not be able to emit arbitrary SQL.
+const PARTITION_NAME_PATTERN = /^AgentTeamRunEvent_\d{6}$/;
 
 // Batch size for streaming archived rows to stdout. Partition size will vary;
 // 1,000 rows per batch keeps memory flat without stalling stdout.
@@ -18,9 +28,16 @@ const ARCHIVE_BATCH_ROWS = 1000;
 export interface ArchiveResult {
   partitionsDropped: number;
   partitionsCreated: number;
+  partitionsSkipped: number;
   rowsArchived: number;
   retentionDays: number;
-  archiveBucket: string | null;
+  archiveMode: typeof env.AGENT_ARCHIVE_MODE;
+}
+
+interface SkippedPartition {
+  name: string;
+  reason: "archive-mode-keep" | "rollup-incomplete";
+  detail?: string;
 }
 
 export interface PartitionInfo {
@@ -36,11 +53,17 @@ export interface PartitionInfo {
  *
  * 1. List every existing monthly partition attached to the parent table.
  * 2. For any partition whose upperExclusive boundary is at or before
- *    (now - retentionDays), stream its rows to stdout as JSONL tagged
- *    with the partition name, then DROP PARTITION. The log pipeline
- *    catches the JSONL and ships it to archival storage (currently
- *    stdout-based; AWS_AGENT_ARCHIVE_BUCKET will gate a future direct
- *    S3 upload path).
+ *    (now - retentionDays), try to archive-and-drop it. Two safety gates
+ *    decide whether the DROP actually runs:
+ *      (a) AGENT_ARCHIVE_MODE must be a mode that permits drops. "keep"
+ *          (the default) never drops; "unsafe-stdout-only" drops after
+ *          streaming rows to stdout as JSONL and is only safe if a durable
+ *          log sink captures stdout.
+ *      (b) The per-workspace daily metrics rollup must have processed every
+ *          UTC day the partition covers. If not, keeping the partition is
+ *          the only way to let a future rollup backfill succeed.
+ *    Partitions that fail either gate are kept (no DROP) and counted as
+ *    `partitionsSkipped` with a log line explaining the reason.
  * 3. Ensure the next FUTURE_PARTITIONS_TO_KEEP months have partitions
  *    so that inserts never hit a missing range.
  */
@@ -53,13 +76,24 @@ export async function archiveAgentTeamEvents(input?: {
   const retentionDays = input?.retentionDays ?? 30;
   const now = input?.now ?? new Date();
   const cutoff = cutoffDate(now, retentionDays);
+  const archiveMode = env.AGENT_ARCHIVE_MODE;
 
   const partitions = await listPartitions();
   const eligibleForDrop = partitions.filter((p) => p.upperExclusive.getTime() <= cutoff.getTime());
 
+  const skipped: SkippedPartition[] = [];
   let rowsArchived = 0;
+  let partitionsDropped = 0;
+
   for (const partition of eligibleForDrop) {
-    rowsArchived += await archiveAndDropPartition(partition);
+    const gate = await shouldDropPartition(partition, archiveMode);
+    if (gate.ok) {
+      rowsArchived += await archiveAndDropPartition(partition);
+      partitionsDropped += 1;
+    } else {
+      skipped.push({ name: partition.tableName, reason: gate.reason, detail: gate.detail });
+      logSkippedPartition(partition, gate);
+    }
     heartbeat();
   }
 
@@ -77,12 +111,82 @@ export async function archiveAgentTeamEvents(input?: {
   }
 
   return {
-    partitionsDropped: eligibleForDrop.length,
+    partitionsDropped,
     partitionsCreated,
+    partitionsSkipped: skipped.length,
     rowsArchived,
     retentionDays,
-    archiveBucket: env.AWS_AGENT_ARCHIVE_BUCKET ?? null,
+    archiveMode,
   };
+}
+
+/**
+ * Decide whether a partition may be dropped right now. Fail-closed: if either
+ * gate rejects, the caller keeps the partition. Reasons are surfaced via the
+ * result so operators can diagnose retention lag without scraping logs.
+ */
+async function shouldDropPartition(
+  partition: PartitionInfo,
+  archiveMode: typeof env.AGENT_ARCHIVE_MODE
+): Promise<{ ok: true } | { ok: false; reason: SkippedPartition["reason"]; detail?: string }> {
+  if (archiveMode === "keep") {
+    return { ok: false, reason: "archive-mode-keep" };
+  }
+
+  const watermark = await rollupWatermarkCoversPartition(partition);
+  if (!watermark.covered) {
+    return {
+      ok: false,
+      reason: "rollup-incomplete",
+      detail: `rollup processed through ${watermark.latestRolledUpDay ?? "never"}; partition needs coverage through ${isoDate(new Date(partition.upperExclusive.getTime() - 24 * 60 * 60 * 1000))}`,
+    };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Returns whether the daily workspace metrics rollup has processed every UTC
+ * day inside `[partition.lowerInclusive, partition.upperExclusive)`. The
+ * archive refuses to drop rows the rollup still owes — a rollup outage during
+ * retention would otherwise silently blank the metrics for those days.
+ *
+ * "Covered" means `MAX(day)` in WorkspaceAgentMetrics is at least the
+ * partition's last UTC day. This is a cheap single-row read.
+ */
+async function rollupWatermarkCoversPartition(
+  partition: PartitionInfo
+): Promise<{ covered: boolean; latestRolledUpDay: string | null }> {
+  const rows = await prisma.$queryRawUnsafe<{ max_day: Date | null }[]>(
+    'SELECT MAX("day") AS max_day FROM "WorkspaceAgentMetrics"'
+  );
+  const maxDay = rows[0]?.max_day ?? null;
+  if (!maxDay) {
+    return { covered: false, latestRolledUpDay: null };
+  }
+
+  // partition covers days [lo, upperExclusive). Last covered UTC day is upper-1d.
+  const lastCoveredDay = new Date(partition.upperExclusive.getTime() - 24 * 60 * 60 * 1000);
+  const covered = maxDay.getTime() >= lastCoveredDay.getTime();
+  return { covered, latestRolledUpDay: isoDate(maxDay) };
+}
+
+function logSkippedPartition(
+  partition: PartitionInfo,
+  gate: { reason: SkippedPartition["reason"]; detail?: string }
+): void {
+  process.stdout.write(
+    `${JSON.stringify({
+      level: "warn",
+      component: "agent-team-archive",
+      event: "partition_drop_skipped",
+      partition: partition.tableName,
+      reason: gate.reason,
+      detail: gate.detail ?? null,
+      lowerInclusive: partition.lowerInclusive.toISOString(),
+      upperExclusive: partition.upperExclusive.toISOString(),
+    })}\n`
+  );
 }
 
 async function listPartitions(): Promise<PartitionInfo[]> {
@@ -114,8 +218,12 @@ async function listPartitions(): Promise<PartitionInfo[]> {
 
 async function archiveAndDropPartition(partition: PartitionInfo): Promise<number> {
   // Read rows in batches so we never materialize a whole month in memory.
-  // Emit each row as JSONL on stdout tagged with the partition name so the
-  // log pipeline can group archived rows by partition.
+  // One stdout.write per batch (not per row) so the downstream log pipeline
+  // sees coherent chunks, and `await once(stdout, 'drain')` on backpressure
+  // so we don't silently discard batches when the pipe is full. Per-row
+  // writes here are the exact footgun that lost data under backpressure.
+  assertSafePartitionName(partition.tableName);
+
   let total = 0;
   let lastTs: Date | null = null;
   let lastId: string | null = null;
@@ -123,17 +231,22 @@ async function archiveAndDropPartition(partition: PartitionInfo): Promise<number
   while (true) {
     const batch = await readPartitionBatch(partition, lastTs, lastId);
     if (batch.length === 0) break;
-    for (const row of batch) {
-      process.stdout.write(
-        `${JSON.stringify({
+
+    const chunk = batch
+      .map((row) =>
+        JSON.stringify({
           level: "info",
           component: "agent-team-archive",
           partition: partition.tableName,
           event: "archived_row",
           row,
-        })}\n`
-      );
+        })
+      )
+      .join("\n");
+    if (!process.stdout.write(`${chunk}\n`)) {
+      await once(process.stdout, "drain");
     }
+
     total += batch.length;
     const last = batch.at(-1);
     if (!last) break;
@@ -154,6 +267,7 @@ async function archiveAndDropPartition(partition: PartitionInfo): Promise<number
       rowsArchived: total,
       lowerInclusive: partition.lowerInclusive.toISOString(),
       upperExclusive: partition.upperExclusive.toISOString(),
+      archiveMode: env.AGENT_ARCHIVE_MODE,
       bucket: env.AWS_AGENT_ARCHIVE_BUCKET ?? null,
     })}\n`
   );
@@ -209,10 +323,29 @@ async function readPartitionBatch(
 }
 
 async function createPartition(name: string, lo: Date, hi: Date): Promise<void> {
+  assertSafePartitionName(name);
   await prisma.$executeRawUnsafe(
     `CREATE TABLE IF NOT EXISTS "${name}" PARTITION OF "${PARENT_TABLE}"
      FOR VALUES FROM ('${toDateOnly(lo)}') TO ('${toDateOnly(hi)}')`
   );
+}
+
+/**
+ * Validate that an identifier is one of our own managed partition names
+ * before interpolating it into raw DDL. This is defense-in-depth — callers
+ * today derive names from pg_class or from Date math, but a future refactor
+ * must not be able to introduce identifier injection via this path.
+ */
+export function assertSafePartitionName(name: string): void {
+  if (!PARTITION_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `agent-team-archive: refused to execute DDL on unsafe partition name ${JSON.stringify(name)}`
+    );
+  }
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 /**

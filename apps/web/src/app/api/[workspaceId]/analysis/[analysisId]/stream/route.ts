@@ -1,3 +1,4 @@
+import { authorizeWorkspaceMembership } from "@shared/rest/security/session";
 import * as analysisStream from "@shared/rest/services/support/analysis-stream-service";
 import type { NextRequest } from "next/server";
 
@@ -7,13 +8,21 @@ import type { NextRequest } from "next/server";
  * GET /api/{workspaceId}/analysis/{analysisId}/stream
  *
  * Returns a Server-Sent Events stream that emits tool_call, tool_result,
- * and complete/error events as the AI agent investigates.
+ * and complete/error events as the AI agent investigates. Requires an
+ * authenticated session whose user is a member of `workspaceId`.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ workspaceId: string; analysisId: string }> }
 ) {
-  const { analysisId } = await params;
+  const { workspaceId, analysisId } = await params;
+
+  const authResult = await authorizeWorkspaceMembership(request, workspaceId);
+  if (!authResult.ok) {
+    return new Response(authResult.status === 401 ? "Unauthorized" : "Forbidden", {
+      status: authResult.status,
+    });
+  }
 
   const stream = new ReadableStream({
     async start(controller) {

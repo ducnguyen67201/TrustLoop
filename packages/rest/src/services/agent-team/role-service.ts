@@ -129,6 +129,9 @@ export async function updateLayout(
   const parsed = updateAgentTeamLayoutInputSchema.parse(input);
   const team = await teams.get(workspaceId, parsed.teamId);
 
+  // Early reject saves a round trip when the client is obviously stale. The
+  // authoritative check runs atomically inside the transaction below, which
+  // is what actually prevents concurrent writers from both winning.
   if (team.updatedAt !== parsed.expectedUpdatedAt) {
     throw new ConflictError("Layout changed elsewhere. Reload positions and try again.");
   }
@@ -149,6 +152,21 @@ export async function updateLayout(
   }
 
   await prisma.$transaction(async (tx) => {
+    // Conditional bump is the actual concurrency gate: updateMany with
+    // expectedUpdatedAt in the WHERE clause touches 0 rows if another writer
+    // already bumped the team, and the zero-count branch throws.
+    const bump = await tx.agentTeam.updateMany({
+      where: {
+        id: parsed.teamId,
+        updatedAt: new Date(parsed.expectedUpdatedAt),
+      },
+      data: { updatedAt: new Date() },
+    });
+
+    if (bump.count !== 1) {
+      throw new ConflictError("Layout changed elsewhere. Reload positions and try again.");
+    }
+
     for (const position of parsed.positions) {
       const role = rolesById.get(position.roleId);
       if (!role) {
@@ -165,11 +183,6 @@ export async function updateLayout(
         },
       });
     }
-
-    await tx.agentTeam.update({
-      where: { id: parsed.teamId },
-      data: { updatedAt: new Date() },
-    });
   });
 
   return teams.get(workspaceId, parsed.teamId);

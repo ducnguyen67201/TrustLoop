@@ -222,3 +222,39 @@ export function assertCsrf(request: Request, csrfToken: string): boolean {
 
   return provided === csrfToken;
 }
+
+export type WorkspaceMembershipAuthResult =
+  | { ok: true; session: SessionContextRecord; userId: string; workspaceId: string }
+  | { ok: false; status: 401 | 403 };
+
+/**
+ * Verify that the inbound request carries a valid session for a user who
+ * belongs to `workspaceId`. Intended for API routes (SSE handlers especially)
+ * that cannot use the tRPC workspaceMembership middleware. Returns a discriminated
+ * result so streaming routes can return an error Response without importing
+ * NextResponse into this security module.
+ */
+export async function authorizeWorkspaceMembership(
+  request: Request,
+  workspaceId: string
+): Promise<WorkspaceMembershipAuthResult> {
+  const session = await resolveSessionFromRequest(request);
+  if (!session) {
+    return { ok: false, status: 401 };
+  }
+
+  const membership = await prisma.workspaceMembership.findFirst({
+    where: {
+      userId: session.userId,
+      workspaceId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    return { ok: false, status: 403 };
+  }
+
+  return { ok: true, session, userId: session.userId, workspaceId };
+}

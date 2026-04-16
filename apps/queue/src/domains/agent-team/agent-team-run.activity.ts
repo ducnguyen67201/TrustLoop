@@ -8,9 +8,11 @@ import {
 import { type Prisma, prisma } from "@shared/database";
 import { env } from "@shared/env";
 import {
+  computeRunRollup,
   logRecordedEvents,
   recordEvent,
   recordEvents,
+  serializeRunRollup,
 } from "@shared/rest/services/agent-team/run-event-service";
 import type { AgentTeamRunEventDraft } from "@shared/types";
 import {
@@ -531,7 +533,8 @@ export async function markRunCompleted(runId: string): Promise<void> {
       select: { id: true, workspaceId: true, startedAt: true, completedAt: true },
     });
     const messageCount = await tx.agentTeamMessage.count({ where: { runId } });
-    return recordEvent(tx, {
+
+    const recordedEvent = await recordEvent(tx, {
       kind: AGENT_TEAM_EVENT_KIND.runSucceeded,
       runId: run.id,
       workspaceId: run.workspaceId,
@@ -541,6 +544,22 @@ export async function markRunCompleted(runId: string): Promise<void> {
         messageCount,
       },
     });
+
+    // Cache the per-role rollup on AgentTeamRun.summary so the UI summary card
+    // can render in O(1) without aggregating events on every request. Computed
+    // after the run_succeeded event so its own row is counted.
+    const rollup = await computeRunRollup(tx, {
+      runId: run.id,
+      status: AGENT_TEAM_RUN_STATUS.completed,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+    });
+    await tx.agentTeamRun.update({
+      where: { id: run.id },
+      data: { summary: serializeRunRollup(rollup) },
+    });
+
+    return recordedEvent;
   });
   logRecordedEvents([event]);
 }
@@ -569,7 +588,8 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
       select: { id: true, workspaceId: true, startedAt: true, completedAt: true },
     });
     const messageCount = await tx.agentTeamMessage.count({ where: { runId: input.runId } });
-    return recordEvent(tx, {
+
+    const recordedEvent = await recordEvent(tx, {
       kind: AGENT_TEAM_EVENT_KIND.runFailed,
       runId: run.id,
       workspaceId: run.workspaceId,
@@ -580,6 +600,19 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
         errorMessage: input.errorMessage,
       },
     });
+
+    const rollup = await computeRunRollup(tx, {
+      runId: run.id,
+      status: AGENT_TEAM_RUN_STATUS.failed,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+    });
+    await tx.agentTeamRun.update({
+      where: { id: run.id },
+      data: { summary: serializeRunRollup(rollup) },
+    });
+
+    return recordedEvent;
   });
   logRecordedEvents([event]);
 }

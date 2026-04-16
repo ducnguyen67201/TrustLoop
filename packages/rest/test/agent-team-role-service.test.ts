@@ -6,6 +6,7 @@ const mockDeleteRole = vi.fn();
 const mockFindFirstRole = vi.fn();
 const mockUpdateRole = vi.fn();
 const mockUpdateTeam = vi.fn();
+const mockUpdateManyTeam = vi.fn();
 const mockTransaction = vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
   callback({
     agentTeamRole: {
@@ -15,6 +16,7 @@ const mockTransaction = vi.fn(async (callback: (tx: unknown) => Promise<unknown>
     },
     agentTeam: {
       update: mockUpdateTeam,
+      updateMany: mockUpdateManyTeam,
     },
   })
 );
@@ -90,6 +92,7 @@ function createTeam(overrides?: Partial<AgentTeam>): AgentTeam {
 describe("agentTeamRoles.updateLayout", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUpdateManyTeam.mockResolvedValue({ count: 1 });
   });
 
   it("persists multiple positions and preserves unrelated metadata keys", async () => {
@@ -151,9 +154,12 @@ describe("agentTeamRoles.updateLayout", () => {
         },
       })
     );
-    expect(mockUpdateTeam).toHaveBeenCalledWith(
+    expect(mockUpdateManyTeam).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "team_1" },
+        where: expect.objectContaining({
+          id: "team_1",
+          updatedAt: new Date("2026-04-14T12:00:00.000Z"),
+        }),
         data: expect.objectContaining({
           updatedAt: expect.any(Date),
         }),
@@ -162,7 +168,7 @@ describe("agentTeamRoles.updateLayout", () => {
     expect(result.updatedAt).toBe(updatedTeam.updatedAt);
   });
 
-  it("rejects stale layout writes when the team version changed", async () => {
+  it("rejects stale layout writes when the early check sees a newer team version", async () => {
     mockGetTeam.mockResolvedValueOnce(createTeam());
 
     await expect(
@@ -180,5 +186,26 @@ describe("agentTeamRoles.updateLayout", () => {
     ).rejects.toBeInstanceOf(ConflictError);
 
     expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale writes when a concurrent update slips between the pre-check and the transaction", async () => {
+    mockGetTeam.mockResolvedValueOnce(createTeam());
+    mockUpdateManyTeam.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      roles.updateLayout("ws_1", {
+        teamId: "team_1",
+        expectedUpdatedAt: "2026-04-14T12:00:00.000Z",
+        positions: [
+          {
+            roleId: "role_architect",
+            x: 120,
+            y: 220,
+          },
+        ],
+      })
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    expect(mockUpdateRole).not.toHaveBeenCalled();
   });
 });
