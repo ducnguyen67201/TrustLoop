@@ -23,36 +23,39 @@ export function TeamGraphRoleNode({ data, selected }: NodeProps<TeamGraphRoleNod
   const Icon = visual.icon;
   const isHub = data.role.slug === AGENT_TEAM_ROLE_SLUG.architect;
 
+  const accentTint = `color-mix(in oklch, ${visual.color} 14%, transparent)`;
+  const mutedAccent = `color-mix(in oklch, ${visual.color} 70%, var(--muted-foreground))`;
+  const description = data.role.description ?? visual.flavorText;
+
   return (
     <div
-      className="group relative min-w-56 border bg-card p-3 text-card-foreground shadow-sm transition-colors"
+      className="group relative min-w-60 border bg-card text-card-foreground shadow-sm transition-colors"
       style={{
-        borderColor: selected ? visual.color : "hsl(var(--border))",
+        borderColor: selected ? visual.color : "var(--border)",
         boxShadow: selected ? `0 0 0 1px ${visual.color} inset` : undefined,
       }}
     >
       <Handle
         type="target"
         position={Position.Left}
-        className="!h-3.5 !w-3.5 !rounded-none !border-2 !border-card !bg-muted-foreground"
+        className="!-left-1.5 !h-3 !w-3 !rounded-none !border-2 !border-card"
+        style={{ backgroundColor: visual.color }}
         isConnectable={data.canManage}
       />
       <Handle
         type="source"
         position={Position.Right}
-        className="!h-3.5 !w-3.5 !rounded-none !border-2 !border-card !bg-muted-foreground"
+        className="!-right-1.5 !h-3 !w-3 !rounded-none !border-2 !border-card"
+        style={{ backgroundColor: visual.color }}
         isConnectable={data.canManage}
       />
 
-      <div className="absolute inset-x-0 top-0 h-px" style={{ backgroundColor: visual.color }} />
+      <div className="absolute inset-x-0 top-0 h-0.5" style={{ backgroundColor: visual.color }} />
 
-      <div className="team-graph-node__drag-handle flex cursor-grab items-start gap-2 active:cursor-grabbing">
+      <div className="team-graph-node__drag-handle flex cursor-grab items-start gap-3 p-3 active:cursor-grabbing">
         <div
-          className="flex size-7 items-center justify-center rounded-none"
-          style={{
-            backgroundColor: `${visual.color}1a`,
-            color: visual.color,
-          }}
+          className="flex size-8 shrink-0 items-center justify-center"
+          style={{ backgroundColor: accentTint, color: visual.color }}
         >
           <Icon className="size-4" />
         </div>
@@ -63,52 +66,51 @@ export function TeamGraphRoleNode({ data, selected }: NodeProps<TeamGraphRoleNod
             {isHub ? (
               <Badge
                 variant="outline"
-                className="ml-auto rounded-none px-1.5 py-0 text-[0.6rem]"
-                style={{ borderColor: `${visual.color}66`, color: visual.color }}
+                className="ml-auto rounded-none px-1.5 py-0 text-[0.65rem]"
+                style={{ borderColor: mutedAccent, color: visual.color }}
               >
                 <RiStarLine className="mr-0.5 size-3" />
-                HUB
+                Hub
               </Badge>
             ) : null}
           </div>
-
-          <p className="mt-0.5 text-[0.65rem] italic" style={{ color: `${visual.color}cc` }}>
+          <p className="mt-0.5 truncate text-xs" style={{ color: mutedAccent }}>
             {visual.archetype}
           </p>
         </div>
       </div>
 
-      {data.role.description ? (
-        <p className="mt-2 line-clamp-2 text-[0.65rem] leading-relaxed text-muted-foreground">
-          {data.role.description}
-        </p>
-      ) : (
-        <p className="mt-2 line-clamp-2 text-[0.65rem] leading-relaxed text-muted-foreground">
-          {visual.flavorText}
-        </p>
-      )}
+      <p className="line-clamp-2 px-3 text-xs leading-relaxed text-muted-foreground">
+        {description}
+      </p>
 
-      <div className="mt-2 flex flex-wrap gap-1">
-        {data.role.model ? (
-          <Badge variant="secondary" className="rounded-none px-1.5 py-0 text-[0.55rem]">
-            {data.role.model}
-          </Badge>
-        ) : null}
-        {data.role.toolIds.map((toolId) => (
-          <Badge key={toolId} variant="outline" className="rounded-none px-1.5 py-0 text-[0.55rem]">
-            {toolId}
-          </Badge>
-        ))}
-      </div>
-
-      <div className="mt-2 flex items-center justify-between text-[0.6rem] text-muted-foreground">
-        <span>{data.role.maxSteps} steps</span>
+      <div className="mt-2 flex items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-[0.7rem] text-muted-foreground">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          {data.role.model ? (
+            <Badge variant="secondary" className="rounded-none px-1.5 py-0 text-[0.65rem]">
+              {data.role.model}
+            </Badge>
+          ) : null}
+          {data.role.toolIds.slice(0, 2).map((toolId) => (
+            <Badge
+              key={toolId}
+              variant="outline"
+              className="rounded-none px-1.5 py-0 text-[0.65rem]"
+            >
+              {toolId}
+            </Badge>
+          ))}
+          {data.role.toolIds.length > 2 ? (
+            <span className="text-[0.65rem]">+{data.role.toolIds.length - 2}</span>
+          ) : null}
+        </div>
+        <span className="shrink-0 tabular-nums">{data.role.maxSteps} steps</span>
         {data.canManage ? (
           <Button
             type="button"
             variant="ghost"
             size="icon-xs"
-            className="nodrag nopan opacity-0 transition-opacity group-hover:opacity-100"
+            className="nodrag nopan shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
             onClick={() => data.onRemoveRole(data.role.id)}
           >
             <RiDeleteBinLine className="size-3 text-destructive" />
