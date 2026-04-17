@@ -37,15 +37,15 @@ export function TeamGraphRoleNode({ data, selected }: NodeProps<TeamGraphRoleNod
     >
       <Handle
         type="target"
-        position={Position.Left}
-        className="!-left-1.5 !h-3 !w-3 !rounded-none !border-2 !border-card"
+        position={Position.Top}
+        className="!-top-1.5 !h-3 !w-3 !rounded-none !border-2 !border-card"
         style={{ backgroundColor: visual.color }}
         isConnectable={data.canManage}
       />
       <Handle
         type="source"
-        position={Position.Right}
-        className="!-right-1.5 !h-3 !w-3 !rounded-none !border-2 !border-card"
+        position={Position.Bottom}
+        className="!-bottom-1.5 !h-3 !w-3 !rounded-none !border-2 !border-card"
         style={{ backgroundColor: visual.color }}
         isConnectable={data.canManage}
       />

@@ -4,8 +4,10 @@ import dagre from "@dagrejs/dagre";
 import type { AgentTeam, AgentTeamRole, AgentTeamRoleMetadata } from "@shared/types";
 import type { XYPosition } from "@xyflow/react";
 
-export const TEAM_GRAPH_NODE_WIDTH = 224;
-export const TEAM_GRAPH_NODE_HEIGHT = 116;
+// Match the rendered card footprint — `min-w-60` (240px) plus a little slack so
+// dagre leaves breathing room around wider content.
+export const TEAM_GRAPH_NODE_WIDTH = 260;
+export const TEAM_GRAPH_NODE_HEIGHT = 148;
 
 export function getRoleCanvasPosition(role: AgentTeamRole): XYPosition | null {
   const position = role.metadata?.canvas?.position;
@@ -42,12 +44,16 @@ export function hasStoredLayout(team: AgentTeam): boolean {
 export function computeAutoLayout(team: AgentTeam): Map<string, XYPosition> {
   const graph = new dagre.graphlib.Graph();
   graph.setDefaultEdgeLabel(() => ({}));
+  // Top-down tree: hub/root fans out to siblings at each rank, matching the
+  // reference tree layout. Generous spacing keeps cards from colliding with
+  // each other or with the edge fan-out between ranks.
   graph.setGraph({
-    rankdir: "LR",
-    nodesep: 36,
-    ranksep: 72,
-    marginx: 32,
-    marginy: 32,
+    rankdir: "TB",
+    align: "UL",
+    nodesep: 72,
+    ranksep: 110,
+    marginx: 48,
+    marginy: 48,
   });
 
   for (const role of team.roles) {

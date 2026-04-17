@@ -79,8 +79,8 @@ function buildFlowNodes(
     type: "role",
     position: positions.get(role.id) ?? { x: 0, y: 0 },
     dragHandle: ".team-graph-node__drag-handle",
-    sourcePosition: Position.Right,
-    targetPosition: Position.Left,
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
     data: {
       role,
       canManage: true,
@@ -94,7 +94,9 @@ function buildFlowEdges(team: AgentTeam): Edge[] {
     id: edge.id,
     source: edge.sourceRoleId,
     target: edge.targetRoleId,
-    type: "smoothstep",
+    // Bezier curves fan out cleanly from a single parent to multiple children
+    // in the top-down tree layout (smoothstep produced visible 90° bends).
+    type: "default",
     markerEnd: {
       type: MarkerType.ArrowClosed,
       color: EDGE_STROKE,
@@ -246,7 +248,7 @@ export function TeamGraphView({
         id: `pending:${connection.source}:${connection.target}`,
         source: connection.source,
         target: connection.target,
-        type: "smoothstep",
+        type: "default",
         markerEnd: {
           type: MarkerType.ArrowClosed,
           color: EDGE_STROKE,
@@ -478,7 +480,7 @@ export function TeamGraphView({
         className="bg-dot-grid"
         connectionLineStyle={defaultEdgeStyle}
         defaultEdgeOptions={{
-          type: "smoothstep",
+          type: "default",
           style: defaultEdgeStyle,
           markerEnd: {
             type: MarkerType.ArrowClosed,
