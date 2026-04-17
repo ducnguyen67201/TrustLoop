@@ -9,6 +9,8 @@ coverage/
 *.generated.js
 **/__generated__/
 packages/database/prisma/migrations/
+packages/database/src/generated/
+packages/types/src/prisma-generated/
 graphify-out/
 .claude/
 .codex/

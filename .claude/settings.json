@@ -4,6 +4,10 @@
       {
         "command": "git submodule update --init --recursive",
         "description": "Initialize git submodules (gstack skills)"
+      },
+      {
+        "command": "command -v graphify >/dev/null 2>&1 && (nohup graphify update . >/dev/null 2>&1 &) || true",
+        "description": "Refresh graphify code graph in background (AST-only, no LLM, non-blocking)"
       }
     ],
     "PreToolUse": [
