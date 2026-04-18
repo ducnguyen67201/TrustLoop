@@ -40,6 +40,9 @@ export const serverSchemas = {
   TEMPORAL_NAMESPACE: z.string().min(1),
   TEMPORAL_TASK_QUEUE: z.string().min(1),
   CODEX_TASK_QUEUE: z.string().min(1),
+  // Present only for Temporal Cloud (API-key auth). Absent for local dev,
+  // where docker-compose Temporal accepts plain gRPC on localhost:7233.
+  TEMPORAL_API_KEY: z.string().min(1).optional(),
 
   // Support / Slack
   SLACK_CLIENT_ID: z.string().min(1).optional(),

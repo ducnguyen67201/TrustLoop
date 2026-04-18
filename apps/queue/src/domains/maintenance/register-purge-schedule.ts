@@ -1,4 +1,5 @@
 import { env } from "@shared/env";
+import { buildTemporalConnectionOptions } from "@shared/rest/temporal-connection";
 import { Client, Connection } from "@temporalio/client";
 
 const SCHEDULE_ID = "purge-soft-deleted-records";
@@ -10,7 +11,7 @@ const CRON_EXPRESSION = "0 3 * * *"; // Daily at 3:00 AM UTC
  *   npx tsx apps/queue/src/domains/maintenance/register-purge-schedule.ts
  */
 async function main() {
-  const connection = await Connection.connect({ address: env.TEMPORAL_ADDRESS });
+  const connection = await Connection.connect(buildTemporalConnectionOptions());
   const client = new Client({ connection, namespace: env.TEMPORAL_NAMESPACE });
 
   let alreadyExists = false;

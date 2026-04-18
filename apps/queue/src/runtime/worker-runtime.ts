@@ -1,11 +1,12 @@
 import { env } from "@shared/env";
+import { buildTemporalConnectionOptions } from "@shared/rest/temporal-connection";
 import { NativeConnection, Worker } from "@temporalio/worker";
 
 /**
  * Start both support and codex workers against the shared runtime while keeping task queues isolated.
  */
 export async function startQueueWorkers(workflowsPath: string, activities: object): Promise<void> {
-  const connection = await NativeConnection.connect({ address: env.TEMPORAL_ADDRESS });
+  const connection = await NativeConnection.connect(buildTemporalConnectionOptions());
 
   const supportWorker = await Worker.create({
     connection,

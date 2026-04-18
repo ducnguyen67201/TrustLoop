@@ -9,6 +9,7 @@ import {
   workflowNames,
 } from "@shared/types";
 import { Client, Connection } from "@temporalio/client";
+import { buildTemporalConnectionOptions } from "./temporal-connection";
 
 export interface WorkflowDispatcher {
   startSupportWorkflow(input: SupportWorkflowInput): Promise<WorkflowDispatchResponse>;
@@ -28,7 +29,7 @@ async function getClient(): Promise<Client> {
     return temporalClient;
   }
 
-  const connection = await Connection.connect({ address: env.TEMPORAL_ADDRESS });
+  const connection = await Connection.connect(buildTemporalConnectionOptions());
   temporalClient = new Client({ connection, namespace: env.TEMPORAL_NAMESPACE });
   return temporalClient;
 }
