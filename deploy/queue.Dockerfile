@@ -46,6 +46,12 @@ RUN npm --workspace @shared/database run db:generate
 FROM base AS runner
 ENV NODE_ENV=production
 
+# Temporal's Rust core (rustls) loads system root CAs to reach Temporal
+# Cloud. node:24-slim omits them — install before USER switch.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 --gid nodejs worker
 
