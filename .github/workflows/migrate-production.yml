@@ -1,46 +1,56 @@
-name: Migrate staging DB
+name: Migrate production DB
 
-# Runs prisma migrate deploy against the staging database when:
-#   - migration files or schema change on main (auto-trigger)
-#   - a human triggers the workflow manually (safety net)
+# Runs prisma migrate deploy against the production database when:
+#   - migration files or schema change on the production branch (auto-trigger)
+#   - a human triggers the workflow manually (emergency/rollback path)
 #
 # Branch model:
-#   main        →  staging env  (this workflow)
-#   production  →  prod env     (migrate-production.yml)
+#   main        →  staging env  (migrate-staging.yml)
+#   production  →  prod env     (this workflow)
 #
-# Prereq: STAGING_DATABASE_URL secret must be set in repo settings.
-# The URL should be the Railway Postgres TCP Proxy (public) URL, not
-# the internal railway.internal hostname — GHA runners can't reach the
-# Railway private network.
+# Promotion flow:
+#   1. PR merges to main → migrate-staging runs → Railway deploys staging
+#   2. Once staging is verified, open a PR from main → production
+#   3. Merge that PR → this workflow runs → Railway deploys production
+#
+# Prereq: PRODUCTION_DATABASE_URL secret must be set in repo settings.
+# The URL should be the Railway prod Postgres TCP Proxy (public) URL.
+#
+# Recommended extra gate: configure a GitHub Environment called "production"
+# in repo Settings → Environments with required reviewers. This workflow
+# already declares `environment: production` below, so GitHub will block
+# execution until an approver clicks through. Harmless if the env isn't
+# configured yet (runs without a gate).
 
 on:
   push:
-    branches: [main]
+    branches: [production]
     paths:
       - 'packages/database/prisma/migrations/**'
       - 'packages/database/prisma/schema.prisma'
       - 'packages/database/prisma/schema/**'
-      - '.github/workflows/migrate-staging.yml'
+      - '.github/workflows/migrate-production.yml'
   workflow_dispatch:
     inputs:
       reason:
         description: 'Why are you manually running this?'
         required: true
-        default: 'Apply pending staging migrations'
+        default: 'Apply pending production migrations'
 
 concurrency:
-  # Only one staging migration runs at a time. New pushes cancel in-flight runs.
-  group: migrate-staging
-  cancel-in-progress: false  # don't cancel — wait for current to finish
+  # Only one production migration runs at a time. Never cancel in-flight.
+  group: migrate-production
+  cancel-in-progress: false
 
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    environment: production  # triggers approval gate if the env has reviewers set
     permissions:
       contents: read
 
     env:
-      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +63,7 @@ jobs:
       - name: Verify secret is set
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::STAGING_DATABASE_URL secret is not set. Add it in repo Settings → Secrets → Actions."
+            echo "::error::PRODUCTION_DATABASE_URL secret is not set. Add it in repo Settings → Secrets → Actions."
             exit 1
           fi
           # print the host only, never the password
@@ -79,7 +89,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "### Staging migration"
+            echo "### Production migration"
             echo ""
             echo "- Trigger: ${{ github.event_name }}"
             echo "- Commit:  ${{ github.sha }}"
