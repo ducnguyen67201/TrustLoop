@@ -61,8 +61,9 @@ export const supportSendReplyCommandSchema = z.object({
   workspaceId: z.string().min(1),
   conversationId: z.string().min(1),
   actorUserId: z.string().min(1),
-  messageText: z.string().trim().min(1),
+  messageText: z.string().trim().default(""),
   attachments: z.array(supportAttachmentSchema).default([]),
+  attachmentIds: z.array(z.string().min(1)).default([]),
   replyToEventId: z.string().min(1).optional(),
 });
 

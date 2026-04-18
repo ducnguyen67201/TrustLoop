@@ -1,7 +1,10 @@
 import { sessionDigestSchema } from "@shared/types/session-replay/session-digest.schema";
 import { z } from "zod";
+import { sentryContextSchema } from "./sentry.schema";
+import { toneConfigSchema } from "./tone-config.schema";
 
 export const ANALYSIS_STATUS = {
+  gatheringContext: "GATHERING_CONTEXT",
   analyzing: "ANALYZING",
   analyzed: "ANALYZED",
   needsContext: "NEEDS_CONTEXT",
@@ -9,6 +12,7 @@ export const ANALYSIS_STATUS = {
 } as const;
 
 export const analysisStatusValues = [
+  ANALYSIS_STATUS.gatheringContext,
   ANALYSIS_STATUS.analyzing,
   ANALYSIS_STATUS.analyzed,
   ANALYSIS_STATUS.needsContext,
@@ -64,6 +68,7 @@ export const analysisTriggerTypeValues = [
 export const analysisTriggerTypeSchema = z.enum(analysisTriggerTypeValues);
 
 export const DRAFT_STATUS = {
+  generating: "GENERATING",
   awaitingApproval: "AWAITING_APPROVAL",
   approved: "APPROVED",
   sent: "SENT",
@@ -72,12 +77,15 @@ export const DRAFT_STATUS = {
 } as const;
 
 export const draftStatusValues = [
+  DRAFT_STATUS.generating,
   DRAFT_STATUS.awaitingApproval,
   DRAFT_STATUS.approved,
   DRAFT_STATUS.sent,
   DRAFT_STATUS.dismissed,
   DRAFT_STATUS.failed,
 ] as const;
+
+export const MAX_ANALYSIS_RETRIES = 3;
 
 export const draftStatusSchema = z.enum(draftStatusValues);
 
@@ -133,6 +141,7 @@ export const supportAnalysisSchema = z.object({
   llmModel: z.string().nullable(),
   llmLatencyMs: z.number().nullable(),
   errorMessage: z.string().nullable(),
+  sentryContext: sentryContextSchema.nullable().optional(),
   createdAt: z.string(),
 });
 
@@ -150,6 +159,8 @@ export const supportDraftSchema = z.object({
   approvedBy: z.string().nullable(),
   approvedAt: z.string().nullable(),
   sentAt: z.string().nullable(),
+  prUrl: z.string().nullable().optional(),
+  prNumber: z.number().nullable().optional(),
   createdAt: z.string(),
 });
 
@@ -166,6 +177,7 @@ export const analyzeRequestSchema = z.object({
       maxSteps: z.number().int().positive().optional(),
       provider: z.string().optional(),
       model: z.string().optional(),
+      toneConfig: toneConfigSchema.optional(),
     })
     .optional(),
 });
@@ -276,6 +288,8 @@ export const supportAnalysisWithRelationsSchema = supportAnalysisSchema.extend({
       status: true,
       draftBody: true,
       editedBody: true,
+      prUrl: true,
+      prNumber: true,
     })
   ),
 });

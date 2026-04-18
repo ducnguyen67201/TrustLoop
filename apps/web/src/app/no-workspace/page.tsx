@@ -1,12 +1,10 @@
 "use client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { NoWorkspaceState } from "@/components/workspace/no-workspace-state";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useWorkspaceMemberships } from "@/hooks/use-workspace-memberships";
 import { workspaceRootPath } from "@/lib/workspace-paths";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -32,8 +30,8 @@ export default function NoWorkspacePage() {
 
   if (auth.isLoading || memberships.isLoading) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center p-6">
-        <Alert>
+      <main className="flex min-h-screen w-full items-center justify-center p-6">
+        <Alert className="max-w-md">
           <AlertTitle>Loading account context</AlertTitle>
           <AlertDescription>Checking workspace assignments...</AlertDescription>
         </Alert>
@@ -41,15 +39,14 @@ export default function NoWorkspacePage() {
     );
   }
 
+  async function handleSignOut() {
+    await auth.logout();
+    window.location.replace("/login");
+  }
+
   return (
-    <main className="mx-auto w-full max-w-4xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Workspace Access Required</h1>
-        <Button variant="outline" asChild>
-          <Link href="/">Back to home</Link>
-        </Button>
-      </div>
-      <NoWorkspaceState />
+    <main className="bg-dot-grid flex min-h-screen w-full items-center justify-center p-6">
+      <NoWorkspaceState onSignOut={handleSignOut} />
     </main>
   );
 }

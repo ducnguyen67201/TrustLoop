@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 /**
- * Mirror of the private extractCustomerSlackUserId helper in analysis.activity.ts.
+ * Mirror of the private extractCustomerSlackUserId helper in support-analysis.activity.ts.
  * Kept in sync manually -- if the source logic changes, update this copy.
  */
 

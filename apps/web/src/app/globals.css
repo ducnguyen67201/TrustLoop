@@ -128,3 +128,15 @@
     @apply font-mono;
   }
 }
+
+/* Subtle dot-grid texture. Tokenized from --border so it adapts to
+   light/dark themes without touching the color scheme. Used on auth
+   surfaces (login, no-workspace) to echo the marketing site background. */
+.bg-dot-grid {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--border) 85%, var(--foreground)) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+}

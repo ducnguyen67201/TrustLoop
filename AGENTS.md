@@ -83,7 +83,7 @@ REST endpoints fall into two categories with different auth requirements:
 - `/api/github/callback` (OAuth flow)
 - `/api/trpc/*` (own tRPC middleware)
 
-Auth guards live in `packages/rest/src/security/rest-auth.ts`. See `docs/spec-rest-api-key-auth.md` for full details.
+Auth guards live in `packages/rest/src/security/rest-auth.ts`. See `docs/conventions/spec-rest-api-key-auth.md` for full details.
 
 ### URL Parameter Conventions
 
@@ -144,7 +144,7 @@ All LLM-generated structured output must use Positional JSON — compressed fiel
 - Every positional format must include at least two examples in its prompt instructions (one with all fields, one minimal/null case).
 - Never ask LLMs to return verbose JSON. Always use the compressed format with reconstruction.
 - **Max nesting depth: 2 levels.** LLMs produce unreliable output beyond 2 levels of JSON nesting. If a field needs deeper structure, flatten it (e.g. `"filepath:line|snippet"` instead of `{"f":"filepath","l":line,"t":"snippet"}`). Arrays of primitives (strings, numbers) are fine. Arrays of objects are a smell — prefer flat encoded strings.
-- See `docs/spec-positional-json-format.md` for the full spec, reliability layers, and extension guide.
+- See `docs/conventions/spec-positional-json-format.md` for the full spec, reliability layers, and extension guide.
 
 ### Contract source of truth order
 
@@ -168,6 +168,7 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 - Start with `packages/database/prisma/schema.prisma` while solo.
 - Split into `packages/database/prisma/*.schema.prisma` once schema size or ownership boundaries require it.
 - Every schema change must include a committed migration.
+- **After any schema change, always run `npm run db:generate` and `npm run db:migrate` before testing or moving on.** The Prisma client is generated code — queries against new/changed models will fail at runtime until the client is regenerated. Running dev servers must be restarted after regeneration (the old client is cached in memory).
 - `db:push` is local-prototyping only.
 - Use explicit transactions for multi-step writes requiring atomicity.
 - Add indexes intentionally for new query paths.
@@ -187,7 +188,7 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 - Break pages/features into small, focused components — one responsibility per component. Avoid monolithic page files.
 - Extract reusable logic into custom hooks (`use*.ts`). Keep components declarative; keep side effects and state logic in hooks.
 - Add concise comments in UI code: purpose of each component at the top, intent behind non-obvious prop patterns or layout decisions. This improves readability for both humans and AI agents.
-- See `docs/ui-conventions.md` for full details.
+- See `docs/conventions/ui-conventions.md` for full details.
 
 ## API/Router Conventions
 
@@ -200,7 +201,7 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 
 ## Service Layer Conventions
 
-Full spec: [`docs/service-layer-conventions.md`](docs/service-layer-conventions.md).
+Full spec: [`docs/conventions/service-layer-conventions.md`](docs/conventions/service-layer-conventions.md).
 
 Non-negotiable rules (summary):
 
@@ -282,6 +283,22 @@ Migration rules: pilot first, migrate a service + all call sites in one commit, 
 - Group reusable domain contracts in focused folders under `packages/types/src/<topic>/` (example: `status/workflow-status.ts`).
 - Never duplicate literal unions/enums across files; export shared constants/schema/type from one module and import it.
 
+### Feature-qualified file names (Non-Negotiable)
+
+Workflow, activity, schema, router, service, and prompt files must use the **same feature-name prefix** so every artifact for a feature is found with a single fuzzy search (e.g. `Cmd+T "support-analysis"`).
+
+- Format: `<feature>.<suffix>.ts` where `<feature>` is the full, hyphenated feature name — not a short alias that relies on the parent folder.
+- Required suffixes by role:
+  - `<feature>.workflow.ts` — Temporal workflow entry points
+  - `<feature>.activity.ts` — Temporal activities belonging to that workflow
+  - `<feature>.schema.ts` — Zod contracts
+  - `<feature>-router.ts` — tRPC routers
+  - `<feature>-service.ts` — service-layer module
+  - `<feature>.prompt.ts` — prompt modules
+- **Do not** drop the domain from the file name just because the folder already implies it. `apps/queue/src/domains/support/analysis.workflow.ts` is wrong — it must be `support-analysis.workflow.ts`, matching `support-analysis.schema.ts`, `support-analysis-router.ts`, `support-analysis-service.ts`, `support-analysis.prompt.ts`.
+- When a workflow has helper/trigger workflows, extend the same prefix: `support-analysis-trigger.workflow.ts`, `support-analysis-trigger.activity.ts`.
+- If you need to rename, use `git mv` (preserves history) and update every import site in the same commit. Run `npm run check` before handoff.
+
 ## Commenting Conventions
 
 Follows Robert C. Martin's _Clean Code_ — code should express intent; comments are a last resort.
@@ -358,11 +375,11 @@ A feature is done only when:
 ## Additional Docs
 
 - Architecture/conventions baseline:
-  - `docs/foundation-setup-and-conventions.md`
+  - `docs/conventions/foundation-setup-and-conventions.md`
 - Implementation plan (MVP):
-  - `docs/impl-plan-first-customer-happy-path-mvp.md`
+  - `docs/plans/impl-plan-first-customer-happy-path-mvp.md`
 - Service layer conventions (namespace imports, naming rules, rollout status):
-  - `docs/service-layer-conventions.md`
+  - `docs/conventions/service-layer-conventions.md`
 
 ## Skills + Doc Hygiene
 
@@ -498,3 +515,12 @@ Key routing rules:
 - Architecture review → invoke plan-eng-review
 - Save progress, checkpoint, resume → invoke checkpoint
 - Code quality, health check → invoke health
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)

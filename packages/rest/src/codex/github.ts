@@ -7,10 +7,11 @@
 // path that resolves to the folder layout.
 //
 // The real files live under ./github/. See
-// docs/service-layer-conventions.md — this file was 418 lines before the
+// docs/conventions/service-layer-conventions.md — this file was 418 lines before the
 // split, over the 300-line budget.
 // ---------------------------------------------------------------------------
 
 export * from "./github/install-url";
 export * from "./github/installation";
 export * from "./github/content";
+export * from "./github/draft-pr";

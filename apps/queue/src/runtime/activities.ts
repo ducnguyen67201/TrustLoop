@@ -8,6 +8,14 @@ export {
   dispatchAnalysis,
   findConversationsReadyForAnalysis,
   shouldAutoTrigger,
-} from "@/domains/support/analysis-trigger.activity";
-export { buildThreadSnapshot, runAnalysisAgent } from "@/domains/support/analysis.activity";
+} from "@/domains/support/support-analysis-trigger.activity";
+export {
+  buildThreadSnapshot,
+  escalateToManualHandling,
+  fetchSentryContextActivity,
+  markAnalyzing,
+  runAnalysisAgent,
+} from "@/domains/support/support-analysis.activity";
+export { mirrorSupportAttachment } from "@/domains/support/support-attachment-mirror.activity";
+export { refreshCustomerProfile } from "@/domains/support/support-customer-profile.activity";
 export { runSupportPipeline } from "@/domains/support/support.activity";

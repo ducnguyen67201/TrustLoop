@@ -7,10 +7,39 @@ const mono = Geist_Mono({
   weight: ["400", "500", "600"],
 });
 
+const SITE_URL = "https://gettrustloop.app";
+const TITLE = "TrustLoop AI | Support Ops for Engineering Teams";
+const DESCRIPTION =
+  "TrustLoop AI reads your codebase, groups chat threads, and drafts technically accurate support responses.";
+
 export const metadata: Metadata = {
-  title: "TrustLoop AI | Support Ops for Engineering Teams",
-  description:
-    "TrustLoop AI reads your codebase, groups chat threads, and drafts technically accurate support responses.",
+  title: TITLE,
+  description: DESCRIPTION,
+  metadataBase: new URL(SITE_URL),
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    url: SITE_URL,
+    siteName: "TrustLoop AI",
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
 };
 
 export default function RootLayout({

@@ -46,8 +46,10 @@ export function RequestAccessForm() {
         </Alert>
       ) : null}
 
-      <div className="space-y-2">
-        <Label htmlFor="contact-email">Contact email</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="contact-email" className="text-xs font-medium text-muted-foreground">
+          Contact email
+        </Label>
         <Input
           id="contact-email"
           type="email"
@@ -57,20 +59,22 @@ export function RequestAccessForm() {
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="access-message">What workspace do you need access to?</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="access-message" className="text-xs font-medium text-muted-foreground">
+          Which workspace do you need?
+        </Label>
         <Textarea
           id="access-message"
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           placeholder="Workspace name, owner email, and why you need access"
-          rows={4}
+          rows={3}
           required
         />
       </div>
 
-      <Button type="submit" disabled={accessRequest.isSubmitting}>
-        {accessRequest.isSubmitting ? "Submitting..." : "Contact us / Request access"}
+      <Button type="submit" size="lg" className="w-full" disabled={accessRequest.isSubmitting}>
+        {accessRequest.isSubmitting ? "Submitting..." : "Request access"}
       </Button>
     </form>
   );

@@ -6,6 +6,7 @@ import {
   type AnalyzeRequest,
   type AnalyzeResponse,
   type SessionDigest,
+  type ToneConfig,
   agentProviderConfigSchema,
   compressedAnalysisOutputSchema,
   reconstructAnalysisOutput,
@@ -14,9 +15,12 @@ import {
 import {
   SUPPORT_AGENT_SYSTEM_PROMPT,
   buildAnalysisPromptWithContext,
+  buildSupportAgentSystemPrompt,
 } from "./prompts/support-analysis";
 import { resolveModel } from "./providers";
+import { createPullRequestTool } from "./tools/create-pr";
 import { searchCodeTool } from "./tools/search-code";
+import { searchSentryTool } from "./tools/search-sentry";
 
 const DEFAULT_MAX_STEPS = 8;
 
@@ -33,106 +37,63 @@ const DEFAULT_MAX_STEPS = 8;
 //           → Agent Service (factory creates agent with chosen LLM)
 //               → Same tools, same prompt, different brain
 
-function createSupportAgent(providerConfig: AgentProviderConfig, sessionDigest?: SessionDigest) {
-  const instructions = sessionDigest
-    ? buildAnalysisPromptWithContext({ sessionDigest })
-    : SUPPORT_AGENT_SYSTEM_PROMPT;
+function createSupportAgent(
+  providerConfig: AgentProviderConfig,
+  options?: { toneConfig?: ToneConfig; sessionDigest?: SessionDigest }
+) {
+  let instructions: string;
+  if (options?.sessionDigest) {
+    instructions = buildAnalysisPromptWithContext({ sessionDigest: options.sessionDigest });
+  } else if (options?.toneConfig) {
+    instructions = buildSupportAgentSystemPrompt(options.toneConfig);
+  } else {
+    instructions = SUPPORT_AGENT_SYSTEM_PROMPT;
+  }
 
   return new Agent({
     id: "trustloop-support-agent",
     name: "TrustLoop AI Support Agent",
     instructions,
     model: resolveModel(providerConfig),
-    tools: { searchCode: searchCodeTool },
+    tools: {
+      searchCode: searchCodeTool,
+      searchSentry: searchSentryTool,
+      createPullRequest: createPullRequestTool,
+    },
   });
 }
-
-// ── Pipeline ────────────────────────────────────────────────────────
-//
-// 1. Resolve provider + model from request config (or defaults)
-// 2. Create agent with the right LLM
-// 3. Run the agent loop (tools execute, LLM reasons, repeat)
-// 4. Parse structured output through Zod
-// 5. Return typed response
 
 export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeResponse> {
   const startTime = Date.now();
   const maxSteps = request.config?.maxSteps ?? DEFAULT_MAX_STEPS;
-
-  const providerConfig = agentProviderConfigSchema.parse({
-    provider: request.config?.provider ?? AGENT_PROVIDER.openai,
-    model: request.config?.model,
-  });
+  const providerConfig = resolveProviderConfig(request);
+  const modelName = providerConfig.model ?? getDefaultModel(providerConfig.provider);
 
   console.log("[agents] Starting analysis", {
     conversationId: request.conversationId,
     provider: providerConfig.provider,
-    model: providerConfig.model ?? getDefaultModel(providerConfig.provider),
+    model: modelName,
     maxSteps,
   });
 
-  const agent = createSupportAgent(providerConfig, request.sessionDigest);
-
-  const result = await agent.generate(request.threadSnapshot, {
-    maxSteps,
-    toolChoice: "auto",
+  const agent = createSupportAgent(providerConfig, {
+    toneConfig: request.config?.toneConfig,
+    sessionDigest: request.sessionDigest,
   });
+  const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${request.threadSnapshot}`;
 
-  const rawOutput = result.text;
-  console.log("[agents] Raw LLM output:", rawOutput?.slice(0, 500));
+  const result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
 
-  if (!rawOutput) {
-    throw new Error("Agent produced no output after completing the loop");
-  }
+  const output = parseAgentOutput(result.text);
+  const toolCalls = extractToolCalls(result);
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawOutput);
-  } catch {
-    console.error("[agents] LLM returned non-JSON output:", rawOutput.slice(0, 1000));
-    throw new Error(`Agent returned non-JSON response: ${rawOutput.slice(0, 200)}`);
-  }
-
-  const compressed = compressedAnalysisOutputSchema.parse(parsed);
-  const output = reconstructAnalysisOutput(compressed);
-  console.log("[agents] Reconstructed output from positional JSON");
-
-  type ToolResultEntry = {
-    toolName?: string;
-    name?: string;
-    args?: Record<string, unknown>;
-    input?: Record<string, unknown>;
-    result?: unknown;
-    output?: unknown;
-  };
-
-  const rawToolResults =
-    (result as unknown as { toolResults?: ToolResultEntry[] }).toolResults ?? [];
-
-  console.log("[agents] Tool calls:", rawToolResults.length);
-  const toolCalls = rawToolResults.map((tc) => ({
-    tool: tc.toolName ?? tc.name ?? "unknown",
-    input: (tc.args ?? tc.input ?? {}) as Record<string, unknown>,
-    output: typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result ?? tc.output),
-    durationMs: 0,
-  }));
-
-  const durationMs = Date.now() - startTime;
-  const usage = (
-    result as unknown as {
-      usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
-    }
-  ).usage;
   console.log("[agents] Analysis complete", {
     conversationId: request.conversationId,
-    durationMs,
+    durationMs: Date.now() - startTime,
     toolCalls: toolCalls.length,
     steps: result.steps?.length ?? 0,
     confidence: output.analysis.confidence,
     severity: output.analysis.severity,
-    tokens: usage
-      ? { prompt: usage.promptTokens, completion: usage.completionTokens, total: usage.totalTokens }
-      : "unavailable",
   });
 
   return {
@@ -141,11 +102,56 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     toolCalls,
     meta: {
       provider: providerConfig.provider,
-      model: providerConfig.model ?? getDefaultModel(providerConfig.provider),
+      model: modelName,
       totalDurationMs: Date.now() - startTime,
       turnCount: result.steps?.length ?? 0,
     },
   };
+}
+
+// ── Private Helpers ─────────────────────────────────────────────────
+
+function resolveProviderConfig(request: AnalyzeRequest): AgentProviderConfig {
+  return agentProviderConfigSchema.parse({
+    provider: request.config?.provider ?? AGENT_PROVIDER.openai,
+    model: request.config?.model,
+  });
+}
+
+function parseAgentOutput(rawOutput: string | undefined) {
+  if (!rawOutput) {
+    throw new Error("Agent produced no output after completing the loop");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawOutput);
+  } catch {
+    throw new Error(`Agent returned non-JSON response: ${rawOutput.slice(0, 200)}`);
+  }
+
+  const compressed = compressedAnalysisOutputSchema.parse(parsed);
+  return reconstructAnalysisOutput(compressed);
+}
+
+interface RawToolResult {
+  toolName?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  result?: unknown;
+  output?: unknown;
+}
+
+function extractToolCalls(result: unknown) {
+  const raw = (result as unknown as { toolResults?: RawToolResult[] }).toolResults ?? [];
+  return raw.map((tc) => ({
+    tool: tc.toolName ?? tc.name ?? "unknown",
+    input: (tc.args ?? tc.input ?? {}) as Record<string, unknown>,
+    output:
+      typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result ?? tc.output ?? ""),
+    durationMs: 0,
+  }));
 }
 
 function getDefaultModel(provider: string): string {

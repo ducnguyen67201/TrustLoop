@@ -12,7 +12,7 @@ import * as memberships from "@shared/rest/services/workspace-membership-service
 //   if (await workspace.exists(id)) { ... }
 //   const match = await workspace.findByEmailDomain(tx, domain);
 //
-// See docs/service-layer-conventions.md for the full rationale, naming
+// See docs/conventions/service-layer-conventions.md for the full rationale, naming
 // rules, and the "split a file at ~300 lines" guidance.
 // ---------------------------------------------------------------------------
 

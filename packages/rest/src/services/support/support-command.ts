@@ -10,7 +10,7 @@
 //   import * as supportCommand from "@shared/rest/services/support/support-command";
 //
 // The real files live under ./support-command/. See
-// docs/service-layer-conventions.md rule 7 — this file was 637 lines
+// docs/conventions/service-layer-conventions.md rule 7 — this file was 637 lines
 // before the split (2x the 300-line budget).
 // ---------------------------------------------------------------------------
 

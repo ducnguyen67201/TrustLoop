@@ -6,14 +6,16 @@
 // re-exports from `./github` via the codex/github.ts shim).
 //
 // File layout (split from a single 418-line file during the codex rollout —
-// see docs/service-layer-conventions.md rule 7 on the 300-line budget):
+// see docs/conventions/service-layer-conventions.md rule 7 on the 300-line budget):
 //
 //   _shared.ts       — authenticated Octokit factory (used by installation + content)
 //   install-url.ts   — HMAC-signed install URL + state verification
 //   installation.ts  — connect, disconnect, refresh, callback handling
 //   content.ts       — tree, file contents, latest commit SHA
+//   draft-pr.ts      — create a draft pull request from a code fix
 // ---------------------------------------------------------------------------
 
 export * from "./install-url";
 export * from "./installation";
 export * from "./content";
+export * from "./draft-pr";

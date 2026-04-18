@@ -19,7 +19,7 @@ import { TRPCError } from "@trpc/server";
 //   const page = await supportProjection.listConversations(input);
 //   const timeline = await supportProjection.getConversationTimeline(ws, conv);
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 /**
@@ -86,6 +86,30 @@ export async function getConversationTimeline(
         orderBy: {
           createdAt: "asc",
         },
+        include: {
+          attachments: {
+            select: {
+              id: true,
+              mimeType: true,
+              uploadState: true,
+              originalFilename: true,
+              sizeBytes: true,
+              errorCode: true,
+              direction: true,
+            },
+            orderBy: { createdAt: "asc" },
+          },
+          reactions: {
+            select: {
+              id: true,
+              emojiName: true,
+              emojiUnicode: true,
+              actorUserId: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "asc" },
+          },
+        },
       },
     },
   });
@@ -129,7 +153,88 @@ export async function getConversationTimeline(
         event.detailsJson && typeof event.detailsJson === "object"
           ? (event.detailsJson as Record<string, unknown>)
           : null,
+      // Coerce undefined → null at the mapping boundary. A stale Prisma
+      // client (pre-parentEventId generation) returns events without this
+      // field; normalizing to null keeps the API contract stable.
+      attachments: (event.attachments ?? []).map((a) => ({
+        id: a.id,
+        mimeType: a.mimeType,
+        uploadState: a.uploadState,
+        originalFilename: a.originalFilename,
+        sizeBytes: a.sizeBytes,
+        errorCode: a.errorCode ?? null,
+        direction: a.direction,
+      })),
+      parentEventId: event.parentEventId ?? null,
+      reactions: (event.reactions ?? []).map((r) => ({
+        id: r.id,
+        eventId: event.id,
+        emojiName: r.emojiName,
+        emojiUnicode: r.emojiUnicode,
+        actorUserId: r.actorUserId,
+        createdAt: r.createdAt.toISOString(),
+      })),
       createdAt: event.createdAt.toISOString(),
     })),
+    customerProfiles: await buildCustomerProfileMap(
+      workspaceId,
+      conversation.installationId,
+      conversation.events
+    ),
   });
+}
+
+async function buildCustomerProfileMap(
+  workspaceId: string,
+  installationId: string,
+  events: Array<{ detailsJson: unknown }>
+): Promise<
+  Record<
+    string,
+    {
+      externalUserId: string;
+      displayName: string | null;
+      realName: string | null;
+      avatarUrl: string | null;
+      isBot: boolean;
+      isExternal: boolean;
+    }
+  >
+> {
+  const userIds = new Set<string>();
+  for (const event of events) {
+    if (event.detailsJson && typeof event.detailsJson === "object") {
+      const details = event.detailsJson as Record<string, unknown>;
+      if (typeof details.slackUserId === "string") {
+        userIds.add(details.slackUserId);
+      }
+    }
+  }
+
+  if (userIds.size === 0) {
+    return {};
+  }
+
+  const profiles = await prisma.supportCustomerProfile.findMany({
+    where: {
+      installationId,
+      externalUserId: { in: [...userIds] },
+      deletedAt: null,
+    },
+    select: {
+      externalUserId: true,
+      displayName: true,
+      realName: true,
+      avatarUrl: true,
+      isBot: true,
+      isExternal: true,
+    },
+  });
+
+  const map: Record<string, (typeof profiles)[number]> = {};
+  for (const profile of profiles) {
+    map[profile.externalUserId] = profile;
+  }
+
+  return map;
 }

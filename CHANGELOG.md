@@ -2,6 +2,70 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.1.7.1] - 2026-04-12
+
+### Added
+- **Slack Functionality P0 engineering spec** landed at `docs/domains/support/spec-slack-functionality-p0.md`. Execution source of truth for the next Slack inbox push: mirror inbound customer files to Cloudflare R2, deliver outbound replies with real Slack file uploads and human agent identity (`chat:write.customize`), cache customer identity per install, and survive Slack Connect + reinstall windows without silent degradation. Covers schema (`SupportMessageAttachment` + `SupportCustomerProfile` + `SupportAttachment{Direction,UploadState,LifecyclePolicy}` enums + `SupportInstallation.oauthScopes` column), the workflow-dispatches-activity mirror pattern, Slack Connect `file_access: check_file_info` stub handling, single-message atomicity via `files.completeUploadExternal` `initial_comment` with a two-entry fallback path, first-party session-cookie auth for `/api/support/attachments/*` (out of `/api/rest/*`), full responsive + a11y spec calibrated against DESIGN.md, 25MB outbound / 100MB inbound size caps, and a nightly R2 garbage-collection sweeper for soft-deleted attachments. Flags a P0 pre-work PR: `slack-oauth-service.ts` currently upserts `SupportInstallation` rows on `providerInstallationId = appId` (Slack App ID), which collides across tenants and must be fixed before this work lands.
+
+## [0.1.7.0] - 2026-04-12
+
+### Changed
+- **`messageTs` promoted to a first-class column on `SupportConversationEvent`.** Thread-parent resolution previously used a JSONB path filter (`detailsJson->>'messageTs' = $1`) which can't use a JSONB GIN index and forces a sequential scan over every event in the conversation. Now a real text column with a composite `(conversationId, messageTs)` B-tree index. Reply latency goes from O(events-per-conversation) to O(log n). Ingest writes still mirror `messageTs` into `detailsJson` for forensic lookup — removing the mirror is a future cleanup once we're confident nothing reads it.
+- **Thread-parent resolution extracted to `supportEvents.resolveParentEventId`.** Both the ingress path (`runSupportPipeline`) and the reply path (`sendReplyWithRecordedAttempt`) now call the shared service instead of each maintaining their own inline query. Walk-up rule, defensive stale-client guard, and structural-client typing live in one place — `packages/rest/src/services/support/support-event-service.ts`. 5 new unit tests cover root/child/walk-up/scoping/structural-client cases.
+- **`useConversationReply` hook extracted from `conversation-view.tsx`.** The component now owns layout and delegation; the hook owns timeline polling + reply/send/retry state and handlers. Reply flow can be tested in isolation and Pillar A's multi-file upload state will have a clean home instead of piling on top of the component.
+
+### Added
+- **Migration `20260412050000_support_event_message_ts_column`.** Adds the `messageTs` column, backfills it from `detailsJson`, and creates the composite index. 32 existing rows backfilled during development. Ingress writes the column alongside the detailsJson mirror going forward.
+
+## [0.1.6.0] - 2026-04-12
+
+### Changed
+- **Thread hierarchy resolved server-side, not at render time.** Events now carry a first-class `parentEventId` column on `SupportConversationEvent`, populated at ingress (for customer messages) and at reply delivery (for operator messages) from Slack's `thread_ts`. The inbox UI groups children by this field directly — no more `threadTs ↔ messageTs` matching in the browser. Keeps the UI trivial and moves thread awareness into the data model where it belongs.
+- **Parent resolution walks up one hop** when the direct lookup lands on a thread child. When the operator clicks "reply" on a thread reply (which sets the resolver target to the child's messageTs), the server normalizes to the thread root so every reply points at the top-of-thread. Matches Slack's own thread flattening — there's no real "sub-thread" concept.
+
+### Added
+- **Migration `20260412040000_support_event_parent_event_id`.** Adds the nullable `parentEventId` column with a self-referential FK (`SET NULL` on delete), plus an index for child-lookup queries. Includes a two-step backfill: first pass matches `threadTs → messageTs` across all existing events, second pass walks grandchildren up to their true root.
+
+### Removed
+- **Client-side thread tree matching.** The old `buildThreadTree` consulted `threadTs`, `messageTs`, and `replyToEventId` with fall-through rules to build the hierarchy in the browser. Replaced with a 10-line group-by on `parentEventId`. The rule set shrunk from 4 rules to 1.
+
+## [0.1.5.0] - 2026-04-12
+
+### Fixed
+- **Inbox now renders Slack threads as threads.** Previously the conversation view showed every event in flat chronological order, which turned a threaded Slack conversation into a jumble of interleaved messages. The tree builder now reads `threadTs` on each event and groups thread children under their parent: customer thread replies, operator replies whose resolver targeted a specific thread, and explicit "reply to this message" replies all collapse to one level of nesting under the correct parent. Each customer burst (standalone top-level message) is its own top-level thread in the view. When the operator clicks "reply" on a message that's itself a thread reply, the new reply is flattened to sit alongside it under the thread parent, matching Slack's own flattening behavior.
+- **Grandchild nesting bug.** The previous nesting logic matched only `replyToEventId` and would put a reply under a thread child, creating a grandchild that the `MessageThread` component doesn't recurse into. The reply would then fail to render at all. The new resolver normalizes reply targets to the thread root.
+
+### Added
+- **`apps/web/src/components/support/thread-tree.ts`.** Extracted the tree-building logic from `message-list.tsx` into a pure module with 8 unit tests in `apps/web/test/thread-tree.test.ts`. Covers standalone messages, threaded replies via `threadTs`, explicit `replyToEventId` paths, replyToEventId-pointing-at-a-child normalization, orphaned thread references, and preservation of event order inside each bucket.
+
+## [0.1.4.0] - 2026-04-12
+
+### Added
+- **Replies land wherever the customer is active.** If the customer replied inside a specific Slack thread, the operator's reply continues that thread. If the customer sent a new standalone message in the channel, the operator's reply threads off that message directly. One TrustLoop conversation can now own multiple Slack threads without fragmenting. Explicit "reply to this message" from the UI still overrides. This is what v0.1.1.0's "burst-sensitive" attempt was trying to do, but it lacked the routing infrastructure; v0.1.4.0 adds it.
+- **`SupportConversationThreadAlias` table.** A new join table tracks every Slack thread a conversation has ever spawned. Ingress looks up incoming customer thread-replies against this table before canonical-key fallback, so responses to any of the conversation's threads route back to the original conversation instead of creating a phantom new one. Unique on `(installationId, channelId, threadTs)`; cascades on conversation/installation delete.
+
+## [0.1.3.0] - 2026-04-12
+
+### Fixed
+- **Customer replies no longer spawn phantom conversations.** When v0.1.1.0 introduced burst-sensitive thread targeting (each cluster of customer messages got its own Slack thread), a routing bug emerged: if the operator's reply started a new Slack thread anchored on a later message, the customer's response to that thread came back with a `thread_ts` that didn't match the conversation's canonical key, and ingress would create a brand-new conversation for it. The inbox looked like the thread history had been lost. Fixed by reverting to conversation-anchored thread targeting: every operator reply now targets the conversation's root `thread_ts` (the first customer message), so every customer response lands back in the same conversation. Explicit "reply to this specific message" from the UI still overrides.
+
+## [0.1.2.0] - 2026-04-12
+
+### Changed
+- **Slack ingress filter now distinguishes our own bot from other bots.** Previously we dropped every bot-authored Slack message at the ingress boundary to stop `chat.postMessage` echoes from leaking into the inbox. That was correct for echoes but over-aggressive: it also silently threw away messages from other integrations posting in the same channel (e.g. a GitHub app uploading a PR diff). The filter now compares each event's `user` field against `installation.botUserId` (captured at OAuth install time) and drops only our own bot. Other-integration bot messages pass through and will be mirrored once file-attachment support lands. Legacy installs where `botUserId` is null fall back to the old blanket drop — safe default until they re-install or backfill the field.
+- **Dev seed honors `SLACK_DEV_BOT_USER_ID` env var.** If you're dev-testing against a real Slack workspace, set `SLACK_DEV_BOT_USER_ID` in `.env` to your workspace's actual bot user ID so the echo filter works out of the box. Without the env var, the seed uses a placeholder that only works for synthetic (no-real-Slack) dev loops.
+
+## [0.1.1.0] - 2026-04-12
+
+### Fixed
+- **Session replay recordings now actually land in the database.** Every browser session flushed by the TrustLoop SDK was silently failing to write because Prisma's `upsert()` cannot target a partial unique index. Replaced with a manual find-or-create inside the existing transaction. Session replay history picks up the moment the fix deploys.
+- **Operator replies no longer show up as duplicate customer messages.** Slack's Events API echoes every `chat.postMessage` call back as a new message event, and the old ingress pipeline was ingesting those echoes as customer bubbles in the inbox, making it look like the customer was saying the same thing as the operator. The ingress now drops bot-authored and system-noise events (edits, pins, channel joins) at the boundary.
+- **Replies now land in the most relevant Slack thread.** When a customer sends several messages in a row, the operator's reply targets whichever message is newest at send time, then every follow-up reply in that same burst stays in the same thread. Previous behavior threaded everything off the first-ever message in the conversation, which pushed operator answers out of the visual conversation flow. Explicit "reply to this message" from the inbox UI still overrides.
+
+### Changed
+- **Queue worker dev script now uses `tsx watch`.** Editing activities or workflow code under `apps/queue/src` triggers an automatic worker restart, eliminating a whole class of "why isn't my fix taking effect" bugs.
+- **Naming convention for Temporal workflow/activity files.** Every artifact for a feature now shares one hyphenated prefix (`support-analysis.workflow.ts`, `support-analysis.activity.ts`, `support-analysis.schema.ts`, `support-analysis-service.ts`) so a single fuzzy search surfaces all of it. Renamed the support-analysis workflow + trigger files to match. Documented in `AGENTS.md` as a non-negotiable naming rule.
+
 ## [0.1.0.0] - 2026-04-11
 
 ### Added

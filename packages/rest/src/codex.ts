@@ -12,7 +12,7 @@
 //   await codex.fetchRepoTree(...);
 //   await codex.getSettings(workspaceId);
 //
-// The real files live under ./codex/. See docs/service-layer-conventions.md.
+// The real files live under ./codex/. See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 export * from "./codex/index";

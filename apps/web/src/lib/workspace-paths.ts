@@ -19,6 +19,10 @@ export function workspaceSessionsPath(workspaceId: string): string {
   return `/${workspaceId}/sessions`;
 }
 
+export function workspaceInsightsPath(workspaceId: string): string {
+  return `/${workspaceId}/insights`;
+}
+
 /**
  * Returns the settings landing path for a workspace.
  */

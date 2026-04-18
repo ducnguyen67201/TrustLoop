@@ -58,6 +58,17 @@ export function AnalysisPanel({
     );
   }
 
+  // State: gathering context
+  if (analysis?.status === "GATHERING_CONTEXT") {
+    return (
+      <section className="py-3 space-y-2" aria-label="AI analysis">
+        <div className="text-xs text-muted-foreground font-mono">
+          Fetching thread context and error history...
+        </div>
+      </section>
+    );
+  }
+
   // State: analyzing (streaming)
   if (isAnalyzing || analysis?.status === "ANALYZING") {
     return (
@@ -105,6 +116,21 @@ export function AnalysisPanel({
       {/* Problem statement */}
       {analysis?.problemStatement && (
         <p className="text-sm text-foreground">{analysis.problemStatement}</p>
+      )}
+
+      {/* Sentry context badge */}
+      {analysis?.sentryContext != null && <SentryBadge sentryContext={analysis.sentryContext} />}
+
+      {/* PR link */}
+      {draft?.prUrl && (
+        <a
+          href={draft.prUrl as string}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-primary underline underline-offset-2"
+        >
+          Suggested fix: PR #{draft.prNumber} →
+        </a>
       )}
 
       <Separator />
@@ -208,5 +234,17 @@ export function AnalysisPanel({
         />
       )}
     </section>
+  );
+}
+
+function SentryBadge({ sentryContext }: { sentryContext: unknown }) {
+  const ctx = sentryContext as { issues?: unknown[] } | null;
+  const count = ctx?.issues?.length ?? 0;
+  if (count === 0) return null;
+  return (
+    <div className="text-xs text-destructive flex items-center gap-1">
+      <span className="inline-block w-2 h-2 rounded-full bg-destructive" />
+      {count} Sentry {count === 1 ? "issue" : "issues"} found for this user
+    </div>
   );
 }

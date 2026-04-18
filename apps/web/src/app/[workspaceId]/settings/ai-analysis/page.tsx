@@ -102,6 +102,10 @@ export default function AiAnalysisSettingsPage() {
                 automatically analyzes the conversation and generates a draft response. The draft
                 appears in the inbox for your review.
               </p>
+              <p className="text-muted-foreground">
+                Changes take effect immediately for new messages. Conversations already waiting for
+                the quiet window will respect the updated setting.
+              </p>
             </>
           ) : (
             <>
@@ -110,6 +114,10 @@ export default function AiAnalysisSettingsPage() {
                 Click the "Analyze" button on each conversation to trigger analysis. No automatic
                 analysis runs. Useful when you want full control over which conversations get
                 analyzed.
+              </p>
+              <p className="text-muted-foreground">
+                Switching to manual stops future auto-analysis. Any conversation currently in the
+                quiet window will not be auto-analyzed.
               </p>
             </>
           )}

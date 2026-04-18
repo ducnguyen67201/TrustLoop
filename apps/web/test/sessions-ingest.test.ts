@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock prisma ────────────────────────────────────────────────────
-const mockUpsert = vi.fn().mockResolvedValue({ id: "sr_1", workspaceId: "ws_1" });
+// Ingest path: sessionRecord.findFirst → update (if found) or create
+// (if not). Replaces the old upsert() which couldn't target the partial
+// unique index on (workspaceId, sessionId) WHERE deletedAt IS NULL.
+const mockSessionFindFirst = vi.fn().mockResolvedValue(null);
+const mockSessionCreate = vi.fn().mockResolvedValue({ id: "sr_1", eventCount: 0 });
+const mockSessionUpdate = vi.fn().mockResolvedValue({ id: "sr_1", eventCount: 1 });
 const mockCreateMany = vi.fn().mockResolvedValue({ count: 1 });
 const mockChunkFindFirst = vi.fn().mockResolvedValue(null);
 const mockChunkCreate = vi.fn().mockResolvedValue({ id: "chunk_1" });
@@ -10,7 +15,11 @@ const mockKeyFindUnique = vi.fn();
 
 vi.mock("@shared/database", () => ({
   prisma: {
-    sessionRecord: { upsert: (...args: unknown[]) => mockUpsert(...args) },
+    sessionRecord: {
+      findFirst: (...args: unknown[]) => mockSessionFindFirst(...args),
+      create: (...args: unknown[]) => mockSessionCreate(...args),
+      update: (...args: unknown[]) => mockSessionUpdate(...args),
+    },
     sessionEvent: { createMany: (...args: unknown[]) => mockCreateMany(...args) },
     sessionReplayChunk: {
       findFirst: (...args: unknown[]) => mockChunkFindFirst(...args),
@@ -22,7 +31,11 @@ vi.mock("@shared/database", () => ({
     },
     $transaction: vi.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        sessionRecord: { upsert: (...args: unknown[]) => mockUpsert(...args) },
+        sessionRecord: {
+          findFirst: (...args: unknown[]) => mockSessionFindFirst(...args),
+          create: (...args: unknown[]) => mockSessionCreate(...args),
+          update: (...args: unknown[]) => mockSessionUpdate(...args),
+        },
         sessionEvent: { createMany: (...args: unknown[]) => mockCreateMany(...args) },
         sessionReplayChunk: {
           findFirst: (...args: unknown[]) => mockChunkFindFirst(...args),
@@ -142,7 +155,9 @@ describe("session ingest: auth failures", () => {
 describe("session ingest: valid requests", () => {
   beforeEach(() => {
     stubValidApiKey();
-    mockUpsert.mockResolvedValue({ id: "sr_1", workspaceId: "ws_1" });
+    mockSessionFindFirst.mockResolvedValue(null);
+    mockSessionCreate.mockResolvedValue({ id: "sr_1", eventCount: 1 });
+    mockSessionUpdate.mockResolvedValue({ id: "sr_1", eventCount: 1 });
     mockCreateMany.mockResolvedValue({ count: 1 });
   });
 
@@ -211,7 +226,8 @@ describe("session ingest: async write failure", () => {
   });
 
   it("still returns 202 when async DB write fails, and logs error", async () => {
-    mockUpsert.mockRejectedValue(new Error("DB connection failed"));
+    mockSessionFindFirst.mockResolvedValue(null);
+    mockSessionCreate.mockRejectedValue(new Error("DB connection failed"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const req = makeRequest(validPayload(), "tlk_testprefix.secret");

@@ -24,10 +24,29 @@ enum SupportConversationEventType {
   DELIVERY_ATTEMPTED
   DELIVERY_FAILED
   DELIVERY_SUCCEEDED
+  DELIVERY_WARNING
   NOTE
   ANALYSIS_COMPLETED
   DRAFT_APPROVED
   DRAFT_DISMISSED
+  ANALYSIS_ESCALATED
+}
+
+enum SupportAttachmentDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum SupportAttachmentUploadState {
+  PENDING
+  UPLOADED
+  FAILED
+}
+
+enum SupportAttachmentLifecyclePolicy {
+  ARCHIVE_NEVER
+  ARCHIVE_AFTER_90D
+  ARCHIVE_AFTER_1Y
 }
 
 enum SupportConversationEventSource {
@@ -69,11 +88,14 @@ model SupportInstallation {
   providerInstallationId String
   teamId                 String
   botUserId              String?
+  oauthScopes            String[]             @default([])
   metadata               Json?
   deletedAt              DateTime?
   workspace              Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   ingressEvents          SupportIngressEvent[]
   conversations          SupportConversation[]
+  threadAliases          SupportConversationThreadAlias[]
+  customerProfiles       SupportCustomerProfile[]
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
 
@@ -124,8 +146,10 @@ model SupportConversation {
   deliveryAttempts       SupportDeliveryAttempt[]
   ticketLinks            SupportTicketLink[]
   groupingAnchors        SupportGroupingAnchor[]
+  threadAliases          SupportConversationThreadAlias[]
   analyses               SupportAnalysis[]
   drafts                 SupportDraft[]
+  attachments            SupportMessageAttachment[]
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
 
@@ -138,20 +162,67 @@ model SupportConversation {
   // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
-model SupportConversationEvent {
-  id           String                         @id @default(cuid())
-  workspaceId  String
+/// Maps a Slack thread_ts to a TrustLoop conversation.
+///
+/// When the operator delivers a reply into a Slack thread whose parent
+/// is NOT the conversation's canonical thread_ts (e.g. because the
+/// customer sent a later standalone message and the reply targets
+/// that burst), an alias row is written here. Ingress checks this
+/// table before canonical-key lookup so customer responses to that
+/// thread route back to the original conversation instead of spawning
+/// a phantom new one.
+///
+/// Unique on (installationId, channelId, threadTs) — each Slack thread
+/// can only belong to one TrustLoop conversation.
+model SupportConversationThreadAlias {
+  id             String              @id @default(cuid())
+  workspaceId    String
   conversationId String
-  eventType    SupportConversationEventType
-  eventSource  SupportConversationEventSource
-  summary      String?
-  detailsJson  Json?
-  workspace    Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  conversation SupportConversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  createdAt    DateTime                       @default(now())
+  installationId String
+  channelId      String
+  threadTs       String
+  workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  installation   SupportInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime            @default(now())
+
+  @@unique([installationId, channelId, threadTs])
+  @@index([conversationId])
+  @@index([workspaceId])
+}
+
+model SupportConversationEvent {
+  id             String                         @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  eventType      SupportConversationEventType
+  eventSource    SupportConversationEventSource
+  summary        String?
+  detailsJson    Json?
+  /// Slack's message ts for MESSAGE_RECEIVED events. Promoted to a
+  /// first-class column so thread-parent lookups can use a B-tree index
+  /// instead of a JSONB path filter (which forces a sequential scan).
+  /// Null for DELIVERY_ATTEMPTED / DELIVERY_SUCCEEDED and internal
+  /// audit events — those don't become thread roots.
+  messageTs      String?
+  /// Resolved at ingress/reply time from Slack's thread_ts. When non-null,
+  /// this event is a reply inside the parent event's thread. The UI groups
+  /// children by this field without re-running the threadTs↔messageTs match.
+  /// Null for thread roots, standalone messages, and orphans whose parent
+  /// wasn't in the DB at ingest time (rare — Slack webhook ordering race).
+  parentEventId  String?
+  workspace      Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation   SupportConversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  parent         SupportConversationEvent?      @relation("SupportConversationEventParent", fields: [parentEventId], references: [id], onDelete: SetNull)
+  children       SupportConversationEvent[]     @relation("SupportConversationEventParent")
+  attachments    SupportMessageAttachment[]
+  reactions      SupportMessageReaction[]
+  createdAt      DateTime                       @default(now())
 
   @@index([conversationId, createdAt])
   @@index([workspaceId, createdAt])
+  @@index([parentEventId])
+  @@index([conversationId, messageTs])
 }
 
 model SupportDeliveryAttempt {
@@ -238,4 +309,77 @@ model SupportGroupingAnchor {
   @@unique([workspaceId, channelId, authorSlackUserId, anchorMessageTs])
   @@index([workspaceId, channelId, authorSlackUserId, windowExpiresAt])
   @@index([conversationId])
+}
+
+model SupportMessageAttachment {
+  id              String                          @id @default(cuid())
+  workspaceId     String
+  conversationId  String
+  eventId         String?
+  provider        SupportProvider
+  providerFileId  String?
+  storageKey      String?
+  fileData        Bytes?
+  mimeType        String
+  sizeBytes       Int
+  originalFilename String?
+  title           String?
+  direction       SupportAttachmentDirection
+  uploadState     SupportAttachmentUploadState     @default(PENDING)
+  errorCode       String?
+  lifecyclePolicy SupportAttachmentLifecyclePolicy @default(ARCHIVE_NEVER)
+  deletedAt       DateTime?
+  workspace       Workspace                       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation    SupportConversation             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  event           SupportConversationEvent?        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                        @default(now())
+  updatedAt       DateTime                        @updatedAt
+
+  @@index([conversationId, createdAt])
+  @@index([workspaceId, uploadState])
+  // TYPE GENERATION ONLY: DB uses partial unique index
+  // (WHERE deletedAt IS NULL AND providerFileId IS NOT NULL).
+  @@unique([provider, providerFileId, direction])
+}
+
+model SupportCustomerProfile {
+  id               String              @id @default(cuid())
+  workspaceId      String
+  installationId   String
+  provider         SupportProvider
+  externalUserId   String
+  displayName      String?
+  realName         String?
+  avatarUrl        String?
+  isBot            Boolean             @default(false)
+  isExternal       Boolean             @default(false)
+  profileFetchedAt DateTime            @default(now())
+  deletedAt        DateTime?
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  installation     SupportInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  @@unique([installationId, externalUserId])
+  @@index([workspaceId, provider])
+  @@index([installationId])
+}
+
+model SupportMessageReaction {
+  id           String                    @id @default(cuid())
+  workspaceId  String
+  eventId      String
+  emojiName    String
+  emojiUnicode String?
+  actorUserId  String
+  slackSynced  Boolean                   @default(false)
+  workspace    Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  event        SupportConversationEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  actor        User                      @relation("SupportMessageReactionActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                  @default(now())
+
+  @@unique([eventId, emojiName, actorUserId])
+  @@index([eventId])
+  @@index([workspaceId])
 }

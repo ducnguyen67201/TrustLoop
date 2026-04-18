@@ -1,4 +1,5 @@
 import "./globals.css";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -10,6 +11,10 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 export const metadata: Metadata = {
   title: "TrustLoop AI",
   description: "TrustLoop AI foundation scaffold",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -17,6 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className={cn("font-mono", geistMono.variable)}>
       <body>
         <TooltipProvider>{children}</TooltipProvider>
+        <Toaster position="bottom-right" />
       </body>
     </html>
   );

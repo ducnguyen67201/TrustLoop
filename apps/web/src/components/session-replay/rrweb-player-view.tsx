@@ -1,5 +1,6 @@
 "use client";
 
+import type { eventWithTime } from "@rrweb/types";
 import type { ReplayChunkResponse } from "@shared/types";
 import { useEffect, useRef } from "react";
 
@@ -45,11 +46,11 @@ export function RrwebPlayerView({ chunks, speed }: RrwebPlayerViewProps) {
         const container = containerRef.current;
         if (!container || cancelled) return;
 
-        const allEvents: unknown[] = [];
+        const allEvents: eventWithTime[] = [];
         for (const chunk of chunks) {
           try {
             const decoded = decodeBase64Chunk(chunk.compressedData);
-            const parsed = JSON.parse(decoded) as unknown[];
+            const parsed = JSON.parse(decoded) as eventWithTime[];
             allEvents.push(...parsed);
           } catch {
             // Skip corrupt chunks

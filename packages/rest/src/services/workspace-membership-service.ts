@@ -12,7 +12,7 @@ import { WORKSPACE_ROLE, type WorkspaceMember, type WorkspaceRole } from "@share
 //
 // This module is intentionally separate from workspace-service.ts so that
 // membership changes (security-sensitive) don't share a risk profile with
-// cosmetic workspace metadata changes. See docs/service-layer-conventions.md.
+// cosmetic workspace metadata changes. See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 type UserWorkspaceMembership = {

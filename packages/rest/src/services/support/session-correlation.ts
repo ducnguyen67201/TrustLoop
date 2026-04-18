@@ -9,7 +9,7 @@
 // Callers:
 //   import * as sessionCorrelation from "@shared/rest/services/support/session-correlation";
 //
-// See docs/service-layer-conventions.md — rule 7, "size budget: ~300 lines,
+// See docs/conventions/service-layer-conventions.md — rule 7, "size budget: ~300 lines,
 // then split by concern". The real files live under ./session-correlation/.
 // ---------------------------------------------------------------------------
 

@@ -1,4 +1,5 @@
 import { supportThreadReferenceSchema } from "@shared/types/support/support-adapter.schema";
+import { supportReactionSchema } from "@shared/types/support/support-reaction.schema";
 import { z } from "zod";
 
 /** Default grouping window configuration for standalone message grouping. */
@@ -71,6 +72,18 @@ export const supportConversationListResponseSchema = z.object({
   delayedData: z.boolean().default(false),
 });
 
+export const supportTimelineAttachmentSchema = z.object({
+  id: z.string().min(1),
+  mimeType: z.string().min(1),
+  uploadState: z.enum(["PENDING", "UPLOADED", "FAILED"]),
+  originalFilename: z.string().nullable(),
+  sizeBytes: z.number().int(),
+  errorCode: z.string().nullable().optional(),
+  direction: z.enum(["INBOUND", "OUTBOUND"]),
+});
+
+export type SupportTimelineAttachment = z.infer<typeof supportTimelineAttachmentSchema>;
+
 export const supportConversationTimelineEventSchema = z.object({
   id: z.string().min(1),
   conversationId: z.string().min(1),
@@ -79,12 +92,36 @@ export const supportConversationTimelineEventSchema = z.object({
   eventSource: supportConversationEventSourceSchema,
   summary: z.string().trim().min(1).nullable(),
   detailsJson: z.record(z.string(), z.unknown()).nullable(),
+  attachments: z.array(supportTimelineAttachmentSchema).default([]),
+  /// Parent event ID for thread replies. Resolved at ingress from Slack's
+  /// thread_ts. Null for thread roots, standalone messages, and orphans.
+  /// The inbox UI groups children by this field.
+  ///
+  /// `.nullish()` rather than `.nullable()` so a stale Prisma client (one
+  /// generated before the parentEventId column existed) that returns
+  /// events without the field doesn't fail the whole timeline parse.
+  /// In that degraded state the inbox renders flat, which is the same
+  /// behavior as pre-v0.1.6.0 and is preferable to a 500.
+  parentEventId: z.string().nullish(),
+  reactions: z.array(supportReactionSchema).default([]),
   createdAt: z.iso.datetime(),
 });
+
+export const supportCustomerProfileSummarySchema = z.object({
+  externalUserId: z.string().min(1),
+  displayName: z.string().nullable(),
+  realName: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  isBot: z.boolean().default(false),
+  isExternal: z.boolean().default(false),
+});
+
+export type SupportCustomerProfileSummary = z.infer<typeof supportCustomerProfileSummarySchema>;
 
 export const supportConversationTimelineSchema = z.object({
   conversation: supportConversationSchema,
   events: z.array(supportConversationTimelineEventSchema),
+  customerProfiles: z.record(z.string(), supportCustomerProfileSummarySchema).default({}),
 });
 
 export type SupportConversationStatus = z.infer<typeof supportConversationStatusSchema>;

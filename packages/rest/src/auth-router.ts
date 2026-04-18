@@ -168,6 +168,8 @@ export const authRouter = router({
       user: {
         id: ctx.user.id,
         email: ctx.user.email,
+        name: ctx.user.name ?? null,
+        avatarUrl: ctx.user.avatarUrl ?? null,
       },
       activeWorkspaceId: ctx.activeWorkspaceId,
       role: ctx.role,

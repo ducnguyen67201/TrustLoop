@@ -3,17 +3,18 @@
 import { MessageBlock } from "@/components/support/message-block";
 import { MessageThread } from "@/components/support/message-thread";
 import { SystemAnnotation } from "@/components/support/system-annotation";
+import { buildThreadTree } from "@/components/support/thread-tree";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { SupportConversationTimelineEvent } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const MESSAGE_EVENT_TYPES = new Set(["MESSAGE_RECEIVED", "DELIVERY_ATTEMPTED", "NOTE"]);
+const MESSAGE_EVENT_TYPES = new Set(["MESSAGE_RECEIVED", "DELIVERY_SUCCEEDED", "NOTE"]);
 
 const INLINE_ANNOTATION_TYPES = new Set(["DELIVERY_FAILED"]);
 
 const SIDEBAR_ONLY_EVENT_TYPES = new Set([
-  "DELIVERY_SUCCEEDED",
+  "DELIVERY_ATTEMPTED",
   "STATUS_CHANGED",
   "ASSIGNEE_CHANGED",
   "ANALYSIS_COMPLETED",
@@ -22,35 +23,6 @@ const SIDEBAR_ONLY_EVENT_TYPES = new Set([
   "MERGED",
   "SPLIT",
 ]);
-
-interface ThreadTree {
-  topLevel: SupportConversationTimelineEvent[];
-  childrenByParent: Map<string, SupportConversationTimelineEvent[]>;
-}
-
-function buildThreadTree(events: SupportConversationTimelineEvent[]): ThreadTree {
-  const childrenByParent = new Map<string, SupportConversationTimelineEvent[]>();
-  const topLevel: SupportConversationTimelineEvent[] = [];
-
-  const eventIds = new Set(events.map((e) => e.id));
-
-  for (const event of events) {
-    const replyToId =
-      typeof event.detailsJson?.replyToEventId === "string"
-        ? event.detailsJson.replyToEventId
-        : null;
-
-    if (replyToId && eventIds.has(replyToId)) {
-      const siblings = childrenByParent.get(replyToId) ?? [];
-      siblings.push(event);
-      childrenByParent.set(replyToId, siblings);
-    } else {
-      topLevel.push(event);
-    }
-  }
-
-  return { topLevel, childrenByParent };
-}
 
 function formatDateSeparator(dateStr: string): string {
   const date = new Date(dateStr);
@@ -88,6 +60,8 @@ interface MessageListProps {
   isMutating: boolean;
   onRetryDelivery: (deliveryAttemptId: string) => void;
   onSetReplyToEventId: (eventId: string | null) => void;
+  onToggleReaction: (eventId: string, emojiName: string, emojiUnicode: string | null) => void;
+  currentUserId: string | null;
 }
 
 /**
@@ -100,6 +74,8 @@ export function MessageList({
   isMutating,
   onRetryDelivery,
   onSetReplyToEventId,
+  onToggleReaction,
+  currentUserId,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
@@ -211,7 +187,9 @@ export function MessageList({
             }
 
             if (MESSAGE_EVENT_TYPES.has(event.eventType)) {
-              const replies = childrenByParent.get(event.id) ?? [];
+              const replies = (childrenByParent.get(event.id) ?? []).filter((r) =>
+                MESSAGE_EVENT_TYPES.has(r.eventType)
+              );
 
               nodes.push(<div key={`spacer-${event.id}`} className="h-3" />);
 
@@ -221,6 +199,8 @@ export function MessageList({
                     event={event}
                     showHeader
                     onReplyToThread={() => onSetReplyToEventId(event.id)}
+                    onToggleReaction={onToggleReaction}
+                    currentUserId={currentUserId}
                   >
                     {replies.length > 0 ? (
                       <MessageThread
