@@ -1,7 +1,7 @@
-# Graph Report - /home/runner/work/TrustLoop/TrustLoop  (2026-04-17)
+# Graph Report - /home/runner/work/TrustLoop/TrustLoop  (2026-04-18)
 
 ## Corpus Check
-- 410 files · ~224,139 words
+- 410 files · ~226,202 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -1989,11 +1989,11 @@ Nodes (0):
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `GET()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 5`, `Community 6`, `Community 15`, `Community 17`?**
-  _High betweenness centrality (0.120) - this node is a cross-community bridge._
+  _High betweenness centrality (0.136) - this node is a cross-community bridge._
 - **Why does `handleGoogleOAuthCallback()` connect `Community 2` to `Community 0`, `Community 21`, `Community 5`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
-- **Why does `buildThreadSnapshot()` connect `Community 4` to `Community 17`, `Community 7`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+  _High betweenness centrality (0.041) - this node is a cross-community bridge._
+- **Why does `sendWithRetry()` connect `Community 3` to `Community 0`?**
+  _High betweenness centrality (0.036) - this node is a cross-community bridge._
 - **Are the 27 inferred relationships involving `GET()` (e.g. with `sendWithRetry()` and `resolveApiKeyAuth()`) actually correct?**
   _`GET()` has 27 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 10 inferred relationships involving `handleGoogleOAuthCallback()` (e.g. with `GET()` and `consumeOauthStateCookie()`) actually correct?**
