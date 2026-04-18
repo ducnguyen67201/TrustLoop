@@ -60,4 +60,6 @@ COPY --from=builder --chown=worker:nodejs /app/packages/types ./packages/types
 
 USER worker
 
-CMD ["npx", "tsx", "apps/queue/src/main.ts"]
+WORKDIR /app/apps/queue
+
+CMD ["npx", "tsx", "src/main.ts"]
