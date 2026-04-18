@@ -1,0 +1,150 @@
+name: Migrate DB
+
+# One workflow, two environments. Doppler provides the env vars
+# (DATABASE_URL, etc.) based on which config we point it at.
+#
+# Branch model:
+#   push to main        →  Doppler `staging`     →  staging Postgres
+#   push to production  →  Doppler `production`  →  prod Postgres
+#   workflow_dispatch   →  user-selected config  →  corresponding DB
+#
+# Prereq: DOPPLER_TOKEN secret must be set. Use a Doppler Service Account
+# token (starts with `dp.sa.`) with read access to both `staging` and
+# `production` configs. See PR body for setup steps.
+#
+# Pairs with the Doppler↔Railway integration so Railway's auto-generated
+# DATABASE_URL flows into Doppler automatically. No manual secret sync.
+
+on:
+  push:
+    branches: [main, production]
+    paths:
+      - 'packages/database/prisma/migrations/**'
+      - 'packages/database/prisma/schema.prisma'
+      - 'packages/database/prisma/schema/**'
+      - '.github/workflows/migrate.yml'
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'Doppler config to migrate against'
+        type: choice
+        options:
+          - staging
+          - production
+        required: true
+        default: 'staging'
+      reason:
+        description: 'Why are you manually running this?'
+        required: true
+        default: 'Apply pending migrations'
+
+concurrency:
+  # One migration per target config at a time. Same-config pushes queue
+  # up behind in-flight runs instead of cancelling them.
+  group: migrate-${{ github.ref }}-${{ github.event.inputs.config || 'auto' }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # When the run targets production, GitHub's `environment: production`
+    # gate kicks in IF the repo has that environment configured with
+    # required reviewers. Harmless if the env isn't configured (runs
+    # without approval). Set this up in repo Settings → Environments.
+    environment: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' && inputs.config == 'production') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/production')
+        && 'production' || 'staging'
+      }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Resolve Doppler config
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            config="${{ inputs.config }}"
+          elif [ "${{ github.ref }}" = "refs/heads/production" ]; then
+            config="production"
+          else
+            config="staging"
+          fi
+          echo "config=$config" >> "$GITHUB_OUTPUT"
+          echo "Target Doppler config: $config"
+
+      - name: Verify DOPPLER_TOKEN is set
+        run: |
+          if [ -z "${{ secrets.DOPPLER_TOKEN }}" ]; then
+            echo "::error::DOPPLER_TOKEN secret is not set. See PR #28 for setup steps."
+            exit 1
+          fi
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Verify Doppler config access + mask DATABASE_URL host
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          url=$(doppler secrets get DATABASE_URL \
+                  --project trustloop \
+                  --config ${{ steps.resolve.outputs.config }} \
+                  --plain 2>/dev/null || true)
+          if [ -z "$url" ]; then
+            echo "::error::DATABASE_URL not found in Doppler config '${{ steps.resolve.outputs.config }}'. Check the Doppler ↔ Railway integration."
+            exit 1
+          fi
+          host=$(echo "$url" | sed -E 's|^postgresql://[^@]+@([^:/]+).*|\1|')
+          echo "Doppler config:  ${{ steps.resolve.outputs.config }}"
+          echo "Target DB host:  $host"
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Show pending migrations
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run \
+            --project trustloop \
+            --config ${{ steps.resolve.outputs.config }} \
+            -- npx --workspace @shared/database prisma migrate status \
+            || true
+        # non-fatal: migrate status exits non-zero on drift.
+
+      - name: Apply migrations
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run \
+            --project trustloop \
+            --config ${{ steps.resolve.outputs.config }} \
+            -- npm run db:migrate
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Migration summary"
+            echo ""
+            echo "- Doppler config: \`${{ steps.resolve.outputs.config }}\`"
+            echo "- Trigger: ${{ github.event_name }}"
+            echo "- Ref:     ${{ github.ref }}"
+            echo "- Commit:  ${{ github.sha }}"
+            echo "- Outcome: ${{ job.status }}"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "- Reason:  ${{ inputs.reason }}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
