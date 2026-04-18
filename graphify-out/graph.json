@@ -12114,8 +12114,8 @@
       "source_file": "/home/runner/work/TrustLoop/TrustLoop/packages/rest/src/temporal-dispatcher.ts",
       "source_location": "L32",
       "weight": 1.0,
-      "_src": "temporal_dispatcher_getclient",
-      "_tgt": "temporal_connection_buildtemporalconnectionoptions",
+      "_src": "temporal_connection_buildtemporalconnectionoptions",
+      "_tgt": "temporal_dispatcher_getclient",
       "source": "temporal_connection_buildtemporalconnectionoptions",
       "target": "temporal_dispatcher_getclient"
     },
@@ -12126,8 +12126,8 @@
       "source_file": "/home/runner/work/TrustLoop/TrustLoop/apps/queue/src/runtime/worker-runtime.ts",
       "source_location": "L9",
       "weight": 1.0,
-      "_src": "worker_runtime_startqueueworkers",
-      "_tgt": "temporal_connection_buildtemporalconnectionoptions",
+      "_src": "temporal_connection_buildtemporalconnectionoptions",
+      "_tgt": "worker_runtime_startqueueworkers",
       "source": "temporal_connection_buildtemporalconnectionoptions",
       "target": "worker_runtime_startqueueworkers"
     },
@@ -12138,8 +12138,8 @@
       "source_file": "/home/runner/work/TrustLoop/TrustLoop/apps/queue/src/domains/maintenance/register-purge-schedule.ts",
       "source_location": "L14",
       "weight": 1.0,
-      "_src": "register_purge_schedule_main",
-      "_tgt": "temporal_connection_buildtemporalconnectionoptions",
+      "_src": "temporal_connection_buildtemporalconnectionoptions",
+      "_tgt": "register_purge_schedule_main",
       "source": "temporal_connection_buildtemporalconnectionoptions",
       "target": "register_purge_schedule_main"
     },

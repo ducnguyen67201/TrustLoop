@@ -1985,9 +1985,11 @@ Nodes (0):
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `GET()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 7`, `Community 9`, `Community 16`, `Community 17`?**
-  _High betweenness centrality (0.119) - this node is a cross-community bridge._
+  _High betweenness centrality (0.134) - this node is a cross-community bridge._
+- **Why does `handleGoogleOAuthCallback()` connect `Community 0` to `Community 24`, `Community 17`, `Community 9`, `Community 7`?**
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
 - **Why does `buildThreadSnapshot()` connect `Community 3` to `Community 5`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
+  _High betweenness centrality (0.033) - this node is a cross-community bridge._
 - **Are the 27 inferred relationships involving `GET()` (e.g. with `sendWithRetry()` and `resolveApiKeyAuth()`) actually correct?**
   _`GET()` has 27 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 10 inferred relationships involving `handleGoogleOAuthCallback()` (e.g. with `GET()` and `consumeOauthStateCookie()`) actually correct?**
@@ -1996,5 +1998,3 @@ _Questions this graph is uniquely positioned to answer:_
   _`buildThreadSnapshot()` has 5 INFERRED edges - model-reasoned connections that need verification._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.04 - nodes in this community are weakly interconnected._
-- **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.08 - nodes in this community are weakly interconnected._
