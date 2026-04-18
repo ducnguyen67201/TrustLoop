@@ -75,3 +75,123 @@ jobs:
         run: npx turbo run type-check lint test build --filter="[${{ steps.turbo-base.outputs.ref }}]..."
         env:
           SKIP_ENV_VALIDATION: "1"
+
+  # Docker build verification — only builds the services whose inputs changed.
+  # Mirrors the watchPatterns in deploy/railway.*.json so CI matches Railway's
+  # rebuild triggers. Uses GHA layer cache scoped per service; a typical PR
+  # rebuilds 1-2 services from cache in ~30-60s each, not minutes.
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect which services changed
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            marketing:
+              - 'apps/marketing/**'
+              - 'packages/brand/**'
+              - 'deploy/marketing.Dockerfile'
+              - 'deploy/railway.marketing.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.dockerignore'
+            web:
+              - 'apps/web/**'
+              - 'packages/brand/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/rest/**'
+              - 'packages/types/**'
+              - 'deploy/web.Dockerfile'
+              - 'deploy/railway.web.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.dockerignore'
+            queue:
+              - 'apps/queue/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/rest/**'
+              - 'packages/types/**'
+              - 'deploy/queue.Dockerfile'
+              - 'deploy/railway.queue.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.dockerignore'
+            agents:
+              - 'apps/agents/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/types/**'
+              - 'deploy/agents.Dockerfile'
+              - 'deploy/railway.agents.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.dockerignore'
+
+      - name: Set up Docker Buildx
+        if: |
+          steps.changes.outputs.marketing == 'true' ||
+          steps.changes.outputs.web == 'true' ||
+          steps.changes.outputs.queue == 'true' ||
+          steps.changes.outputs.agents == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build marketing image
+        if: steps.changes.outputs.marketing == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/marketing.Dockerfile
+          push: false
+          cache-from: type=gha,scope=marketing
+          cache-to: type=gha,mode=max,scope=marketing
+          tags: trustloop-marketing:ci
+
+      - name: Build web image
+        if: steps.changes.outputs.web == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+          tags: trustloop-web:ci
+
+      - name: Build queue image
+        if: steps.changes.outputs.queue == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/queue.Dockerfile
+          push: false
+          cache-from: type=gha,scope=queue
+          cache-to: type=gha,mode=max,scope=queue
+          tags: trustloop-queue:ci
+
+      - name: Build agents image
+        if: steps.changes.outputs.agents == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/agents.Dockerfile
+          push: false
+          cache-from: type=gha,scope=agents
+          cache-to: type=gha,mode=max,scope=agents
+          tags: trustloop-agents:ci
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Docker build summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Service | Changed | Built |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| marketing | ${{ steps.changes.outputs.marketing }} | ${{ steps.changes.outputs.marketing == 'true' && '✅' || '⏭️ skipped' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| web       | ${{ steps.changes.outputs.web }}       | ${{ steps.changes.outputs.web == 'true' && '✅' || '⏭️ skipped' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| queue     | ${{ steps.changes.outputs.queue }}     | ${{ steps.changes.outputs.queue == 'true' && '✅' || '⏭️ skipped' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| agents    | ${{ steps.changes.outputs.agents }}    | ${{ steps.changes.outputs.agents == 'true' && '✅' || '⏭️ skipped' }} |" >> "$GITHUB_STEP_SUMMARY"
