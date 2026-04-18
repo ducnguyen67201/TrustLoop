@@ -20,8 +20,6 @@ jobs:
       SLACK_SIGNING_SECRET: ci-test-slack-signing-secret
       TEMPORAL_ADDRESS: localhost:7233
       TEMPORAL_NAMESPACE: default
-      TEMPORAL_TASK_QUEUE: support-general
-      CODEX_TASK_QUEUE: codex-intensive
       INTERNAL_SERVICE_KEY: tli_ci_test_service_key_12345
       COREPACK_ENABLE_STRICT: "0"
       COREPACK_ENABLE_AUTO_PIN: "0"

@@ -164,8 +164,8 @@ Set once per environment under Railway's **Shared Variables** and reference with
 | `DATABASE_URL` | Railway Postgres plugin exposes it as `${{Postgres.DATABASE_URL}}`; alias into shared |
 | `TEMPORAL_ADDRESS` | Temporal plugin/host |
 | `TEMPORAL_NAMESPACE` | per-env: `trustloop-stg`, `trustloop-prd` |
-| `TEMPORAL_TASK_QUEUE` | `support-stg`, `support-prd` |
-| `CODEX_TASK_QUEUE` | `codex-stg`, `codex-prd` |
+| ~~`TEMPORAL_TASK_QUEUE`~~ | Removed — queue names hardcoded in `packages/types` as `TASK_QUEUES.SUPPORT`. Namespace handles env isolation. |
+| ~~`CODEX_TASK_QUEUE`~~ | Removed — see above (`TASK_QUEUES.CODEX`). |
 | `SESSION_SECRET` | distinct per env, long random |
 | `API_KEY_PEPPER` | distinct per env, long random |
 | `INTERNAL_SERVICE_KEY` | distinct per env, `tli_` prefix |

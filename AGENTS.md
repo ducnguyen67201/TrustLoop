@@ -30,10 +30,12 @@ Use **3 deployed services**:
    - runs agent reasoning loops (OpenAI Agents SDK, migrating to Mastra)
    - tools call back to TrustLoop search API or shared DB
 
-Use **2 Temporal task queues** (must stay separate):
+Use **2 Temporal task queues** (must stay separate). Names live in
+`packages/types/src/workflow.schema.ts` as `TASK_QUEUES` — not in env.
+Dispatcher and worker import the same constant so they can never drift.
 
-- `TEMPORAL_TASK_QUEUE` for support/inbox workflows
-- `CODEX_TASK_QUEUE` for codex indexing/fix-PR workflows
+- `TASK_QUEUES.SUPPORT` → support/inbox workflows
+- `TASK_QUEUES.CODEX` → codex indexing/fix-PR workflows
 
 Queue-level isolation is mandatory even if both are run in one worker runtime.
 

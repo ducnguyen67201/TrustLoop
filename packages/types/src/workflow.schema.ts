@@ -12,6 +12,18 @@ export const workflowNames = {
   repositoryIndex: "repositoryIndexWorkflow",
 } as const;
 
+/**
+ * Temporal task queue names. Hardcoded (not env-driven) so the dispatcher
+ * in the web service and the worker in the queue service can never drift
+ * apart. Environment isolation is already handled by TEMPORAL_NAMESPACE.
+ */
+export const TASK_QUEUES = {
+  SUPPORT: "support",
+  CODEX: "codex",
+} as const;
+
+export type TaskQueue = (typeof TASK_QUEUES)[keyof typeof TASK_QUEUES];
+
 export const supportWorkflowInputSchema = z.object({
   workspaceId: z.string().min(1),
   installationId: z.string().min(1),

@@ -17,8 +17,7 @@
         "SLACK_REPLAY_WINDOW_SECONDS",
         "TEMPORAL_ADDRESS",
         "TEMPORAL_NAMESPACE",
-        "TEMPORAL_TASK_QUEUE",
-        "CODEX_TASK_QUEUE",
+        "TEMPORAL_API_KEY",
         "INTERNAL_SERVICE_KEY",
         "NEXT_PUBLIC_TRUSTLOOP_DEBUG_TRPC"
       ]
@@ -50,8 +49,7 @@
         "SLACK_REPLAY_WINDOW_SECONDS",
         "TEMPORAL_ADDRESS",
         "TEMPORAL_NAMESPACE",
-        "TEMPORAL_TASK_QUEUE",
-        "CODEX_TASK_QUEUE"
+        "TEMPORAL_API_KEY"
       ]
     }
   }

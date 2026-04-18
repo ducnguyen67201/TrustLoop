@@ -15,9 +15,9 @@ For your current product shape (`web + queue + codex workflows`), use:
 - **Deploy exactly 2 services**:
   - `web` (Next.js + API routes + tRPC caller layer)
   - `worker` (single worker deployment)
-- **Keep 2 Temporal task queues**:
-  - `TEMPORAL_TASK_QUEUE` (support/general workflows)
-  - `CODEX_TASK_QUEUE` (codex-intensive workflows)
+- **Keep 2 Temporal task queues** (names in `packages/types/src/workflow.schema.ts` as `TASK_QUEUES`):
+  - `TASK_QUEUES.SUPPORT` (support/inbox workflows)
+  - `TASK_QUEUES.CODEX` (codex indexing + fix-PR workflows)
 
 Inside the single `worker` deployment, run both queue consumers (support + codex) so you keep queue-level isolation without managing separate worker services.
 
@@ -165,8 +165,8 @@ Avoid maintaining parallel, manually-written OpenAPI and TypeScript contracts fo
 
 ### Queue separation
 
-- Support workflows on `TEMPORAL_TASK_QUEUE`.
-- Codex/fix workflows on `CODEX_TASK_QUEUE`.
+- Support workflows on `TASK_QUEUES.SUPPORT`.
+- Codex/fix workflows on `TASK_QUEUES.CODEX`.
 - Never mix these concerns in one queue.
 - Queue separation is mandatory even when both workers run in one process/service.
 

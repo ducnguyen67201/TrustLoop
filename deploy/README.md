@@ -98,7 +98,8 @@ services in one environment; differs between staging and production.
 
 - `NODE_ENV`, `APP_BASE_URL`, `APP_PUBLIC_URL`
 - `DATABASE_URL` (aliased from `${{Postgres.DATABASE_URL}}`)
-- `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `TEMPORAL_TASK_QUEUE`, `CODEX_TASK_QUEUE`
+- `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `TEMPORAL_API_KEY` (Cloud only)
+  - Task queue names are hardcoded in `packages/types` (`TASK_QUEUES.SUPPORT`, `TASK_QUEUES.CODEX`) — not env-driven.
 - `SESSION_SECRET`, `API_KEY_PEPPER`, `INTERNAL_SERVICE_KEY`
 - `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`
 - `OPENAI_API_KEY`

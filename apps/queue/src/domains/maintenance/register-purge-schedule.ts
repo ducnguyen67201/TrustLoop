@@ -1,5 +1,6 @@
 import { env } from "@shared/env";
 import { buildTemporalConnectionOptions } from "@shared/rest/temporal-connection";
+import { TASK_QUEUES } from "@shared/types";
 import { Client, Connection } from "@temporalio/client";
 
 const SCHEDULE_ID = "purge-soft-deleted-records";
@@ -36,7 +37,7 @@ async function main() {
       action: {
         type: "startWorkflow",
         workflowType: "purgeDeletedRecordsWorkflow",
-        taskQueue: env.TEMPORAL_TASK_QUEUE,
+        taskQueue: TASK_QUEUES.SUPPORT,
         args: [{ retentionDays: 90 }],
       },
     });
