@@ -1985,11 +1985,11 @@ Nodes (0):
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `GET()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 7`, `Community 9`, `Community 16`, `Community 17`?**
-  _High betweenness centrality (0.136) - this node is a cross-community bridge._
-- **Why does `reciprocalRankFusion()` connect `Community 4` to `Community 0`?**
-  _High betweenness centrality (0.035) - this node is a cross-community bridge._
-- **Why does `buildThreadSnapshot()` connect `Community 3` to `Community 5`?**
-  _High betweenness centrality (0.034) - this node is a cross-community bridge._
+  _High betweenness centrality (0.106) - this node is a cross-community bridge._
+- **Why does `handleGoogleOAuthCallback()` connect `Community 0` to `Community 24`, `Community 17`, `Community 9`, `Community 7`?**
+  _High betweenness centrality (0.037) - this node is a cross-community bridge._
+- **Why does `sendWithRetry()` connect `Community 2` to `Community 0`?**
+  _High betweenness centrality (0.023) - this node is a cross-community bridge._
 - **Are the 27 inferred relationships involving `GET()` (e.g. with `sendWithRetry()` and `resolveApiKeyAuth()`) actually correct?**
   _`GET()` has 27 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 10 inferred relationships involving `handleGoogleOAuthCallback()` (e.g. with `GET()` and `consumeOauthStateCookie()`) actually correct?**
