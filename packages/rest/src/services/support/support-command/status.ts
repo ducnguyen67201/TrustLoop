@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@shared/database";
 import { writeAuditEvent } from "@shared/rest/security/audit";
+import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
 import {
   SUPPORT_CONVERSATION_EVENT_SOURCE,
   SUPPORT_CONVERSATION_STATUS,
+  SUPPORT_REALTIME_REASON,
   type SupportCommandResponse,
   type SupportMarkDoneWithOverrideCommand,
   type SupportUpdateStatusCommand,
@@ -85,6 +87,12 @@ export async function updateStatus(
     });
   });
 
+  await supportRealtime.emitConversationChanged({
+    workspaceId: input.workspaceId,
+    conversationId: input.conversationId,
+    reason: SUPPORT_REALTIME_REASON.statusChanged,
+  });
+
   return buildCommandResponse(commandId);
 }
 
@@ -135,6 +143,12 @@ export async function markDoneWithOverride(
       commandId,
       overrideReason: input.overrideReason,
     },
+  });
+
+  await supportRealtime.emitConversationChanged({
+    workspaceId: input.workspaceId,
+    conversationId: input.conversationId,
+    reason: SUPPORT_REALTIME_REASON.statusChanged,
   });
 
   return buildCommandResponse(commandId);

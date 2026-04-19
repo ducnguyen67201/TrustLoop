@@ -15,6 +15,7 @@ import { useSupportInbox } from "@/hooks/use-support-inbox";
 
 interface ConversationViewProps {
   conversationId: string;
+  refreshNonce: number;
   workspaceId: string;
   onBack: () => void;
 }
@@ -27,9 +28,14 @@ interface ConversationViewProps {
  * useConversationReply. The component focuses on layout + delegating
  * analysis / session-replay concerns to their own hooks.
  */
-export function ConversationView({ conversationId, workspaceId, onBack }: ConversationViewProps) {
+export function ConversationView({
+  conversationId,
+  refreshNonce,
+  workspaceId,
+  onBack,
+}: ConversationViewProps) {
   // Reply/send/retry/polling flow — owns timeline state + reply handlers.
-  const reply = useConversationReply(conversationId);
+  const reply = useConversationReply(conversationId, refreshNonce);
   const auth = useAuthSession();
   // Non-reply mutations (assign, status change, mark-done) still come
   // straight from the shared inbox hook.

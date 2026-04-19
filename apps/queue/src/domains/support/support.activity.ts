@@ -2,12 +2,14 @@ import { normalizeSlackMessageEvent } from "@/domains/support/adapters/slack/eve
 import { shouldDropIngressEvent } from "@/domains/support/ingress-drop-rules";
 import { prisma, softUpsert } from "@shared/database";
 import * as supportEvents from "@shared/rest/services/support/support-event-service";
+import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
 import {
   GROUPING_DEFAULTS,
   GROUPING_ELIGIBLE_STATUSES,
   SUPPORT_CONVERSATION_EVENT_SOURCE,
   SUPPORT_CONVERSATION_STATUS,
   SUPPORT_INGRESS_PROCESSING_STATE,
+  SUPPORT_REALTIME_REASON,
   type SupportConversationEventSource,
   type SupportWorkflowInput,
   type SupportWorkflowResult,
@@ -380,6 +382,12 @@ export async function runSupportPipeline(
     });
 
     return { conversation: upsertedConversation, pendingAttachments };
+  });
+
+  await supportRealtime.emitConversationChanged({
+    workspaceId: input.workspaceId,
+    conversationId: txResult.conversation.id,
+    reason: SUPPORT_REALTIME_REASON.ingressProcessed,
   });
 
   return {

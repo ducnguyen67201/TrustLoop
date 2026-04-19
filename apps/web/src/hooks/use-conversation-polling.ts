@@ -13,7 +13,7 @@ const ANALYSIS_POLL_MS = 2_000;
  * Mutations trigger immediate refresh and reset the poll timer.
  * Pauses when the browser tab is hidden.
  */
-export function useConversationPolling(conversationId: string | null) {
+export function useConversationPolling(conversationId: string | null, refreshNonce = 0) {
   const [timelineData, setTimelineData] = useState<SupportConversationTimeline | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,12 +111,20 @@ export function useConversationPolling(conversationId: string | null) {
   useEffect(() => {
     function handleVisibilityChange() {
       if (!document.hidden && conversationId) {
-        refresh();
+        void refresh();
       }
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [conversationId, refresh]);
+
+  useEffect(() => {
+    if (!conversationId || refreshNonce === 0) {
+      return;
+    }
+
+    void refresh();
+  }, [conversationId, refresh, refreshNonce]);
 
   return {
     timelineData,

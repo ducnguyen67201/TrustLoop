@@ -9,9 +9,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { useSupportInbox } from "@/hooks/use-support-inbox";
+import { useSupportInboxStream } from "@/hooks/use-support-inbox-stream";
+import { useVisibilityAwarePolling } from "@/hooks/use-visibility-aware-polling";
 import { SUPPORT_CONVERSATION_STATUS, type SupportConversationStatus } from "@shared/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+const SUPPORT_INBOX_RECOVERY_POLL_MS = 60_000;
 
 const KANBAN_COLUMNS = [
   {
@@ -43,6 +47,7 @@ export function SupportInbox() {
   const inbox = useSupportInbox();
   const { data: workspaceData } = useActiveWorkspace();
   const workspaceId = workspaceData?.activeWorkspaceId;
+  const [selectedConversationRefreshNonce, setSelectedConversationRefreshNonce] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -53,6 +58,22 @@ export function SupportInbox() {
       inbox.setSelectedConversationId(threadParam);
     }
   }, [threadParam, inbox.selectedConversationId, inbox.setSelectedConversationId]);
+
+  useSupportInboxStream({
+    enabled: Boolean(workspaceId),
+    workspaceId: workspaceId ?? null,
+    selectedConversationId: threadParam,
+    onRefreshInbox: inbox.refreshList,
+    onSelectedConversationChanged: () => {
+      setSelectedConversationRefreshNonce((current) => current + 1);
+    },
+  });
+
+  useVisibilityAwarePolling({
+    enabled: !inbox.isListLoading && !inbox.isMutating,
+    intervalMs: SUPPORT_INBOX_RECOVERY_POLL_MS,
+    onPoll: inbox.refreshList,
+  });
 
   const updateThreadParam = useCallback(
     (conversationId: string | null) => {
@@ -204,6 +225,7 @@ export function SupportInbox() {
           {threadParam && workspaceId ? (
             <ConversationView
               conversationId={threadParam}
+              refreshNonce={selectedConversationRefreshNonce}
               workspaceId={workspaceId}
               onBack={() => handleSheetOpenChange(false)}
             />

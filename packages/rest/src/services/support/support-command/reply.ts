@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@shared/database";
 import * as slackDelivery from "@shared/rest/services/support/adapters/slack/slack-delivery-service";
 import * as supportEvents from "@shared/rest/services/support/support-event-service";
+import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
 import {
   PermanentExternalError,
   SUPPORT_CONVERSATION_EVENT_SOURCE,
   SUPPORT_CONVERSATION_STATUS,
+  SUPPORT_REALTIME_REASON,
   type SupportCommandResponse,
   type SupportRetryDeliveryCommand,
   type SupportSendReplyCommand,
@@ -509,6 +511,12 @@ async function sendReplyWithRecordedAttempt(
         });
       }
     });
+
+    await supportRealtime.emitConversationChanged({
+      workspaceId: params.workspaceId,
+      conversationId: params.conversationId,
+      reason: SUPPORT_REALTIME_REASON.deliveryUpdated,
+    });
   } catch (error) {
     const isTransient = error instanceof TransientExternalError;
     const errorMessage = error instanceof Error ? error.message : "Support delivery failed";
@@ -556,6 +564,12 @@ async function sendReplyWithRecordedAttempt(
           },
         },
       });
+    });
+
+    await supportRealtime.emitConversationChanged({
+      workspaceId: params.workspaceId,
+      conversationId: params.conversationId,
+      reason: SUPPORT_REALTIME_REASON.deliveryUpdated,
     });
 
     throw new TRPCError({
