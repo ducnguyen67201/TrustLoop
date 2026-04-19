@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mock prisma ────────────────────────────────────────────────────
-const mockUpsert = vi.fn().mockResolvedValue({ id: "sr_1", workspaceId: "ws_1" });
+const mockFindFirst = vi.fn();
+const mockCreate = vi.fn();
+const mockUpdate = vi.fn();
 const mockCreateMany = vi.fn().mockResolvedValue({ count: 1 });
 const mockChunkFindFirst = vi.fn().mockResolvedValue(null);
 const mockChunkCreate = vi.fn().mockResolvedValue({ id: "chunk_1" });
@@ -10,7 +12,11 @@ const mockKeyFindUnique = vi.fn();
 
 vi.mock("@shared/database", () => ({
   prisma: {
-    sessionRecord: { upsert: (...args: unknown[]) => mockUpsert(...args) },
+    sessionRecord: {
+      findFirst: (...args: unknown[]) => mockFindFirst(...args),
+      create: (...args: unknown[]) => mockCreate(...args),
+      update: (...args: unknown[]) => mockUpdate(...args),
+    },
     sessionEvent: { createMany: (...args: unknown[]) => mockCreateMany(...args) },
     sessionReplayChunk: {
       findFirst: (...args: unknown[]) => mockChunkFindFirst(...args),
@@ -22,7 +28,11 @@ vi.mock("@shared/database", () => ({
     },
     $transaction: vi.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        sessionRecord: { upsert: (...args: unknown[]) => mockUpsert(...args) },
+        sessionRecord: {
+          findFirst: (...args: unknown[]) => mockFindFirst(...args),
+          create: (...args: unknown[]) => mockCreate(...args),
+          update: (...args: unknown[]) => mockUpdate(...args),
+        },
         sessionEvent: { createMany: (...args: unknown[]) => mockCreateMany(...args) },
         sessionReplayChunk: {
           findFirst: (...args: unknown[]) => mockChunkFindFirst(...args),
@@ -142,7 +152,9 @@ describe("session ingest: auth failures", () => {
 describe("session ingest: valid requests", () => {
   beforeEach(() => {
     stubValidApiKey();
-    mockUpsert.mockResolvedValue({ id: "sr_1", workspaceId: "ws_1" });
+    mockFindFirst.mockResolvedValue(null);
+    mockCreate.mockResolvedValue({ id: "sr_1", workspaceId: "ws_1", eventCount: 1 });
+    mockUpdate.mockResolvedValue({ id: "sr_1", workspaceId: "ws_1", eventCount: 2 });
     mockCreateMany.mockResolvedValue({ count: 1 });
   });
 
@@ -204,6 +216,7 @@ describe("session ingest: valid requests", () => {
 describe("session ingest: async write failure", () => {
   beforeEach(() => {
     stubValidApiKey();
+    mockFindFirst.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -211,7 +224,7 @@ describe("session ingest: async write failure", () => {
   });
 
   it("still returns 202 when async DB write fails, and logs error", async () => {
-    mockUpsert.mockRejectedValue(new Error("DB connection failed"));
+    mockCreate.mockRejectedValue(new Error("DB connection failed"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const req = makeRequest(validPayload(), "tlk_testprefix.secret");

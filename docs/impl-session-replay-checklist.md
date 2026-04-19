@@ -1,7 +1,23 @@
-# Session Replay Implementation Checklist
+# Legacy Session Replay Implementation Checklist
+
+**Status**: Superseded for active execution
 
 **Branch**: `duc/session-replay`
 **Date**: 2026-04-07
+
+> Legacy broad rollout checklist kept for historical context only.
+> Do **not** use the checkboxes below as the active execution plan.
+>
+> For the conversation-thread matching, inbox integration, replay click-to-jump,
+> session brief, and AI attach work, use:
+> - `docs/spec-session-replay-e2e-integration.md`
+> - `docs/impl-session-replay-e2e-integration-checklist.md`
+
+## Historical Snapshot
+
+The sections below capture the original session replay rollout plan as it
+existed on `2026-04-07`. Some entries are now implemented, some are stale, and
+some have been replaced by the narrower E2E integration plan above.
 
 ## Week 1: SDK + Ingest + AI Integration
 
@@ -82,6 +98,8 @@
 ## Docs
 - [x] `docs/spec-session-replay-sdk.md`
 - [x] `docs/impl-session-replay-checklist.md`
+- [ ] Superseded by `docs/spec-session-replay-e2e-integration.md`
+- [ ] Superseded by `docs/impl-session-replay-e2e-integration-checklist.md`
 
 ## Architecture Decisions
 

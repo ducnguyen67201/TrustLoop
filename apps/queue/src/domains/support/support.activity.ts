@@ -5,6 +5,7 @@ import {
   GROUPING_ELIGIBLE_STATUSES,
   SUPPORT_CONVERSATION_EVENT_SOURCE,
   SUPPORT_CONVERSATION_STATUS,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE,
   SUPPORT_INGRESS_PROCESSING_STATE,
   type SupportWorkflowInput,
   type SupportWorkflowResult,
@@ -32,6 +33,17 @@ function summarizeMessage(text: string | null): string {
   }
 
   return text.length <= 140 ? text : `${text.slice(0, 137)}...`;
+}
+
+const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+
+function extractMessageEmail(text: string | null): string | null {
+  if (!text) {
+    return null;
+  }
+
+  const match = text.match(EMAIL_REGEX);
+  return match?.[0]?.trim().toLowerCase() ?? null;
 }
 
 /**
@@ -152,11 +164,43 @@ export async function runSupportPipeline(
       resolvedThreadTs
     );
 
-    const conversationData = {
+    const regexEmail = extractMessageEmail(normalized.text);
+    const hasIdentityUpdate = Boolean(normalized.slackUserId || regexEmail);
+    const customerIdentitySource = regexEmail
+      ? SUPPORT_CUSTOMER_IDENTITY_SOURCE.messageRegex
+      : normalized.slackUserId
+        ? SUPPORT_CUSTOMER_IDENTITY_SOURCE.messagePayload
+        : null;
+
+    const conversationCreateData = {
       teamId: normalized.teamId,
       channelId: normalized.channelId,
       threadTs: resolvedThreadTs,
       status: SUPPORT_CONVERSATION_STATUS.unread,
+      customerExternalUserId: null,
+      customerEmail: regexEmail,
+      customerSlackUserId: normalized.slackUserId,
+      customerIdentitySource,
+      customerIdentityUpdatedAt: hasIdentityUpdate ? now : null,
+      lastCustomerMessageAt: now,
+      customerWaitingSince: now,
+      staleAt: computeUnreadStaleAt(now),
+      lastActivityAt: now,
+    };
+
+    const conversationUpdateData = {
+      teamId: normalized.teamId,
+      channelId: normalized.channelId,
+      threadTs: resolvedThreadTs,
+      status: SUPPORT_CONVERSATION_STATUS.unread,
+      ...(normalized.slackUserId ? { customerSlackUserId: normalized.slackUserId } : {}),
+      ...(regexEmail ? { customerEmail: regexEmail } : {}),
+      ...(customerIdentitySource
+        ? {
+            customerIdentitySource,
+            customerIdentityUpdatedAt: now,
+          }
+        : {}),
       lastCustomerMessageAt: now,
       customerWaitingSince: now,
       staleAt: computeUnreadStaleAt(now),
@@ -169,9 +213,9 @@ export async function runSupportPipeline(
         workspaceId: input.workspaceId,
         installationId: input.installationId,
         canonicalConversationKey,
-        ...conversationData,
+        ...conversationCreateData,
       },
-      update: conversationData,
+      update: conversationUpdateData,
     });
 
     // Create a new grouping anchor if this is a standalone customer message

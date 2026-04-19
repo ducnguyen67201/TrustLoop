@@ -322,3 +322,5 @@ When the developer clicks "Open Replay", a full-width modal opens:
 - [Positional JSON Format](spec-positional-json-format.md)
 - [REST API Key Auth](spec-rest-api-key-auth.md)
 - [AI Analysis Pipeline](spec-ai-analysis-pipeline.md)
+- [Session Replay E2E Inbox + Analysis Integration](spec-session-replay-e2e-integration.md)
+- [Session Replay E2E Inbox + Analysis Integration Checklist](impl-session-replay-e2e-integration-checklist.md)

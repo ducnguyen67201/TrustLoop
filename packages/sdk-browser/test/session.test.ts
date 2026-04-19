@@ -57,6 +57,16 @@ describe("SessionManager", () => {
     expect(id2).toBe(id1);
   });
 
+  it("rotates the session ID on explicit identity changes", () => {
+    const session = createSessionManager();
+    const id1 = session.getSessionId();
+
+    session.rotate("after identity change");
+
+    const id2 = session.getSessionId();
+    expect(id2).not.toBe(id1);
+  });
+
   it("rotates even after trackActivity if enough time passes", () => {
     const session = createSessionManager();
     const id1 = session.getSessionId();

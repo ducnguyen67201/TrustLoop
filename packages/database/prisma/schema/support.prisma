@@ -112,6 +112,11 @@ model SupportConversation {
   threadTs               String
   status                 SupportConversationStatus @default(UNREAD)
   assigneeUserId         String?
+  customerExternalUserId String?
+  customerEmail          String?
+  customerSlackUserId    String?
+  customerIdentitySource String?
+  customerIdentityUpdatedAt DateTime?
   lastCustomerMessageAt  DateTime?
   customerWaitingSince   DateTime?
   staleAt                DateTime?
@@ -125,6 +130,7 @@ model SupportConversation {
   deliveryAttempts       SupportDeliveryAttempt[]
   ticketLinks            SupportTicketLink[]
   groupingAnchors        SupportGroupingAnchor[]
+  sessionMatches         SupportConversationSessionMatch[]
   analyses               SupportAnalysis[]
   drafts                 SupportDraft[]
   createdAt              DateTime                  @default(now())

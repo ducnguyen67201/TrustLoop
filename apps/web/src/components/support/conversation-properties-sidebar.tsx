@@ -230,7 +230,9 @@ export function ConversationPropertiesSidebar({
         <SessionTab
           isLoading={sessionReplay.isLoading}
           error={sessionReplay.error}
+          match={sessionReplay.match}
           session={sessionReplay.session}
+          sessionBrief={sessionReplay.sessionBrief}
           matchConfidence={sessionReplay.matchConfidence}
           events={sessionReplay.events}
           isLoadingEvents={sessionReplay.isLoadingEvents}

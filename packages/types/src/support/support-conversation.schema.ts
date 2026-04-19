@@ -40,6 +40,24 @@ export const supportConversationEventSourceValues = [
 
 export const supportConversationEventSourceSchema = z.enum(supportConversationEventSourceValues);
 
+export const SUPPORT_CUSTOMER_IDENTITY_SOURCE = {
+  adapterPayload: "ADAPTER_PAYLOAD",
+  slackProfile: "SLACK_PROFILE",
+  messagePayload: "MESSAGE_PAYLOAD",
+  messageRegex: "MESSAGE_REGEX",
+  manual: "MANUAL",
+} as const;
+
+export const supportCustomerIdentitySourceValues = [
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.adapterPayload,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.slackProfile,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.messagePayload,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.messageRegex,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.manual,
+] as const;
+
+export const supportCustomerIdentitySourceSchema = z.enum(supportCustomerIdentitySourceValues);
+
 export const supportConversationSchema = z.object({
   id: z.string().min(1),
   workspaceId: z.string().min(1),
@@ -48,6 +66,11 @@ export const supportConversationSchema = z.object({
   thread: supportThreadReferenceSchema,
   status: supportConversationStatusSchema,
   assigneeUserId: z.string().min(1).nullable(),
+  customerExternalUserId: z.string().min(1).nullable(),
+  customerEmail: z.string().email().nullable(),
+  customerSlackUserId: z.string().min(1).nullable(),
+  customerIdentitySource: supportCustomerIdentitySourceSchema.nullable(),
+  customerIdentityUpdatedAt: z.iso.datetime().nullable(),
   lastCustomerMessageAt: z.iso.datetime().nullable(),
   customerWaitingSince: z.iso.datetime().nullable(),
   staleAt: z.iso.datetime().nullable(),
@@ -89,6 +112,7 @@ export const supportConversationTimelineSchema = z.object({
 
 export type SupportConversationStatus = z.infer<typeof supportConversationStatusSchema>;
 export type SupportConversationEventSource = z.infer<typeof supportConversationEventSourceSchema>;
+export type SupportCustomerIdentitySource = z.infer<typeof supportCustomerIdentitySourceSchema>;
 export type SupportConversation = z.infer<typeof supportConversationSchema>;
 export type SupportConversationListRequest = z.infer<typeof supportConversationListRequestSchema>;
 export type SupportConversationListResponse = z.infer<typeof supportConversationListResponseSchema>;

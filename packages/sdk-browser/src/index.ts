@@ -3,6 +3,11 @@ import type { CaptureHandle } from "./capture";
 import { extractWorkspaceId, resolveConfig } from "./config";
 import { createConsentManager } from "./consent";
 import type { ConsentManager } from "./consent";
+import {
+  didConcreteIdentityChange,
+  hasConcreteIdentity,
+  normalizeSessionIdentity,
+} from "./identity";
 import { debugLog, setDebug, warnLog } from "./logger";
 import { createRecorder } from "./recorder";
 import type { RecorderHandle } from "./recorder";
@@ -170,8 +175,12 @@ export const TrustLoop = {
         flushIntervalMs: resolvedConfig.flushIntervalMs,
       });
 
-      userId = config.userId;
-      userEmail = config.userEmail;
+      const initialIdentity = normalizeSessionIdentity({
+        id: config.userId,
+        email: config.userEmail,
+      });
+      userId = initialIdentity.userId;
+      userEmail = initialIdentity.userEmail;
 
       // Session management
       sessionManager = createSessionManager();
@@ -217,12 +226,34 @@ export const TrustLoop = {
 
   setUser(user: UserInfo): void {
     try {
-      userId = user.id;
-      userEmail = user.email;
+      const nextIdentity = normalizeSessionIdentity(user);
+      const previousIdentity = { userId, userEmail };
+
+      if (sessionManager && didConcreteIdentityChange(previousIdentity, nextIdentity)) {
+        sessionManager.rotate("after identity change");
+      }
+
+      userId = nextIdentity.userId;
+      userEmail = nextIdentity.userEmail;
       identityWarningLogged = false;
-      debugLog("User set", user.id);
+      debugLog("User set", nextIdentity.userId ?? nextIdentity.userEmail ?? "anonymous");
     } catch (err) {
       warnLog("setUser error", err);
+    }
+  },
+
+  clearUser(): void {
+    try {
+      if (sessionManager && hasConcreteIdentity({ userId, userEmail })) {
+        sessionManager.rotate("after identity clear");
+      }
+
+      userId = undefined;
+      userEmail = undefined;
+      identityWarningLogged = false;
+      debugLog("User cleared");
+    } catch (err) {
+      warnLog("clearUser error", err);
     }
   },
 

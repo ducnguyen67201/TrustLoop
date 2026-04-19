@@ -119,28 +119,49 @@ const innerHandler = withWorkspaceApiKeyAuth(async (request, ctx) => {
 
       await prisma.$transaction(async (tx) => {
         // Upsert the session record
-        const sessionRecord = await tx.sessionRecord.upsert({
+        const existingSessionRecord = await tx.sessionRecord.findFirst({
           where: {
-            workspaceId_sessionId: { workspaceId, sessionId: payload.sessionId },
-          },
-          create: {
             workspaceId,
             sessionId: payload.sessionId,
-            userId: payload.userId ?? null,
-            userEmail: payload.userEmail ?? null,
-            startedAt: earliestEventTime,
-            lastEventAt: latestEventTime,
-            eventCount: payload.structuredEvents.length,
-            hasReplayData: hasRrweb,
+            deletedAt: null,
           },
-          update: {
-            lastEventAt: latestEventTime,
-            eventCount: { increment: payload.structuredEvents.length },
-            ...(hasRrweb ? { hasReplayData: true } : {}),
-            ...(payload.userId ? { userId: payload.userId } : {}),
-            ...(payload.userEmail ? { userEmail: payload.userEmail } : {}),
+          select: {
+            id: true,
+            eventCount: true,
           },
         });
+
+        const sessionRecord = existingSessionRecord
+          ? await tx.sessionRecord.update({
+              where: { id: existingSessionRecord.id },
+              data: {
+                lastEventAt: latestEventTime,
+                eventCount: { increment: payload.structuredEvents.length },
+                ...(hasRrweb ? { hasReplayData: true } : {}),
+                ...(payload.userId ? { userId: payload.userId } : {}),
+                ...(payload.userEmail ? { userEmail: payload.userEmail } : {}),
+              },
+              select: {
+                id: true,
+                eventCount: true,
+              },
+            })
+          : await tx.sessionRecord.create({
+              data: {
+                workspaceId,
+                sessionId: payload.sessionId,
+                userId: payload.userId ?? null,
+                userEmail: payload.userEmail ?? null,
+                startedAt: earliestEventTime,
+                lastEventAt: latestEventTime,
+                eventCount: payload.structuredEvents.length,
+                hasReplayData: hasRrweb,
+              },
+              select: {
+                id: true,
+                eventCount: true,
+              },
+            });
 
         // Enforce per-session event cap to prevent unbounded growth
         if (sessionRecord.eventCount >= MAX_EVENTS_PER_SESSION) {

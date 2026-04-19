@@ -6,6 +6,8 @@ import { SessionReplayModal } from "@/components/session-replay/session-replay-m
 import { Button } from "@/components/ui/button";
 import type {
   ReplayChunkResponse,
+  SessionBrief,
+  SessionConversationMatch,
   SessionMatchConfidence,
   SessionRecordResponse,
   SessionTimelineEvent,
@@ -15,7 +17,9 @@ import { useState } from "react";
 interface SessionTabProps {
   isLoading: boolean;
   error: string | null;
+  match: SessionConversationMatch | null;
   session: SessionRecordResponse | null;
+  sessionBrief: SessionBrief | null;
   matchConfidence: SessionMatchConfidence;
   events: SessionTimelineEvent[];
   isLoadingEvents: boolean;
@@ -45,7 +49,9 @@ function formatDuration(startIso: string, endIso: string): string {
 export function SessionTab({
   isLoading,
   error,
+  match,
   session,
+  sessionBrief,
   matchConfidence,
   events,
   isLoadingEvents,
@@ -58,9 +64,13 @@ export function SessionTab({
   onLoadReplayChunks,
 }: SessionTabProps) {
   const [isReplayOpen, setIsReplayOpen] = useState(false);
+  const [selectedReplayEventId, setSelectedReplayEventId] = useState<string | null>(null);
+  const [selectedReplayTimestamp, setSelectedReplayTimestamp] = useState<string | null>(null);
 
-  function handleOpenReplay() {
+  function handleOpenReplay(eventId?: string, timestamp?: string) {
     onLoadReplayChunks();
+    setSelectedReplayEventId(eventId ?? null);
+    setSelectedReplayTimestamp(timestamp ?? null);
     setIsReplayOpen(true);
   }
 
@@ -88,6 +98,8 @@ export function SessionTab({
         userEmail={session?.userEmail ?? null}
         duration={session ? formatDuration(session.startedAt, session.lastEventAt) : null}
         userAgent={session?.userAgent ?? null}
+        match={match}
+        sessionBrief={sessionBrief}
         matchConfidence={matchConfidence}
         error={error}
       />
@@ -103,12 +115,19 @@ export function SessionTab({
           events={events}
           isLoading={isLoadingEvents}
           failurePointId={failurePointId}
+          onEventClick={(eventId, timestamp) => {
+            if (!session?.hasReplayData) {
+              return;
+            }
+            handleOpenReplay(eventId, timestamp);
+          }}
+          selectedEventId={selectedReplayEventId}
         />
       </div>
 
       {/* Open replay button */}
       {session?.hasReplayData ? (
-        <Button variant="outline" className="w-full" onClick={handleOpenReplay}>
+        <Button variant="outline" className="w-full" onClick={() => handleOpenReplay()}>
           Open Replay
         </Button>
       ) : session && !session.hasReplayData ? (
@@ -124,6 +143,8 @@ export function SessionTab({
         sessionId={session?.sessionId ?? ""}
         events={events}
         failurePointId={failurePointId}
+        selectedEventId={selectedReplayEventId}
+        selectedEventTimestamp={selectedReplayTimestamp}
         chunks={replayChunks}
         totalChunks={totalReplayChunks}
         isLoadingChunks={isLoadingReplayChunks}

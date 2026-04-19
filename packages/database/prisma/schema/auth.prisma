@@ -36,6 +36,7 @@ model Workspace {
   groupingAnchors          SupportGroupingAnchor[]
   supportAnalyses          SupportAnalysis[]
   supportDrafts            SupportDraft[]
+  supportConversationSessionMatches SupportConversationSessionMatch[]
   aiSettings               WorkspaceAiSettings?
   sessionRecords           SessionRecord[]
   sessionEvents            SessionEvent[]

@@ -4,7 +4,9 @@ import { trpcQuery } from "@/lib/trpc-http";
 import {
   type ReplayChunkResponse,
   SESSION_MATCH_CONFIDENCE,
-  type SessionCorrelateResult,
+  type SessionBrief,
+  type SessionConversationMatch,
+  type SessionForConversationResponse,
   type SessionMatchConfidence,
   type SessionRecordResponse,
   type SessionTimelineEvent,
@@ -14,7 +16,9 @@ import { useCallback, useEffect, useState } from "react";
 export interface UseSessionReplayResult {
   isLoading: boolean;
   error: string | null;
+  match: SessionConversationMatch | null;
   session: SessionRecordResponse | null;
+  sessionBrief: SessionBrief | null;
   matchConfidence: SessionMatchConfidence;
   events: SessionTimelineEvent[];
   isLoadingEvents: boolean;
@@ -38,7 +42,9 @@ export function useSessionReplay(
 ): UseSessionReplayResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [match, setMatch] = useState<SessionConversationMatch | null>(null);
   const [session, setSession] = useState<SessionRecordResponse | null>(null);
+  const [sessionBrief, setSessionBrief] = useState<SessionBrief | null>(null);
   const [matchConfidence, setMatchConfidence] = useState<SessionMatchConfidence>(
     SESSION_MATCH_CONFIDENCE.none
   );
@@ -50,7 +56,7 @@ export function useSessionReplay(
   const [isLoadingReplayChunks, setIsLoadingReplayChunks] = useState(false);
   const [replayLoadError, setReplayLoadError] = useState<string | null>(null);
 
-  // Correlate session to conversation on mount
+  // Resolve the primary conversation/session match on mount
   useEffect(() => {
     if (!conversationId) return;
 
@@ -60,36 +66,42 @@ export function useSessionReplay(
 
     async function correlate() {
       setIsLoading(true);
+      setIsLoadingEvents(true);
       setError(null);
+      setMatch(null);
+      setSession(null);
+      setSessionBrief(null);
+      setEvents([]);
+      setFailurePointId(null);
+      setReplayChunks([]);
+      setTotalReplayChunks(0);
+      setReplayLoadError(null);
 
       try {
-        const windowEnd = new Date().toISOString();
-        const windowStart = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-
-        const result = await trpcQuery<
-          SessionCorrelateResult,
-          { conversationId: string; windowStartAt: string; windowEndAt: string }
-        >("sessionReplay.correlate", {
-          conversationId: currentConversationId,
-          windowStartAt: windowStart,
-          windowEndAt: windowEnd,
-        });
+        const result = await trpcQuery<SessionForConversationResponse, { conversationId: string }>(
+          "sessionReplay.getForConversation",
+          {
+            conversationId: currentConversationId,
+          }
+        );
 
         if (cancelled) return;
 
-        if (result.session) {
-          setSession(result.session);
-          setMatchConfidence(result.matchConfidence);
-          await loadEvents(result.session.id);
-        } else {
-          setMatchConfidence(SESSION_MATCH_CONFIDENCE.none);
-        }
+        setMatch(result.match);
+        setSession(result.session);
+        setSessionBrief(result.sessionBrief);
+        setEvents(result.events);
+        setFailurePointId(result.failurePointId);
+        setMatchConfidence(result.match?.matchConfidence ?? SESSION_MATCH_CONFIDENCE.none);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Session lookup failed");
         }
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsLoadingEvents(false);
+        }
       }
     }
 
@@ -99,23 +111,6 @@ export function useSessionReplay(
       cancelled = true;
     };
   }, [conversationId]);
-
-  async function loadEvents(sessionRecordId: string) {
-    setIsLoadingEvents(true);
-    try {
-      const result = await trpcQuery<
-        { events: SessionTimelineEvent[]; failurePointId: string | null },
-        { sessionRecordId: string; limit: number }
-      >("sessionReplay.getEvents", { sessionRecordId, limit: 200 });
-
-      setEvents(result.events);
-      setFailurePointId(result.failurePointId);
-    } catch {
-      // Events load failure is non-critical, timeline will show empty
-    } finally {
-      setIsLoadingEvents(false);
-    }
-  }
 
   const loadReplayChunks = useCallback(() => {
     if (!session) return;
@@ -150,7 +145,9 @@ export function useSessionReplay(
   return {
     isLoading,
     error,
+    match,
     session,
+    sessionBrief,
     matchConfidence,
     events,
     isLoadingEvents,
