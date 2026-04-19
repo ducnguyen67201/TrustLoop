@@ -43,7 +43,7 @@ export const supportWorkflowResultSchema = z.object({
   slackUserId: z.string().min(1).nullable().default(null),
   pendingAttachments: z.array(pendingAttachmentSchema).default([]),
   status: workflowProcessingStatusSchema,
-  processedAt: z.string().datetime(),
+  processedAt: z.iso.datetime(),
 });
 
 export const codexWorkflowInputSchema = z.object({
@@ -55,7 +55,7 @@ export const codexWorkflowInputSchema = z.object({
 export const codexWorkflowResultSchema = z.object({
   analysisId: z.string(),
   status: workflowProcessingStatusSchema,
-  queuedAt: z.string().datetime(),
+  queuedAt: z.iso.datetime(),
 });
 
 export const repositoryIndexWorkflowInputSchema = z.object({
@@ -68,7 +68,7 @@ export const repositoryIndexWorkflowResultSchema = z.object({
   syncRequestId: z.string(),
   repositoryId: z.string(),
   status: workflowProcessingStatusSchema,
-  queuedAt: z.string().datetime(),
+  queuedAt: z.iso.datetime(),
 });
 
 export const supportAnalysisWorkflowInputSchema = z.object({

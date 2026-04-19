@@ -64,9 +64,9 @@ docker run --rm -p 4000:4000 --env-file .env trustloop-agents
 ```
 
 All four Dockerfiles use the multi-stage `deps → builder → runner` pattern,
-run as non-root (UID 1001), and deliberately skip `package-lock.json`
-(npm/cli#4828: host-generated lockfiles only list the host's native
-bindings, so `npm ci` fails to install the linux variants).
+run as non-root (UID 1001), and install from the committed `package-lock.json`
+via `npm ci` so deploys match the dependency graph used in local development
+and CI.
 
 ## Railway
 

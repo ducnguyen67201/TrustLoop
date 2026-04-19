@@ -29,10 +29,10 @@ const GOOGLE_VALID_ISSUERS = ["accounts.google.com", "https://accounts.google.co
 // re-validate the claims we use so a Google schema change can't crash us.
 const googleIdTokenClaimsSchema = z.object({
   sub: z.string().min(1),
-  email: z.string().email(),
+  email: z.email(),
   email_verified: z.boolean(),
   name: z.string().optional(),
-  picture: z.string().url().optional(),
+  picture: z.url().optional(),
   nonce: z.string().optional(),
 });
 

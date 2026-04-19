@@ -13,16 +13,18 @@ FROM node:24-slim AS base
 WORKDIR /app
 
 # -----------------------------------------------------------------------------
-# deps — install workspace dependencies (no lockfile; see marketing.Dockerfile).
+# deps — install workspace dependencies from the committed lockfile so deploys
+# resolve the same graph as local development and CI.
 # -----------------------------------------------------------------------------
 FROM base AS deps
 COPY package.json ./
+COPY package-lock.json ./
 COPY apps/agents/package.json ./apps/agents/
 COPY packages/database/package.json ./packages/database/
 COPY packages/env/package.json ./packages/env/
 COPY packages/rest/package.json ./packages/rest/
 COPY packages/types/package.json ./packages/types/
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 # builder — generate Prisma client. Source is shipped; tsx runs it.

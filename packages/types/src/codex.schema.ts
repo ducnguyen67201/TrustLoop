@@ -94,15 +94,15 @@ export const prIntentStatusSchema = z.enum([PR_INTENT_STATUS.validated]);
 export const githubConnectionSummarySchema = z.object({
   status: githubConnectionStatusSchema,
   installationOwner: z.string().nullable(),
-  connectedAt: z.string().datetime().nullable(),
+  connectedAt: z.iso.datetime().nullable(),
   missingPermissions: z.array(z.string()),
 });
 
 export const repositoryIndexHealthSchema = z.object({
   status: repositoryHealthStatusSchema,
   staleAfterMinutes: z.number().int().positive(),
-  lastSyncRequestedAt: z.string().datetime().nullable(),
-  lastCompletedAt: z.string().datetime().nullable(),
+  lastSyncRequestedAt: z.iso.datetime().nullable(),
+  lastCompletedAt: z.iso.datetime().nullable(),
   activeCommitSha: z.string().nullable(),
   activeVersionId: z.string().nullable(),
   lastErrorMessage: z.string().nullable(),
@@ -221,7 +221,7 @@ export const searchFeedbackRequestSchema = z.object({
 
 export const searchFeedbackResponseSchema = z.object({
   feedbackId: z.string().min(1),
-  storedAt: z.string().datetime(),
+  storedAt: z.iso.datetime(),
 });
 
 export const preparePrIntentRequestSchema = z.object({
@@ -239,7 +239,7 @@ export const preparePrIntentResponseSchema = z.object({
   intentId: z.string().min(1),
   status: prIntentStatusSchema,
   repositoryHealthStatus: repositoryHealthStatusSchema,
-  acceptedAt: z.string().datetime(),
+  acceptedAt: z.iso.datetime(),
 });
 
 export type GithubConnectionStatus = z.infer<typeof githubConnectionStatusSchema>;

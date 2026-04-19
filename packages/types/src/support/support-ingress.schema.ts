@@ -49,8 +49,8 @@ export const supportIngressEventSchema = z.object({
   thread: supportThreadReferenceSchema,
   rawPayloadJson: z.record(z.string(), z.unknown()),
   processingState: supportIngressProcessingStateSchema,
-  receivedAt: z.string().datetime(),
-  processedAt: z.string().datetime().nullable(),
+  receivedAt: z.iso.datetime(),
+  processedAt: z.iso.datetime().nullable(),
 });
 
 export const supportIngressAckResponseSchema = z.object({

@@ -20,8 +20,8 @@ export function isProductionLike(nodeEnv: NodeEnv): boolean {
  */
 export const serverSchemas = {
   NODE_ENV: z.enum([NODE_ENV.DEVELOPMENT, NODE_ENV.TEST, NODE_ENV.STAGING, NODE_ENV.PRODUCTION]),
-  APP_BASE_URL: z.string().url(),
-  APP_PUBLIC_URL: z.string().url().optional(),
+  APP_BASE_URL: z.url(),
+  APP_PUBLIC_URL: z.url().optional(),
 
   // Session
   SESSION_COOKIE_NAME: z.string().min(1),
@@ -51,13 +51,13 @@ export const serverSchemas = {
 
   // AI Analysis (Agent Service)
   OPENAI_API_KEY: z.string().min(1).optional(),
-  AGENT_SERVICE_URL: z.string().url().optional(),
+  AGENT_SERVICE_URL: z.url().optional(),
 
   // Sentry (AI Analysis context)
   SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
   SENTRY_ORG: z.string().min(1).optional(),
   SENTRY_PROJECT: z.string().min(1).optional(),
-  SENTRY_BASE_URL: z.string().url().optional(),
+  SENTRY_BASE_URL: z.url().optional(),
 
   // Codex / GitHub App
   GITHUB_APP_ID: z.coerce.number().int().positive().optional(),

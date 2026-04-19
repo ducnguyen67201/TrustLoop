@@ -126,6 +126,7 @@ npm run dev:queue
 
 - **No `any` types. No `as unknown as` casts.** Every variable, parameter, and return value must have an explicit or inferred type. If a helper function loses type information (e.g. generic returns `Record<string, unknown>`), fix the helper's generics or use a follow-up query with proper includes instead of casting. Type assertions (`as`) are a last resort for third-party library boundaries only — never for internal code.
 - **All apps must pass `tsc --noEmit` and `biome check`** before merge. This includes `apps/web`, `apps/queue`, and `apps/agents`.
+- **All app/runtime imports of `zod` must resolve to Zod 4 in every service (`web`, `queue`, `agents`).** Treat any service-specific Zod 3 resolution as a dependency/deploy mismatch bug. Shared app code may use Zod 4 APIs (`z.email()`, `z.url()`, `z.iso.datetime()`) freely. Transitive third-party packages may carry their own private Zod versions, but the app's direct `zod` import must stay on Zod 4 everywhere, including Docker/Railway builds.
 - Define request/response schemas in shared contracts (`packages/types`) with Zod.
 - Infer TypeScript types from Zod; do not duplicate DTOs per app.
 - Share workflow input/output payload types via `@shared/types`.

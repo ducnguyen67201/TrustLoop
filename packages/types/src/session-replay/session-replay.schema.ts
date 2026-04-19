@@ -25,10 +25,10 @@ export const sessionRecordSchema = z.object({
   workspaceId: z.string().min(1),
   sessionId: z.string().min(1),
   userId: z.string().min(1).nullable(),
-  userEmail: z.string().email().nullable(),
+  userEmail: z.email().nullable(),
   status: sessionRecordStatusSchema,
-  startedAt: z.string().datetime(),
-  endedAt: z.string().datetime().nullable(),
+  startedAt: z.iso.datetime(),
+  endedAt: z.iso.datetime().nullable(),
   eventCount: z.number().int().nonnegative(),
   errorCount: z.number().int().nonnegative(),
   pageCount: z.number().int().nonnegative(),
@@ -38,8 +38,8 @@ export const sessionRecordSchema = z.object({
   entryUrl: z.string().nullable(),
   release: z.string().nullable(),
   conversationId: z.string().min(1).nullable(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 // ── Chunk Type ─────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ export const sessionReplayChunkSchema = z.object({
   endTimestamp: z.number().int().nonnegative(),
   sizeBytes: z.number().int().nonnegative(),
   storageKey: z.string().min(1),
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
 });
 
 // ── Session Match Confidence ──────────────────────────────────────

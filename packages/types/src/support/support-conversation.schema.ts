@@ -49,13 +49,13 @@ export const supportConversationSchema = z.object({
   thread: supportThreadReferenceSchema,
   status: supportConversationStatusSchema,
   assigneeUserId: z.string().min(1).nullable(),
-  lastCustomerMessageAt: z.string().datetime().nullable(),
-  customerWaitingSince: z.string().datetime().nullable(),
-  staleAt: z.string().datetime().nullable(),
+  lastCustomerMessageAt: z.iso.datetime().nullable(),
+  customerWaitingSince: z.iso.datetime().nullable(),
+  staleAt: z.iso.datetime().nullable(),
   retryCount: z.number().int().nonnegative(),
-  lastActivityAt: z.string().datetime(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  lastActivityAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 export const supportConversationListRequestSchema = z.object({
@@ -104,7 +104,7 @@ export const supportConversationTimelineEventSchema = z.object({
   /// behavior as pre-v0.1.6.0 and is preferable to a 500.
   parentEventId: z.string().nullish(),
   reactions: z.array(supportReactionSchema).default([]),
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
 });
 
 export const supportCustomerProfileSummarySchema = z.object({

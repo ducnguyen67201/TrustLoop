@@ -6,10 +6,10 @@ export const workspaceApiKeySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   keyPrefix: z.string().min(1),
-  lastUsedAt: z.string().datetime().nullable(),
-  revokedAt: z.string().datetime().nullable(),
-  expiresAt: z.string().datetime(),
-  createdAt: z.string().datetime(),
+  lastUsedAt: z.iso.datetime().nullable(),
+  revokedAt: z.iso.datetime().nullable(),
+  expiresAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
 });
 
 export const workspaceApiKeyListResponseSchema = z.object({

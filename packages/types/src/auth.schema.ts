@@ -68,18 +68,18 @@ export const authErrorCodeSchema = z.enum([
 ]);
 
 export const loginRequestSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(8).max(128),
 });
 
 export const registerRequestSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(8).max(128),
 });
 
 export const sessionUserSchema = z.object({
   id: z.string().min(1),
-  email: z.string().email(),
+  email: z.email(),
   name: z.string().nullable().default(null),
   avatarUrl: z.string().nullable().default(null),
 });

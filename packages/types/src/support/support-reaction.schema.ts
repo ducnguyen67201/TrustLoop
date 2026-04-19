@@ -6,7 +6,7 @@ export const supportReactionSchema = z.object({
   emojiName: z.string().min(1),
   emojiUnicode: z.string().nullable(),
   actorUserId: z.string().min(1),
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
 });
 
 export const supportToggleReactionInputSchema = z.object({

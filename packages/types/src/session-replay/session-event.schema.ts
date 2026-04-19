@@ -118,7 +118,7 @@ export const sessionIngestPayloadSchema = z.object({
   sessionId: z.string().min(1),
   workspaceId: z.string().min(1),
   userId: z.string().min(1).nullable().optional(),
-  userEmail: z.string().email().nullable().optional(),
+  userEmail: z.email().nullable().optional(),
   timestamp: z.number().int().nonnegative(),
   structuredEvents: z.array(sessionEventSchema),
   rrwebEvents: z.union([z.string(), z.array(z.record(z.string(), z.unknown()))]).optional(),
