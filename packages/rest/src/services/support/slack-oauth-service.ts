@@ -251,7 +251,7 @@ export async function completeInstall(
   await writeAuditEvent({
     action: "workspace.slack.connect",
     workspaceId,
-    actorUserId: actorUserId ?? "system",
+    actorUserId: actorUserId ?? null,
     targetType: "support_installation",
     targetId: installation.id,
     metadata: {

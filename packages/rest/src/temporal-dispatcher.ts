@@ -25,12 +25,27 @@ export interface WorkflowDispatcher {
 
 let temporalClient: Client | undefined;
 
+const CONNECT_TIMEOUT_MS = 5_000;
+
 async function getClient(): Promise<Client> {
   if (temporalClient) {
     return temporalClient;
   }
 
-  const connection = await Connection.connect(buildTemporalConnectionOptions());
+  const connection = await Promise.race([
+    Connection.connect(buildTemporalConnectionOptions()),
+    new Promise<never>((_, reject) => {
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              `Temporal Connection.connect() timed out after ${CONNECT_TIMEOUT_MS}ms (address=${env.TEMPORAL_ADDRESS}, namespace=${env.TEMPORAL_NAMESPACE})`
+            )
+          ),
+        CONNECT_TIMEOUT_MS
+      );
+    }),
+  ]);
   temporalClient = new Client({ connection, namespace: env.TEMPORAL_NAMESPACE });
   return temporalClient;
 }
