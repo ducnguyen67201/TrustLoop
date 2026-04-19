@@ -5,6 +5,7 @@ name: Migrate DB
 #
 # Branch → GitHub Environment → Doppler config mapping:
 #   push to main        →  github env `staging`     →  Doppler `stg`  →  staging Postgres
+#   push to staging     →  github env `staging`     →  Doppler `stg`  →  staging Postgres
 #   push to production  →  github env `production`  →  Doppler `prd`  →  prod Postgres
 #   workflow_dispatch   →  user-selected           →  mapped → corresponding DB
 #
@@ -18,7 +19,7 @@ name: Migrate DB
 
 on:
   push:
-    branches: [main, production]
+    branches: [main, staging, production]
     paths:
       - 'packages/database/prisma/migrations/**'
       - 'packages/database/prisma/schema.prisma'
