@@ -25,6 +25,8 @@
       "@shared/database/*": ["./packages/database/src/*"],
       "@shared/env": ["./packages/env/src/index.ts"],
       "@shared/env/*": ["./packages/env/src/*"],
+      "@shared/brand": ["./packages/brand/src/index.ts"],
+      "@shared/brand/*": ["./packages/brand/src/*"],
       "@apps/queue": ["./apps/queue/src/index.ts"],
       "@apps/queue/*": ["./apps/queue/src/*"]
     }

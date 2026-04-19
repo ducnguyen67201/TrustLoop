@@ -22,6 +22,7 @@ model Workspace {
   supportInstallations     SupportInstallation[]
   supportIngressEvents     SupportIngressEvent[]
   supportConversations     SupportConversation[]
+  supportConversationThreadAliases SupportConversationThreadAlias[]
   supportConversationEvent SupportConversationEvent[]
   supportDeliveryAttempts  SupportDeliveryAttempt[]
   supportDeadLetters       SupportDeadLetter[]
@@ -37,6 +38,9 @@ model Workspace {
   supportAnalyses          SupportAnalysis[]
   supportDrafts            SupportDraft[]
   supportConversationSessionMatches SupportConversationSessionMatch[]
+  supportAttachments       SupportMessageAttachment[]
+  supportCustomerProfiles  SupportCustomerProfile[]
+  supportMessageReactions  SupportMessageReaction[]
   aiSettings               WorkspaceAiSettings?
   sessionRecords           SessionRecord[]
   sessionEvents            SessionEvent[]
@@ -65,6 +69,7 @@ model User {
   createdApiKeys             WorkspaceApiKey[]     @relation("ApiKeyCreatedBy")
   auditLogs                  AuditLog[]            @relation("AuditActor")
   assignedSupportConvos      SupportConversation[] @relation("SupportConversationAssignee")
+  messageReactions           SupportMessageReaction[] @relation("SupportMessageReactionActor")
   createdAt                  DateTime              @default(now())
   updatedAt                  DateTime              @updatedAt
 

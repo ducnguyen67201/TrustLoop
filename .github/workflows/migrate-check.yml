@@ -1,0 +1,114 @@
+name: Migrate check (drift)
+
+# Read-only validation that runs on every PR touching the database
+# package. Uses an ephemeral Postgres container — NEVER touches the
+# real staging or production DBs.
+#
+# What this catches:
+#   - schema.prisma changed without a corresponding migration file
+#     (someone forgot to run `npm run db:migrate` locally)
+#   - a new migration file that fails to apply cleanly from scratch
+#   - migration file renamed/edited after it was committed (bad practice)
+#
+# What this does NOT do:
+#   - apply migrations to staging or prod (that's migrate.yml's job)
+#   - modify any real secret or env
+#
+# If this fails on your PR, run `npm run db:migrate` locally, commit the
+# generated migration file, push again.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/database/**'
+      - '.github/workflows/migrate-check.yml'
+  push:
+    branches: [main, production]
+    paths:
+      - 'packages/database/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        # pgvector image = Postgres 17 + the `vector` extension preinstalled.
+        # Matches docker-compose.yml for local dev. Required because the
+        # add_embedding_hybrid_search migration calls CREATE EXTENSION vector.
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: trustloop_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop_test?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply all migrations to ephemeral Postgres
+        # Use `migrate deploy` (production-safe, no shadow DB, no prompts)
+        # instead of `migrate dev` which requires the shadow DB to also
+        # have all extensions installed and is meant for local interactive use.
+        run: npm run db:migrate:deploy
+
+      - name: Drop HNSW index for drift check
+        # Prisma 7's schema language cannot express `USING hnsw`. The
+        # RepositoryIndexChunk_embedding_idx lives only in raw SQL. To
+        # let migrate diff see a clean baseline, drop it in the ephemeral
+        # DB before comparison. This is CI-only — staging + prod keep it.
+        run: |
+          PGPASSWORD=postgres psql \
+            -h localhost -U postgres -d trustloop_test \
+            -c 'DROP INDEX IF EXISTS "RepositoryIndexChunk_embedding_idx";'
+
+      - name: Detect schema drift
+        # Compares the live (just-migrated) DB against the committed
+        # schema files. If they differ, someone edited schema/*.prisma
+        # without generating a migration (or vice versa).
+        #
+        # Prisma 7 flag semantics:
+        #   --from-config-datasource → read DATABASE_URL from prisma.config.ts
+        #                              (this is the ephemeral DB after migrate deploy)
+        #   --to-schema <path>       → path to the schema folder (multi-file)
+        #   --exit-code              → 0=no diff, 2=drift detected, 1=error
+        working-directory: packages/database
+        run: |
+          npx prisma migrate diff \
+            --from-config-datasource \
+            --to-schema ./prisma/schema \
+            --exit-code
+        # If this step exits 2, the log shows the SQL that would be needed
+        # to bring the DB in line with schema/*.prisma. Run
+        # `npm run db:migrate` locally to generate a real migration for it.
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Migration drift check"
+            echo ""
+            echo "- Ephemeral DB: postgres:17"
+            echo "- Trigger: ${{ github.event_name }}"
+            echo "- Outcome: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"

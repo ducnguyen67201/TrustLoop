@@ -88,7 +88,7 @@ export function SlackConnectionCard({
                     <DialogTitle>Disconnect Slack?</DialogTitle>
                     <DialogDescription>
                       This will stop receiving messages from your Slack workspace. Existing
-                      conversations in TrustLoop will be preserved, but no new messages will be
+                      conversations in TrustLoop AI will be preserved, but no new messages will be
                       ingested.
                     </DialogDescription>
                   </DialogHeader>

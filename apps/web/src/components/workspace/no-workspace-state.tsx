@@ -1,42 +1,103 @@
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+"use client";
+
+import { ProductMetricsGrid } from "@/components/brand/product-metrics";
+import { Button } from "@/components/ui/button";
 import { RequestAccessForm } from "@/components/workspace/request-access-form";
+import { Logo } from "@shared/brand";
 
 /**
- * Landing page for authenticated users with no workspace membership.
+ * Landing for authenticated users with no workspace membership.
  *
- * The Google sign-in callback lands brand-new users here when their
- * email domain doesn't match an existing workspace (the TrustLoop team
- * provisions workspaces manually during customer onboarding for now).
- * Copy is intentionally warm — every prospect's first impression after
- * clicking "Continue with Google" happens on this page, so the message
- * needs to funnel them into a sales conversation rather than reading
- * as a permission error.
+ * Google sign-in lands brand-new users here when their email domain doesn't
+ * match an existing workspace (TrustLoop provisions workspaces manually
+ * during onboarding for now). This is a prospect's first impression after
+ * clicking "Continue with Google", so the page doubles as a marketing
+ * surface: left side restricts access, right side sells the product.
+ *
+ * Structurally mirrors /login (rounded split card on dot-grid) but with
+ * differentiated content: left side is access-recovery, right side is a
+ * warmer "while you wait" panel rather than the hero sell.
  */
-export function NoWorkspaceState() {
+export function NoWorkspaceState({ onSignOut }: { onSignOut: () => void }) {
   return (
-    <Card className="mx-auto w-full max-w-2xl">
-      <CardHeader>
-        <CardTitle>Your team hasn't set up TrustLoop yet</CardTitle>
-        <CardDescription>
-          Signing in worked, but your company doesn't have a TrustLoop workspace yet. Drop us a line
-          and we'll get your team set up.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Alert>
-          <AlertTitle>Get in touch</AlertTitle>
-          <AlertDescription>
-            Email{" "}
-            <a className="font-medium underline" href="mailto:hello@trustloop.com">
-              hello@trustloop.com
-            </a>{" "}
-            and we'll get your team onboarded. Or leave a message below and we'll reach out.
-          </AlertDescription>
-        </Alert>
+    <div className="w-full max-w-5xl overflow-hidden rounded-2xl border bg-card shadow-xl">
+      <div className="grid md:grid-cols-[1.1fr_1fr]">
+        <AccessPanel onSignOut={onSignOut} />
+        <WhileYouWaitPanel />
+      </div>
+    </div>
+  );
+}
 
+function AccessPanel({ onSignOut }: { onSignOut: () => void }) {
+  return (
+    <div className="flex flex-col justify-center p-8 md:p-12">
+      <Logo title="TrustLoop AI" className="mb-8 size-12 rounded-full bg-foreground/5 p-2.5" />
+
+      <h1 className="text-3xl font-semibold tracking-tight text-balance">Access Restricted</h1>
+      <p className="mt-2 text-sm text-muted-foreground text-balance">
+        Sign-in worked, but you don't have access to a workspace yet. Contact your admin, or request
+        access below and we'll find someone who can help.
+      </p>
+
+      <div className="mt-8">
         <RequestAccessForm />
-      </CardContent>
-    </Card>
+      </div>
+
+      <div className="mt-6 flex items-center gap-2 border-t pt-6 text-sm text-muted-foreground">
+        <span>Wrong account?</span>
+        <Button
+          type="button"
+          variant="link"
+          onClick={onSignOut}
+          className="h-auto p-0 font-semibold text-foreground"
+        >
+          Sign out
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Right-side panel. Structurally echoes /login's VisualSide but reframed
+ * as "while you wait for access" — friendlier, onboarding-oriented, not a
+ * raw sales pitch. Keeps the product metrics since they're useful context
+ * for a prospect deciding whether to wait for manual provisioning.
+ */
+function WhileYouWaitPanel() {
+  return (
+    <aside className="relative hidden overflow-hidden bg-foreground md:block">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_15%,var(--primary)_0%,transparent_55%)] opacity-35" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_95%,var(--primary)_0%,transparent_60%)] opacity-20" />
+
+      <Logo
+        title="TrustLoop AI"
+        className="-top-16 -left-20 absolute size-[26rem] text-background opacity-[0.05]"
+      />
+
+      <div className="relative flex h-full flex-col justify-between p-10 md:p-12 text-background">
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-background/20 bg-background/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-background backdrop-blur-sm">
+          <span className="relative flex size-1.5">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
+          </span>
+          Provisioning · Pending Access
+        </div>
+
+        <div>
+          <h2 className="text-3xl font-semibold tracking-tight text-balance">
+            While you wait, here's what you're getting.
+          </h2>
+          <p className="mt-3 text-sm text-background/70 text-pretty">
+            TrustLoop reads your repo, replays the customer's session, drafts the Slack reply, and
+            preps the fix PR. Every answer grounded in real code. Your admin will have you in
+            shortly.
+          </p>
+
+          <ProductMetricsGrid />
+        </div>
+      </div>
+    </aside>
   );
 }

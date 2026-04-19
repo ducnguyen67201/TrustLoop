@@ -5,10 +5,13 @@ import {
   ANALYSIS_STATUS,
   type ApproveDraftInput,
   ConflictError,
-  DRAFT_STATUS,
   type DismissDraftInput,
+  type DraftStatus,
+  InvalidDraftTransitionError,
   type TriggerAnalysisInput,
   ValidationError,
+  restoreDraftContext,
+  transitionDraft,
 } from "@shared/types";
 
 // ---------------------------------------------------------------------------
@@ -28,13 +31,34 @@ import {
 // (they're the public API the frontend calls). Only the internal function
 // names are migrated here.
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 export interface TriggerAnalysisResult {
   analysisId: string | null;
   workflowId: string;
   alreadyInProgress: boolean;
+}
+
+/**
+ * Route a draft state change through the draft state machine, translating
+ * its InvalidDraftTransitionError into the service-layer ConflictError that
+ * tRPC callers already expect. Centralizes the "what do we do when the
+ * transition isn't allowed" decision so every mutation uses the same guard.
+ */
+function tryDraftTransition(
+  draft: { id: string; status: string; errorMessage: string | null },
+  event: Parameters<typeof transitionDraft>[1]
+) {
+  const ctx = restoreDraftContext(draft.id, draft.status as DraftStatus, draft.errorMessage);
+  try {
+    return transitionDraft(ctx, event);
+  } catch (err) {
+    if (err instanceof InvalidDraftTransitionError) {
+      throw new ConflictError(`Cannot ${event.type} draft with status '${draft.status}'.`);
+    }
+    throw err;
+  }
 }
 
 export async function trigger(
@@ -104,14 +128,13 @@ export async function approveDraft(
   if (!draft) {
     throw new ConflictError("Draft not found in this workspace.");
   }
-  if (draft.status !== DRAFT_STATUS.awaitingApproval) {
-    throw new ConflictError(`Cannot approve draft with status '${draft.status}'.`);
-  }
+
+  const next = tryDraftTransition(draft, { type: "approve", approvedBy: input.actorUserId });
 
   const updatedDraft = await prisma.supportDraft.update({
     where: { id: input.draftId },
     data: {
-      status: DRAFT_STATUS.approved,
+      status: next.status,
       approvedBy: input.actorUserId,
       approvedAt: new Date(),
       editedBody: input.editedBody ?? null,
@@ -142,13 +165,12 @@ export async function dismissDraft(
   if (!draft) {
     throw new ConflictError("Draft not found in this workspace.");
   }
-  if (draft.status !== DRAFT_STATUS.awaitingApproval) {
-    throw new ConflictError(`Cannot dismiss draft with status '${draft.status}'.`);
-  }
+
+  const next = tryDraftTransition(draft, { type: "dismiss", reason: input.reason });
 
   const updatedDraft = await prisma.supportDraft.update({
     where: { id: input.draftId },
-    data: { status: DRAFT_STATUS.dismissed },
+    data: { status: next.status },
   });
 
   await prisma.supportConversationEvent.create({

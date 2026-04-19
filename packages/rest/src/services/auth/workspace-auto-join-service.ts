@@ -12,7 +12,7 @@ import { WORKSPACE_ROLE, type WorkspaceRole } from "@shared/types";
 //   const match = await autoJoin.resolveFromVerifiedEmail(tx, input);
 //   await autoJoin.ensureMembership(tx, { workspaceId, userId, role });
 //
-// See docs/service-layer-conventions.md for the namespace convention.
+// See docs/conventions/service-layer-conventions.md for the namespace convention.
 // ---------------------------------------------------------------------------
 
 // Structural transaction client for workspace auto-join. Same pattern as

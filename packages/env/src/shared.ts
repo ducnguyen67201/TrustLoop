@@ -3,15 +3,23 @@ import { z } from "zod";
 export const NODE_ENV = {
   DEVELOPMENT: "development",
   TEST: "test",
+  STAGING: "staging",
   PRODUCTION: "production",
 } as const;
+
+export type NodeEnv = (typeof NODE_ENV)[keyof typeof NODE_ENV];
+
+/** Treat staging like production for secure cookies, silent DB logs, etc. */
+export function isProductionLike(nodeEnv: NodeEnv): boolean {
+  return nodeEnv === NODE_ENV.PRODUCTION || nodeEnv === NODE_ENV.STAGING;
+}
 
 /**
  * Shared server-side env schemas. Used by both the core (worker/queue)
  * and Next.js (web) env configurations.
  */
 export const serverSchemas = {
-  NODE_ENV: z.enum([NODE_ENV.DEVELOPMENT, NODE_ENV.TEST, NODE_ENV.PRODUCTION]),
+  NODE_ENV: z.enum([NODE_ENV.DEVELOPMENT, NODE_ENV.TEST, NODE_ENV.STAGING, NODE_ENV.PRODUCTION]),
   APP_BASE_URL: z.url(),
   APP_PUBLIC_URL: z.url().optional(),
 
@@ -30,8 +38,9 @@ export const serverSchemas = {
   // Temporal
   TEMPORAL_ADDRESS: z.string().min(1),
   TEMPORAL_NAMESPACE: z.string().min(1),
-  TEMPORAL_TASK_QUEUE: z.string().min(1),
-  CODEX_TASK_QUEUE: z.string().min(1),
+  // Present only for Temporal Cloud (API-key auth). Absent for local dev,
+  // where docker-compose Temporal accepts plain gRPC on localhost:7233.
+  TEMPORAL_API_KEY: z.string().min(1).optional(),
 
   // Support / Slack
   SLACK_CLIENT_ID: z.string().min(1).optional(),

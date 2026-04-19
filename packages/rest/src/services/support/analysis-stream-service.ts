@@ -17,7 +17,7 @@ import {
 //   await analysisStream.emit(event);
 //   for await (const ev of analysisStream.listen(id, signal)) { ... }
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 const ANALYSIS_STREAM_CHANNEL = "analysis_stream";

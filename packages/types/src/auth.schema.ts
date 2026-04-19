@@ -80,6 +80,8 @@ export const registerRequestSchema = z.object({
 export const sessionUserSchema = z.object({
   id: z.string().min(1),
   email: z.email(),
+  name: z.string().nullable().default(null),
+  avatarUrl: z.string().nullable().default(null),
 });
 
 export const authSessionSchema = z.object({

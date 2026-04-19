@@ -15,7 +15,7 @@ import OpenAI from "openai";
 //   const vectors = await embeddings.generate(texts);
 //   const cache = await embeddings.getCached(hashes);
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 export const MODEL = MODEL_CONFIG.embedding;

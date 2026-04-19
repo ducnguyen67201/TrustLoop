@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { env } from "@shared/env";
-import { NODE_ENV } from "@shared/env/shared";
+import { isProductionLike } from "@shared/env/shared";
 
 // Short-lived HttpOnly cookie that carries OAuth authorization-code flow state
 // across the redirect to the provider and back:
@@ -177,7 +177,7 @@ function isOauthStatePayload(value: unknown): value is OauthStatePayload {
 function serializeCookieHeader(name: string, value: string, maxAgeSeconds: number): string {
   const parts = [`${name}=${encodeURIComponent(value)}`, "Path=/", "HttpOnly"];
 
-  if (env.NODE_ENV === NODE_ENV.PRODUCTION) {
+  if (isProductionLike(env.NODE_ENV)) {
     parts.push("Secure");
   }
 

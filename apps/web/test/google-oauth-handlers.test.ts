@@ -36,7 +36,13 @@ vi.mock("@shared/env", () => ({
 }));
 
 vi.mock("@shared/env/shared", () => ({
-  NODE_ENV: { DEVELOPMENT: "development", TEST: "test", PRODUCTION: "production" },
+  NODE_ENV: {
+    DEVELOPMENT: "development",
+    TEST: "test",
+    STAGING: "staging",
+    PRODUCTION: "production",
+  },
+  isProductionLike: (value: string) => value === "production" || value === "staging",
 }));
 
 vi.mock("@shared/rest/security/audit", () => ({

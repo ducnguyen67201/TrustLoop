@@ -11,7 +11,7 @@ import { ValidationError } from "@shared/types";
 //   import * as slackSignature from "@shared/rest/services/support/slack-signature-service";
 //   slackSignature.verifyRequest(rawBody, sig, ts);
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 
 function toBuffer(value: string): Buffer {

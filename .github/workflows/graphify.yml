@@ -1,0 +1,58 @@
+name: graphify
+
+# Keeps graphify-out/GRAPH_REPORT.md and graphify-out/graph.json current on main.
+# AST-only re-extraction — tree-sitter parsers, zero LLM calls, zero token cost.
+# Doc/image extraction (LLM) is not automated here; refresh via `/graphify . --update`
+# inside Claude Code/Codex when markdown or images change meaningfully.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: graphify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-graph:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install graphify
+        run: pip install graphifyy
+
+      - name: Restore graphify cache
+        uses: actions/cache@v4
+        with:
+          path: graphify-out/cache
+          key: graphify-cache-${{ github.sha }}
+          restore-keys: |
+            graphify-cache-
+
+      - name: Re-extract code graph (AST only, no LLM)
+        run: graphify update .
+
+      - name: Commit refreshed graph
+        run: |
+          if git diff --quiet graphify-out/GRAPH_REPORT.md graphify-out/graph.json; then
+            echo "No graph changes."
+            exit 0
+          fi
+          git config user.name "graphify-bot"
+          git config user.email "graphify-bot@users.noreply.github.com"
+          git add graphify-out/GRAPH_REPORT.md graphify-out/graph.json
+          git commit -m "chore(graphify): refresh code graph [skip ci]"
+          git push

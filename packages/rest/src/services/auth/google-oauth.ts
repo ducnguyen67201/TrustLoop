@@ -10,7 +10,7 @@
 //   import * as googleOauth from "@shared/rest/services/auth/google-oauth";
 //
 // The real files live under ./google-oauth/. See
-// docs/service-layer-conventions.md rule 7 ("size budget: ~300 lines,
+// docs/conventions/service-layer-conventions.md rule 7 ("size budget: ~300 lines,
 // then split by concern") — this file was 417 lines before the split.
 // ---------------------------------------------------------------------------
 

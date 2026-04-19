@@ -21,6 +21,7 @@ import {
 import { DarkModeToggle } from "@/components/workspace/dark-mode-toggle";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import {
+  workspaceInsightsPath,
   workspaceRootPath,
   workspaceSessionsPath,
   workspaceSettingsPath,
@@ -28,7 +29,6 @@ import {
 } from "@/lib/workspace-paths";
 import {
   RiBook2Line,
-  RiBuildingLine,
   RiCheckboxCircleLine,
   RiCustomerService2Line,
   RiKey2Line,
@@ -38,6 +38,7 @@ import {
   RiPlayCircleLine,
   RiSettings3Line,
 } from "@remixicon/react";
+import { Logo } from "@shared/brand";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -62,6 +63,7 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
   const settingsPath = workspaceSettingsPath(workspaceId);
   const supportPath = workspaceSupportPath(workspaceId);
   const sessionsPath = workspaceSessionsPath(workspaceId);
+  const insightsPath = workspaceInsightsPath(workspaceId);
 
   const mainNavItems: NavItem[] = [
     {
@@ -82,15 +84,15 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
       icon: RiPlayCircleLine,
       isActive: pathname === sessionsPath || pathname.startsWith(`${sessionsPath}/`),
     },
+    {
+      href: insightsPath,
+      label: "Insights",
+      icon: RiLineChartLine,
+      isActive: pathname === insightsPath || pathname.startsWith(`${insightsPath}/`),
+    },
   ];
 
   const secondaryNavItems: NavItem[] = [
-    {
-      href: rootPath,
-      label: "Analytics",
-      icon: RiLineChartLine,
-      isActive: pathname === rootPath,
-    },
     {
       href: rootPath,
       label: "Projects",
@@ -137,12 +139,12 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
             <SidebarMenuItem className="h-full">
               <SidebarMenuButton
                 asChild
-                tooltip="TrustLoop"
+                tooltip="TrustLoop AI"
                 className="h-full rounded-none px-3 data-[size=default]:h-full"
               >
                 <Link href={rootPath}>
-                  <RiBuildingLine />
-                  <span className="font-semibold">TrustLoop</span>
+                  <Logo className="size-5 shrink-0" />
+                  <span className="font-semibold">TrustLoop AI</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

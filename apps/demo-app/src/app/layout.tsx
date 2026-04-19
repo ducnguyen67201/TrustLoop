@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata = {
-  title: "TrustLoop Demo App",
+  title: "TrustLoop AI Demo App",
   description: "Test harness for @trustloop/sdk session replay",
 };
 

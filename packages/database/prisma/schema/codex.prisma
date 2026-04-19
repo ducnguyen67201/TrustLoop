@@ -140,6 +140,11 @@ model RepositoryIndexChunk {
   searchResults  CodeSearchResult[]
 
   @@index([indexVersionId, filePath])
+  @@index([tsv], type: Gin)
+  // embedding uses an HNSW index created via raw SQL in
+  // 20260405200000_add_embedding_hybrid_search. Prisma's schema
+  // cannot express `USING hnsw` — the CI drift check tolerates
+  // this single unrepresentable index.
 }
 
 model CodeSearchQuery {

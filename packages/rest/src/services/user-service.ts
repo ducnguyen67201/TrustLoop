@@ -9,7 +9,7 @@ import { prisma } from "@shared/database";
 //   import * as users from "@shared/rest/services/user-service";
 //   const user = await users.findIdentityByEmail(email);
 //
-// See docs/service-layer-conventions.md for the full rationale.
+// See docs/conventions/service-layer-conventions.md for the full rationale.
 // ---------------------------------------------------------------------------
 
 export type UserIdentityRecord = {

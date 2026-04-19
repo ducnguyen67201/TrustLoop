@@ -12,6 +12,18 @@ export const workflowNames = {
   repositoryIndex: "repositoryIndexWorkflow",
 } as const;
 
+/**
+ * Temporal task queue names. Hardcoded (not env-driven) so the dispatcher
+ * in the web service and the worker in the queue service can never drift
+ * apart. Environment isolation is already handled by TEMPORAL_NAMESPACE.
+ */
+export const TASK_QUEUES = {
+  SUPPORT: "support",
+  CODEX: "codex",
+} as const;
+
+export type TaskQueue = (typeof TASK_QUEUES)[keyof typeof TASK_QUEUES];
+
 export const supportWorkflowInputSchema = z.object({
   workspaceId: z.string().min(1),
   installationId: z.string().min(1),
@@ -19,9 +31,17 @@ export const supportWorkflowInputSchema = z.object({
   canonicalIdempotencyKey: z.string().trim().min(1),
 });
 
+export const pendingAttachmentSchema = z.object({
+  attachmentId: z.string().min(1),
+  downloadUrl: z.string().nullable(),
+  fileAccess: z.string().nullable(),
+});
+
 export const supportWorkflowResultSchema = z.object({
   ingressEventId: z.string(),
   conversationId: z.string().min(1).nullable(),
+  slackUserId: z.string().min(1).nullable().default(null),
+  pendingAttachments: z.array(pendingAttachmentSchema).default([]),
   status: workflowProcessingStatusSchema,
   processedAt: z.iso.datetime(),
 });

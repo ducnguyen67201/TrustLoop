@@ -3,6 +3,7 @@
 import { SessionEventTimeline } from "@/components/session-replay/session-event-timeline";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import type { eventWithTime } from "@rrweb/types";
 import type { ReplayChunkResponse, SessionTimelineEvent } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -115,11 +116,11 @@ export function SessionReplayModal({
         const container = playerContainerRef.current;
         if (!container || cancelled) return;
 
-        const allEvents: unknown[] = [];
+        const allEvents: eventWithTime[] = [];
         for (const chunk of chunks) {
           try {
             const decoded = decodeBase64Chunk(chunk.compressedData);
-            const parsed = JSON.parse(decoded) as unknown[];
+            const parsed = JSON.parse(decoded) as eventWithTime[];
             allEvents.push(...parsed);
           } catch {
             // Skip corrupt chunks

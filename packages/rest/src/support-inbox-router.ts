@@ -1,5 +1,6 @@
 import * as supportCommand from "@shared/rest/services/support/support-command";
 import * as supportProjection from "@shared/rest/services/support/support-projection-service";
+import * as supportReaction from "@shared/rest/services/support/support-reaction-service";
 import { router, workspaceProcedure } from "@shared/rest/trpc";
 import {
   SUPPORT_COMMAND_TYPE,
@@ -8,6 +9,7 @@ import {
   supportMarkDoneWithOverrideCommandSchema,
   supportRetryDeliveryCommandSchema,
   supportSendReplyCommandSchema,
+  supportToggleReactionInputSchema,
   supportUpdateStatusCommandSchema,
 } from "@shared/types";
 import { z } from "zod";
@@ -102,16 +104,35 @@ export const supportInboxRouter = router({
     ),
   sendReply: workspaceProcedure
     .input(
-      supportSendReplyCommandSchema.omit({
-        workspaceId: true,
-        actorUserId: true,
-        commandType: true,
-      })
+      supportSendReplyCommandSchema
+        .omit({
+          workspaceId: true,
+          actorUserId: true,
+          commandType: true,
+        })
+        .refine((data) => data.messageText.length > 0 || data.attachmentIds.length > 0, {
+          message: "Either messageText or attachmentIds must be provided",
+          path: ["messageText"],
+        })
     )
     .mutation(({ ctx, input }) =>
       supportCommand.sendReply({
         ...input,
         commandType: SUPPORT_COMMAND_TYPE.sendReply,
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
+      })
+    ),
+  toggleReaction: workspaceProcedure
+    .input(
+      supportToggleReactionInputSchema.omit({
+        workspaceId: true,
+        actorUserId: true,
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      supportReaction.toggle({
+        ...input,
         workspaceId: ctx.workspaceId,
         actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
       })

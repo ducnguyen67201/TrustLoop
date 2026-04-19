@@ -1,7 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@shared/database/generated/prisma/client";
 import { env } from "@shared/env";
-import { NODE_ENV } from "@shared/env/shared";
+import { isProductionLike } from "@shared/env/shared";
 import { softDeleteExtension } from "./soft-delete";
 
 const globalForPrisma = globalThis as { prisma?: PrismaClient };
@@ -10,7 +10,7 @@ const adapter = new PrismaPg({
   connectionString: env.DATABASE_URL,
 });
 
-const isDev = env.NODE_ENV !== NODE_ENV.PRODUCTION;
+const isDev = !isProductionLike(env.NODE_ENV);
 
 function hasSupportDelegates(client: PrismaClient): boolean {
   const candidate = client as PrismaClient & {
@@ -59,7 +59,7 @@ if (cachedPrisma && !hasSupportDelegates(cachedPrisma)) {
 
 const baseClient = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== NODE_ENV.PRODUCTION) {
+if (isDev) {
   globalForPrisma.prisma = baseClient;
 }
 
@@ -72,3 +72,4 @@ export const prismaRaw = baseClient;
 export type { Prisma } from "@shared/database/generated/prisma/client";
 export { SOFT_DELETE_MODELS } from "./soft-delete";
 export { findIncludingDeleted, softUpsert, resurrectOrUpsert } from "./soft-delete-helpers";
+export { countSoftDeletedRecords, hardDeleteById, purgeDeletedRecords } from "./hard-delete";

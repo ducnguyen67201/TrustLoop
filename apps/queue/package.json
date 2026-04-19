@@ -10,7 +10,9 @@
     "./domains/*": "./src/domains/*"
   },
   "scripts": {
-    "dev": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts",
+    "ping:temporal": "tsx scripts/ping-temporal.ts",
+    "sample:temporal": "tsx scripts/start-sample-workflow.ts",
     "build": "tsc -p tsconfig.json",
     "type-check": "tsgo --noEmit",
     "lint": "biome check .",

@@ -25,7 +25,7 @@ app.post("/analyze", async (c) => {
   }
 });
 
-const PORT = Number(process.env.AGENT_SERVICE_PORT ?? 3100);
+const PORT = Number(process.env.PORT ?? process.env.AGENT_SERVICE_PORT ?? 3100);
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[agents] Agent service running on http://localhost:${info.port}`);

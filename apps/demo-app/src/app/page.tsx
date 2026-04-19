@@ -17,10 +17,10 @@ export default function HomePage() {
 
   return (
     <>
-      <h1>TrustLoop Demo App</h1>
+      <h1>TrustLoop AI Demo App</h1>
       <p className="text-muted" style={{ marginBottom: "1rem" }}>
         Simulates a customer app with the @trustloop/sdk installed. Triggers events that flow to the
-        TrustLoop ingest endpoint.
+        TrustLoop AI ingest endpoint.
       </p>
 
       {user ? (

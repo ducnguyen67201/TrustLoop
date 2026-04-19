@@ -135,6 +135,15 @@ async function main() {
   const existingSlack = await prisma.supportInstallation.findFirst({
     where: { workspaceId: workspace.id, provider: "SLACK", deletedAt: null },
   });
+  // The bot echo filter in runSupportPipeline compares inbound Slack events
+  // against installation.botUserId to distinguish our own chat.postMessage
+  // echoes from messages authored by other bots. If you're dev-testing
+  // against a real Slack workspace, set SLACK_DEV_BOT_USER_ID in .env to
+  // the bot user ID your workspace actually uses (visible in DELIVERY_*
+  // log lines or on Slack's app admin page). The fallback placeholder only
+  // works for synthetic / no-real-Slack dev because it won't match any
+  // real event's user field.
+  const seedBotUserId = process.env.SLACK_DEV_BOT_USER_ID ?? "U0BOTLOCAL";
   const slackInstallation =
     existingSlack ??
     (await prisma.supportInstallation.create({
@@ -143,7 +152,7 @@ async function main() {
         provider: "SLACK",
         providerInstallationId: "local-dev-slack",
         teamId: "T0AQB0129QD",
-        botUserId: "U0BOTLOCAL",
+        botUserId: seedBotUserId,
         metadata: {
           groupingWindowMinutes: 5,
           maxGroupingWindowMinutes: 60,

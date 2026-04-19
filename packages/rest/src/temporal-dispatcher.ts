@@ -4,11 +4,13 @@ import {
   type RepositoryIndexWorkflowInput,
   type SupportAnalysisWorkflowInput,
   type SupportWorkflowInput,
+  TASK_QUEUES,
   type WorkflowDispatchResponse,
   workflowDispatchResponseSchema,
   workflowNames,
 } from "@shared/types";
 import { Client, Connection } from "@temporalio/client";
+import { buildTemporalConnectionOptions } from "./temporal-connection";
 
 export interface WorkflowDispatcher {
   startSupportWorkflow(input: SupportWorkflowInput): Promise<WorkflowDispatchResponse>;
@@ -23,12 +25,27 @@ export interface WorkflowDispatcher {
 
 let temporalClient: Client | undefined;
 
+const CONNECT_TIMEOUT_MS = 5_000;
+
 async function getClient(): Promise<Client> {
   if (temporalClient) {
     return temporalClient;
   }
 
-  const connection = await Connection.connect({ address: env.TEMPORAL_ADDRESS });
+  const connection = await Promise.race([
+    Connection.connect(buildTemporalConnectionOptions()),
+    new Promise<never>((_, reject) => {
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              `Temporal Connection.connect() timed out after ${CONNECT_TIMEOUT_MS}ms (address=${env.TEMPORAL_ADDRESS}, namespace=${env.TEMPORAL_NAMESPACE})`
+            )
+          ),
+        CONNECT_TIMEOUT_MS
+      );
+    }),
+  ]);
   temporalClient = new Client({ connection, namespace: env.TEMPORAL_NAMESPACE });
   return temporalClient;
 }
@@ -39,14 +56,14 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
     const workflowId = `support-ingress-${input.canonicalIdempotencyKey}`;
     const handle = await client.workflow.start(workflowNames.supportInbox, {
       args: [input],
-      taskQueue: env.TEMPORAL_TASK_QUEUE,
+      taskQueue: TASK_QUEUES.SUPPORT,
       workflowId,
     });
 
     return workflowDispatchResponseSchema.parse({
       workflowId,
       runId: handle.firstExecutionRunId,
-      queue: env.TEMPORAL_TASK_QUEUE,
+      queue: TASK_QUEUES.SUPPORT,
     });
   },
   async startSupportAnalysisWorkflow(input) {
@@ -54,14 +71,14 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
     const workflowId = `support-analysis-${input.conversationId}-${Date.now()}`;
     const handle = await client.workflow.start(workflowNames.supportAnalysis, {
       args: [input],
-      taskQueue: env.TEMPORAL_TASK_QUEUE,
+      taskQueue: TASK_QUEUES.SUPPORT,
       workflowId,
     });
 
     return workflowDispatchResponseSchema.parse({
       workflowId,
       runId: handle.firstExecutionRunId,
-      queue: env.TEMPORAL_TASK_QUEUE,
+      queue: TASK_QUEUES.SUPPORT,
     });
   },
   async startRepositoryIndexWorkflow(input) {
@@ -69,14 +86,14 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
     const workflowId = `repository-index-${input.syncRequestId}`;
     const handle = await client.workflow.start(workflowNames.repositoryIndex, {
       args: [input],
-      taskQueue: env.CODEX_TASK_QUEUE,
+      taskQueue: TASK_QUEUES.CODEX,
       workflowId,
     });
 
     return workflowDispatchResponseSchema.parse({
       workflowId,
       runId: handle.firstExecutionRunId,
-      queue: env.CODEX_TASK_QUEUE,
+      queue: TASK_QUEUES.CODEX,
     });
   },
   async startCodexWorkflow(input) {
@@ -84,14 +101,14 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
     const workflowId = `fix-pr-${input.analysisId}`;
     const handle = await client.workflow.start(workflowNames.fixPr, {
       args: [input],
-      taskQueue: env.CODEX_TASK_QUEUE,
+      taskQueue: TASK_QUEUES.CODEX,
       workflowId,
     });
 
     return workflowDispatchResponseSchema.parse({
       workflowId,
       runId: handle.firstExecutionRunId,
-      queue: env.CODEX_TASK_QUEUE,
+      queue: TASK_QUEUES.CODEX,
     });
   },
 };

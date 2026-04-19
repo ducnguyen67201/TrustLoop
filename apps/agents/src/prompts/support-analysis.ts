@@ -5,7 +5,7 @@ import {
 } from "@shared/types";
 
 /**
- * System prompt for the TrustLoop support analysis agent.
+ * System prompt for the TrustLoop AI support analysis agent.
  *
  * The agent investigates customer support questions by searching the codebase
  * and Sentry, then produces a structured analysis and (when confident) a

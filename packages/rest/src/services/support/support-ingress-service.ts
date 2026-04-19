@@ -12,7 +12,7 @@ import * as slackSignature from "@shared/rest/services/support/slack-signature-s
 //   import * as supportIngress from "@shared/rest/services/support/support-ingress-service";
 //   const result = await supportIngress.processWebhook(rawBody, headers);
 //
-// See docs/service-layer-conventions.md.
+// See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
 import {
   type WorkflowDispatcher,

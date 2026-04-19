@@ -22,6 +22,11 @@ export async function handleSlackEventsWebhook(request: Request): Promise<NextRe
   } catch (error) {
     const message = error instanceof Error ? error.message : "Slack webhook processing failed";
     const status = error instanceof Error && error.name === "ValidationError" ? 400 : 500;
+    console.error("[slack-events] webhook processing failed", {
+      status,
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
       {
         error: message,

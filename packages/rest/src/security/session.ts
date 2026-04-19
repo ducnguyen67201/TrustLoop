@@ -1,14 +1,14 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import { NODE_ENV } from "@shared/env/shared";
+import { isProductionLike } from "@shared/env/shared";
 
 const SESSION_COOKIE_SAME_SITE = "Lax";
 
 function serializeCookie(name: string, value: string, maxAgeSeconds?: number): string {
   const parts = [`${name}=${encodeURIComponent(value)}`, "Path=/", "HttpOnly"];
 
-  if (env.NODE_ENV === NODE_ENV.PRODUCTION) {
+  if (isProductionLike(env.NODE_ENV)) {
     parts.push("Secure");
   }
 
@@ -58,6 +58,8 @@ export interface SessionContextRecord {
   user: {
     id: string;
     email: string;
+    name: string | null;
+    avatarUrl: string | null;
   };
 }
 
@@ -114,6 +116,8 @@ export async function resolveSessionFromToken(
         select: {
           id: true,
           email: true,
+          name: true,
+          avatarUrl: true,
           deletedAt: true,
         },
       },

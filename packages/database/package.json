@@ -13,6 +13,7 @@
     "test": "vitest run --passWithNoTests",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:new-workspace": "tsx ./scripts/new-workspace.ts",
     "db:seed": "tsx prisma/seed.ts"
   },

@@ -118,22 +118,19 @@ const innerHandler = withWorkspaceApiKeyAuth(async (request, ctx) => {
       const hasRrweb = payload.rrwebEvents !== undefined;
 
       await prisma.$transaction(async (tx) => {
-        // Upsert the session record
-        const existingSessionRecord = await tx.sessionRecord.findFirst({
-          where: {
-            workspaceId,
-            sessionId: payload.sessionId,
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-            eventCount: true,
-          },
+        // Find-or-create manually: upsert cannot target the partial unique
+        // index on (workspaceId, sessionId) WHERE deletedAt IS NULL. Postgres
+        // rejects ON CONFLICT against partial indexes, so Prisma's upsert
+        // helper fails at runtime even though the schema's @@unique compiles.
+        // See CLAUDE.md → Soft Delete Rules.
+        const existing = await tx.sessionRecord.findFirst({
+          where: { workspaceId, sessionId: payload.sessionId, deletedAt: null },
+          select: { id: true, eventCount: true },
         });
 
-        const sessionRecord = existingSessionRecord
+        const sessionRecord = existing
           ? await tx.sessionRecord.update({
-              where: { id: existingSessionRecord.id },
+              where: { id: existing.id },
               data: {
                 lastEventAt: latestEventTime,
                 eventCount: { increment: payload.structuredEvents.length },
@@ -141,10 +138,7 @@ const innerHandler = withWorkspaceApiKeyAuth(async (request, ctx) => {
                 ...(payload.userId ? { userId: payload.userId } : {}),
                 ...(payload.userEmail ? { userEmail: payload.userEmail } : {}),
               },
-              select: {
-                id: true,
-                eventCount: true,
-              },
+              select: { id: true, eventCount: true },
             })
           : await tx.sessionRecord.create({
               data: {
@@ -157,10 +151,7 @@ const innerHandler = withWorkspaceApiKeyAuth(async (request, ctx) => {
                 eventCount: payload.structuredEvents.length,
                 hasReplayData: hasRrweb,
               },
-              select: {
-                id: true,
-                eventCount: true,
-              },
+              select: { id: true, eventCount: true },
             });
 
         // Enforce per-session event cap to prevent unbounded growth

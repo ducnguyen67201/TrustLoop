@@ -13,7 +13,7 @@
 //
 // File layout (split from a single 637-line file — 2x the 300-line budget —
 // during Stage E of the service-layer rollout. See
-// docs/service-layer-conventions.md):
+// docs/conventions/service-layer-conventions.md):
 //
 //   _shared.ts  — requireConversation, buildCommandResponse
 //   assign.ts   — assign (conversation ownership change)

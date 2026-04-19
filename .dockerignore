@@ -1,0 +1,54 @@
+# Node / package managers
+node_modules
+**/node_modules
+.npm
+npm-debug.log*
+
+# Next / build outputs
+.next
+**/.next
+out
+**/out
+dist
+**/dist
+build
+**/build
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Turborepo cache
+.turbo
+**/.turbo
+
+# Env files — never copy secrets into image layers
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+
+# Docs that don't ship in production
+docs
+*.md
+!deploy/README.md
+
+# Skills / agent tooling (not part of runtime)
+.claude
+.codex
+.skills
+.gstack
+
+# CI configs
+.github

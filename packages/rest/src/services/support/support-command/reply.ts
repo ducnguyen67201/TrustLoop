@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@shared/database";
 import * as slackDelivery from "@shared/rest/services/support/adapters/slack/slack-delivery-service";
+import * as supportEvents from "@shared/rest/services/support/support-event-service";
 import {
   PermanentExternalError,
   SUPPORT_CONVERSATION_EVENT_SOURCE,
@@ -26,6 +27,7 @@ import { buildCommandResponse } from "./_shared";
 
 interface SupportReplyPayload {
   attachments: SupportSendReplyCommand["attachments"];
+  attachmentIds?: string[];
   messageText: string;
 }
 
@@ -41,12 +43,94 @@ interface SupportDeliverySenderRequest {
     threadTs: string;
   };
   workspaceId: string;
+  agentName?: string;
+  agentAvatarUrl?: string;
 }
 
 type SupportDeliverySender = (input: SupportDeliverySenderRequest) => Promise<{
   deliveredAt: string;
   providerMessageId: string;
 }>;
+
+function extractSlackMessageTs(detailsJson: unknown): string | null {
+  if (typeof detailsJson !== "object" || detailsJson === null) {
+    return null;
+  }
+  const record = detailsJson as Record<string, unknown>;
+  const messageTs = record.messageTs;
+  return typeof messageTs === "string" && messageTs.length > 0 ? messageTs : null;
+}
+
+/** @internal Exported for unit tests. Not part of the public service surface. */
+export async function resolveDeliveryThreadTs(params: {
+  conversationId: string;
+  conversationRootThreadTs: string;
+  replyToEventId: string | undefined;
+}): Promise<string> {
+  // Resolve the Slack thread_ts the operator's reply should target.
+  //
+  // Rule: land adjacent to whatever the customer just did.
+  //   - If their latest message is a thread reply (messageTs ≠ threadTs),
+  //     continue replying in that same thread.
+  //   - If their latest message is a standalone top-level channel message,
+  //     thread off that message's own ts so the reply appears visually
+  //     attached to the thing they just asked.
+  //   - If there are no customer messages yet, fall back to the
+  //     conversation's root thread (the grouping anchor).
+  //
+  // Every reply into a non-root thread also inserts a
+  // SupportConversationThreadAlias row (see sendReplyWithRecordedAttempt)
+  // so customer responses in that thread route back to the same
+  // TrustLoop conversation instead of spawning a phantom new one.
+  //
+  // Priority:
+  //   1. Explicit replyToEventId → the operator clicked "reply to this
+  //      specific message" in the UI. Use that event's messageTs.
+  //   2. Latest customer thread context → use thread_ts if they replied in
+  //      a thread, or messageTs if they sent a standalone.
+  //   3. Fallback → conversationRootThreadTs.
+  if (params.replyToEventId) {
+    const targetEvent = await prisma.supportConversationEvent.findUnique({
+      where: { id: params.replyToEventId },
+      select: { detailsJson: true },
+    });
+    const messageTs = extractSlackMessageTs(targetEvent?.detailsJson);
+    if (messageTs) return messageTs;
+  }
+
+  const latestCustomerEvent = await prisma.supportConversationEvent.findFirst({
+    where: {
+      conversationId: params.conversationId,
+      eventType: "MESSAGE_RECEIVED",
+      eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.customer,
+    },
+    orderBy: { createdAt: "desc" },
+    select: { detailsJson: true },
+  });
+
+  if (latestCustomerEvent) {
+    const messageTs = extractSlackMessageTs(latestCustomerEvent.detailsJson);
+    const threadTs = extractEventThreadTs(latestCustomerEvent.detailsJson);
+    if (threadTs && messageTs && threadTs !== messageTs) {
+      // Customer replied inside a Slack thread — continue it.
+      return threadTs;
+    }
+    if (messageTs) {
+      // Customer's latest is a standalone channel message — start or
+      // continue a thread parented by it.
+      return messageTs;
+    }
+  }
+
+  return params.conversationRootThreadTs;
+}
+
+function extractEventThreadTs(detailsJson: unknown): string | null {
+  if (typeof detailsJson !== "object" || detailsJson === null) return null;
+  const record = detailsJson as Record<string, unknown>;
+  const threadTs = record.threadTs;
+  return typeof threadTs === "string" && threadTs.length > 0 ? threadTs : null;
+}
 
 async function loadConversationDeliveryContext(workspaceId: string, conversationId: string) {
   const conversation = await prisma.supportConversation.findFirst({
@@ -175,6 +259,27 @@ async function sendReplyWithRecordedAttempt(
     throw new ValidationError("Only Slack support delivery is implemented");
   }
 
+  // Resolve the Slack thread_ts BEFORE opening the delivery transaction so
+  // the chosen thread can be stamped on the DELIVERY_ATTEMPTED event. Future
+  // replies read that stamp to stay sticky — once we commit to a thread,
+  // subsequent replies in the same conversation continue posting there.
+  const resolvedThreadTs = await resolveDeliveryThreadTs({
+    conversationId: params.conversationId,
+    conversationRootThreadTs: conversation.threadTs,
+    replyToEventId: params.replyToEventId,
+  });
+
+  // Resolve parentEventId for direct UI grouping. Every operator reply
+  // belongs to some thread (even "standalone" replies thread off the
+  // targeted message). Find the event whose messageTs matches our
+  // resolvedThreadTs — that's the thread root, and it becomes the
+  // parent of this delivery.
+  const parentEventId = await supportEvents.resolveParentEventId(
+    prisma,
+    params.conversationId,
+    resolvedThreadTs
+  );
+
   const requestedAt = new Date();
   const initialAttempt = await prisma.$transaction(async (tx) => {
     const attempt = existingDeliveryAttemptId
@@ -201,6 +306,11 @@ async function sendReplyWithRecordedAttempt(
           },
         });
 
+    // Conditional spread on parentEventId: a stale Prisma client (one
+    // generated before the column existed) will reject any data object
+    // that names an unknown field. When parentEventId is null we omit
+    // the key entirely so the write succeeds regardless of client state.
+    // The threadTs is still persisted in detailsJson for forensic lookup.
     await tx.supportConversationEvent.create({
       data: {
         workspaceId: params.workspaceId,
@@ -208,12 +318,14 @@ async function sendReplyWithRecordedAttempt(
         eventType: "DELIVERY_ATTEMPTED",
         eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.operator,
         summary: "Reply send requested",
+        ...(parentEventId ? { parentEventId } : {}),
         detailsJson: {
           actorUserId: params.actorUserId,
           attachments: params.payload.attachments,
           commandId: params.commandId,
           deliveryAttemptId: attempt.id,
           messageText: params.payload.messageText,
+          threadTs: resolvedThreadTs,
           ...(params.replyToEventId ? { replyToEventId: params.replyToEventId } : {}),
         },
       },
@@ -222,40 +334,97 @@ async function sendReplyWithRecordedAttempt(
     return attempt;
   });
 
-  // Resolve the Slack thread_ts: use the target event's messageTs if replying
-  // to a specific message, otherwise fall back to the conversation root.
-  let resolvedThreadTs = conversation.threadTs;
-  if (params.replyToEventId) {
-    const targetEvent = await prisma.supportConversationEvent.findUnique({
-      where: { id: params.replyToEventId },
-      select: { detailsJson: true },
-    });
-    const messageTs =
-      typeof targetEvent?.detailsJson === "object" &&
-      targetEvent.detailsJson !== null &&
-      "messageTs" in targetEvent.detailsJson &&
-      typeof targetEvent.detailsJson.messageTs === "string"
-        ? targetEvent.detailsJson.messageTs
-        : null;
-    if (messageTs) {
-      resolvedThreadTs = messageTs;
-    }
-  }
-
   try {
-    const delivery = await sender({
-      provider: "SLACK",
-      workspaceId: params.workspaceId,
-      installationId: conversation.installation.id,
-      installationMetadata: conversation.installation.metadata,
-      thread: {
-        teamId: conversation.teamId,
-        channelId: conversation.channelId,
-        threadTs: resolvedThreadTs,
-      },
-      messageText: params.payload.messageText,
-      attachments: params.payload.attachments,
-    });
+    const agent = params.actorUserId
+      ? await prisma.user.findUnique({
+          where: { id: params.actorUserId },
+          select: { name: true, avatarUrl: true },
+        })
+      : null;
+
+    const hasText = params.payload.messageText.trim().length > 0;
+    const hasFiles =
+      params.payload.attachmentIds !== undefined && params.payload.attachmentIds.length > 0;
+
+    let delivery: { providerMessageId: string; deliveredAt: string };
+
+    if (hasText) {
+      delivery = await sender({
+        provider: "SLACK",
+        workspaceId: params.workspaceId,
+        installationId: conversation.installation.id,
+        installationMetadata: conversation.installation.metadata,
+        thread: {
+          teamId: conversation.teamId,
+          channelId: conversation.channelId,
+          threadTs: resolvedThreadTs,
+        },
+        messageText: params.payload.messageText,
+        attachments: params.payload.attachments,
+        agentName: agent?.name ?? undefined,
+        agentAvatarUrl: agent?.avatarUrl ?? undefined,
+      });
+    } else {
+      // File-only send: no text message to post, synthetic delivery result
+      delivery = {
+        providerMessageId: resolvedThreadTs,
+        deliveredAt: new Date().toISOString(),
+      };
+    }
+
+    let fileUploadSuccessCount = 0;
+    const failedFileNames: string[] = [];
+    if (hasFiles) {
+      const ids = params.payload.attachmentIds ?? [];
+      for (const attachmentId of ids) {
+        const attachment = await prisma.supportMessageAttachment.findFirst({
+          where: { id: attachmentId, workspaceId: params.workspaceId, deletedAt: null },
+          select: { fileData: true, originalFilename: true, mimeType: true },
+        });
+        if (attachment?.fileData) {
+          try {
+            await slackDelivery.uploadFileToThread({
+              installationMetadata: conversation.installation.metadata,
+              channelId: conversation.channelId,
+              threadTs: resolvedThreadTs,
+              filename: attachment.originalFilename ?? "attachment",
+              fileData: Buffer.from(attachment.fileData),
+            });
+            fileUploadSuccessCount++;
+          } catch (err) {
+            console.warn("[support] file upload to Slack failed", {
+              attachmentId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            failedFileNames.push(attachment.originalFilename ?? attachmentId);
+          }
+        }
+      }
+    }
+
+    if (!hasText && hasFiles && fileUploadSuccessCount === 0) {
+      await prisma.supportDeliveryAttempt.update({
+        where: { id: initialAttempt.id },
+        data: { state: "FAILED", nextRetryAt: null },
+      });
+      throw new Error("All file uploads to Slack failed");
+    }
+
+    if (failedFileNames.length > 0) {
+      await prisma.supportConversationEvent.create({
+        data: {
+          workspaceId: params.workspaceId,
+          conversationId: params.conversationId,
+          eventType: "DELIVERY_WARNING",
+          eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.system,
+          summary: `${failedFileNames.length} file(s) failed to upload to Slack`,
+          detailsJson: {
+            commandId: params.commandId,
+            failedFiles: failedFileNames,
+          },
+        },
+      });
+    }
 
     const deliveredAt = new Date(delivery.deliveredAt);
     await prisma.$transaction(async (tx) => {
@@ -286,22 +455,59 @@ async function sendReplyWithRecordedAttempt(
         },
       });
 
-      await tx.supportConversationEvent.create({
+      const deliveryEvent = await tx.supportConversationEvent.create({
         data: {
           workspaceId: params.workspaceId,
           conversationId: params.conversationId,
           eventType: "DELIVERY_SUCCEEDED",
           eventSource: SUPPORT_CONVERSATION_EVENT_SOURCE.operator,
           summary: "Reply delivered to Slack",
+          ...(parentEventId ? { parentEventId } : {}),
           detailsJson: {
             actorUserId: params.actorUserId,
             commandId: params.commandId,
             deliveredAt: delivery.deliveredAt,
             deliveryAttemptId: initialAttempt.id,
             providerMessageId: delivery.providerMessageId,
+            messageText: params.payload.messageText,
           },
         },
       });
+
+      if (params.payload.attachmentIds && params.payload.attachmentIds.length > 0) {
+        await tx.supportMessageAttachment.updateMany({
+          where: {
+            id: { in: params.payload.attachmentIds },
+            workspaceId: params.workspaceId,
+          },
+          data: { eventId: deliveryEvent.id },
+        });
+      }
+
+      // If we posted into a Slack thread whose ts differs from the
+      // conversation's canonical root, register an alias so future
+      // customer responses in that thread route back to this conv
+      // instead of creating a phantom new one. Idempotent via the
+      // unique (installationId, channelId, threadTs) constraint.
+      if (resolvedThreadTs !== conversation.threadTs) {
+        await tx.supportConversationThreadAlias.upsert({
+          where: {
+            installationId_channelId_threadTs: {
+              installationId: conversation.installation.id,
+              channelId: conversation.channelId,
+              threadTs: resolvedThreadTs,
+            },
+          },
+          create: {
+            workspaceId: params.workspaceId,
+            conversationId: params.conversationId,
+            installationId: conversation.installation.id,
+            channelId: conversation.channelId,
+            threadTs: resolvedThreadTs,
+          },
+          update: {},
+        });
+      }
     });
   } catch (error) {
     const isTransient = error instanceof TransientExternalError;
@@ -366,6 +572,12 @@ export async function sendReply(
   input: SupportSendReplyCommand,
   sender: SupportDeliverySender = slackDelivery.sendThreadReply
 ): Promise<SupportCommandResponse> {
+  const hasText = input.messageText.trim().length > 0;
+  const hasFiles = input.attachmentIds !== undefined && input.attachmentIds.length > 0;
+  if (!hasText && !hasFiles) {
+    throw new ValidationError("Reply must contain text or at least one attachment");
+  }
+
   const commandId = randomUUID();
   const conversation = await loadConversationDeliveryContext(
     input.workspaceId,
@@ -382,6 +594,7 @@ export async function sendReply(
       payload: {
         messageText: input.messageText,
         attachments: input.attachments,
+        attachmentIds: input.attachmentIds,
       },
       replyToEventId: input.replyToEventId,
       workspaceId: input.workspaceId,
