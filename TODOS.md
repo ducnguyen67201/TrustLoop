@@ -80,6 +80,32 @@ When you pick this up: add a `hostedDomain String?` field to `Workspace`, pass i
 **Priority:** P1
 **Depends on:** Initial indexing/search implementation branch reaching deployable state
 
+## Prompting
+
+### Promote `threadSnapshot` from pre-rendered string to typed prompt context
+
+**What:** Change the support-analysis request boundary so `threadSnapshot` is no longer flattened to a pretty-printed JSON string in queue before it reaches the agents service. Pass a typed object instead, and let the prompt renderer own the final JSON or TOON serialization choice.
+
+**Why:** The TOON prompt-foundation review found that the biggest structured input is still upstream-pre-rendered as a string, which limits how much leverage any serializer can have. Until this boundary is fixed, prompt rendering only owns part of the structured-input problem.
+
+**Context:** Deferred from `/autoplan` review of `docs/plans/impl-plan-toon-prompt-foundation.md` on 2026-04-19. The approved path keeps PR 1 local to `apps/agents` and avoids hiding a larger queue/types/agents contract rewrite inside the serializer refactor.
+
+**Effort:** M (human) / S-M (CC)
+**Priority:** P2
+**Depends on:** Local prompt renderer seam landing first.
+
+### Extract prompt renderer to a shared package after a second real consumer exists
+
+**What:** Move the prompt document model and serializer helpers out of `apps/agents` into a dedicated shared package once another runtime or a second materially different agent prompt needs the same rendering layer.
+
+**Why:** Shared abstractions are worth it when reuse is real. Doing it earlier turns one prompt refactor into a mini-platform project with extra maintenance surface and weaker local clarity.
+
+**Context:** Deferred from `/autoplan` review of `docs/plans/impl-plan-toon-prompt-foundation.md` on 2026-04-19. The review explicitly narrowed scope away from `packages/types` for renderer-local concerns.
+
+**Effort:** S (human) / S (CC)
+**Priority:** P3
+**Depends on:** A second prompt/runtime proving reuse.
+
 ## Slack Ingestion
 
 ### Session-ingest upsert race retry
@@ -269,4 +295,3 @@ When you pick this up: wrap the `tx.sessionRecord.create(...)` in a try/catch on
 **Tests:** 8 new unit tests in `apps/queue/test/should-drop-ingress-event.test.ts` cover SYSTEM / BOT-is-ours / BOT-is-other / legacy-null / customer / internal / edge cases.
 
 **Completed:** v0.1.2.0 (2026-04-12)
-
