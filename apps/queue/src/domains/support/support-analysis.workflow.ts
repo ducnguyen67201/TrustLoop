@@ -23,17 +23,10 @@ export async function supportAnalysisWorkflow(
     triggerType: input.triggerType ?? "MANUAL",
   });
 
-  // 2. Fetch Sentry context (non-fatal, still GATHERING_CONTEXT)
-  await fastActivities.fetchSentryContextActivity({
-    customerEmail: snapshot.customerEmail,
-    workspaceId: input.workspaceId,
-    analysisId: snapshot.analysisId,
-  });
-
-  // 3. Transition → ANALYZING
+  // 2. Transition → ANALYZING
   await fastActivities.markAnalyzing(snapshot.analysisId);
 
-  // 4. Run agent loop → ANALYZED / NEEDS_CONTEXT / FAILED
+  // 3. Run agent loop → ANALYZED / NEEDS_CONTEXT / FAILED
   const result = await agentActivities.runAnalysisAgent({
     workspaceId: input.workspaceId,
     conversationId: input.conversationId,

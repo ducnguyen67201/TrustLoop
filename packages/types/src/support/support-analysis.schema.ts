@@ -1,6 +1,5 @@
 import { sessionDigestSchema } from "@shared/types/session-replay/session-digest.schema";
 import { z } from "zod";
-import { sentryContextSchema } from "./sentry.schema";
 import { toneConfigSchema } from "./tone-config.schema";
 
 export const ANALYSIS_STATUS = {
@@ -141,7 +140,6 @@ export const supportAnalysisSchema = z.object({
   llmModel: z.string().nullable(),
   llmLatencyMs: z.number().nullable(),
   errorMessage: z.string().nullable(),
-  sentryContext: sentryContextSchema.nullable().optional(),
   createdAt: z.string(),
 });
 

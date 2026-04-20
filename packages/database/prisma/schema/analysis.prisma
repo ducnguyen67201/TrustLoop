@@ -53,7 +53,6 @@ model SupportAnalysis {
   status            SupportAnalysisStatus       @default(GATHERING_CONTEXT)
   triggerType        SupportAnalysisTriggerType  @default(MANUAL)
   threadSnapshot    Json?
-  sentryContext     Json?
   customerEmail    String?
   retryCount        Int                          @default(0)
   problemStatement  String?                     @db.Text

@@ -12,7 +12,6 @@ export {
 export {
   buildThreadSnapshot,
   escalateToManualHandling,
-  fetchSentryContextActivity,
   markAnalyzing,
   runAnalysisAgent,
 } from "@/domains/support/support-analysis.activity";

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "build": "tsc --noEmit",
-    "type-check": "tsc --noEmit",
+    "build": "tsgo --noEmit",
+    "type-check": "tsgo --noEmit",
     "lint": "biome check src/",
     "test": "echo 'No tests yet'"
   },

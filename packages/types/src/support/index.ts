@@ -8,6 +8,5 @@ export * from "@shared/types/support/support-ingress.schema";
 export * from "@shared/types/support/support-installation.schema";
 export * from "@shared/types/support/support-reaction.schema";
 export * from "@shared/types/support/support-realtime.schema";
-export * from "@shared/types/support/sentry.schema";
 export * from "@shared/types/support/tone-config.schema";
 export * from "@shared/types/support/state-machines/index";

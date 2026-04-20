@@ -1,6 +1,5 @@
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import * as sentry from "@shared/rest/services/sentry/sentry-service";
 import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
 import * as sessionCorrelation from "@shared/rest/services/support/session-correlation";
 import * as aiSettings from "@shared/rest/services/workspace-ai-settings-service";
@@ -14,7 +13,6 @@ import {
   type AnalyzeResponse,
   DRAFT_STATUS,
   MAX_ANALYSIS_RETRIES,
-  type SentryContext,
   type SessionDigest,
   type SupportAnalysisWorkflowResult,
   type ToneConfig,
@@ -35,16 +33,6 @@ interface ThreadSnapshotResult {
   threadSnapshot: string;
   customerEmail: string | null;
   sessionDigest: SessionDigest | null;
-}
-
-interface FetchSentryContextInput {
-  customerEmail: string | null;
-  workspaceId: string;
-  analysisId: string;
-}
-
-interface FetchSentryContextResult {
-  sentryContext: SentryContext | null;
 }
 
 interface AnalysisAgentInput {
@@ -167,25 +155,6 @@ export async function runAnalysisAgent(
   } catch (error) {
     return handleAnalysisFailure(input, error);
   }
-}
-
-export async function fetchSentryContextActivity(
-  input: FetchSentryContextInput
-): Promise<FetchSentryContextResult> {
-  if (!input.customerEmail || !sentry.isConfigured()) {
-    return { sentryContext: null };
-  }
-
-  const sentryContext = await sentry.fetchContext(input.customerEmail);
-
-  if (sentryContext) {
-    await prisma.supportAnalysis.update({
-      where: { id: input.analysisId },
-      data: { sentryContext: JSON.parse(JSON.stringify(sentryContext)) },
-    });
-  }
-
-  return { sentryContext };
 }
 
 /**

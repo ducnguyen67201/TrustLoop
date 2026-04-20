@@ -1,5 +1,31 @@
 # TODOS
 
+## AI Analysis
+
+### Per-workspace Sentry adapter (only if a paying customer asks)
+
+**What:** A per-workspace BYO-Sentry integration. OAuth or PAT, encrypted token in a new `sentryConnection` table, `getConfig(workspaceId)` lookup, gated `searchSentry` tool registration when a workspace has a connection. Mirrors the existing GitHub install pattern.
+
+**Why:** The original env-based Sentry tool was removed (see `docs/plans/impl-plan-remove-sentry-integration.md`) because it leaked across tenants and duplicated SDK-collected signals. A per-workspace adapter is fine to revisit if an enterprise customer with existing Sentry history asks for cross-correlation. Until then, the SDK is the source.
+
+**Context:** Removed on 2026-04-19. Both /autoplan dual-voice CEO/Eng reviews recommended disconnect-first; user chose hard-delete and accepted the rebuild cost if BYO-Sentry returns.
+
+**Effort:** M (human) / S (CC)
+**Priority:** P3
+**Depends on:** A paying customer explicitly asking for it.
+
+### Wire rrweb chunks into the agent prompt
+
+**What:** Frames at the failure timestamp = "the agent saw what the user saw." Pull the rrweb session replay chunk corresponding to the failure point, render keyframes, inject into the prompt context.
+
+**Why:** Natural follow-up to the Sentry removal. Rrweb is already captured by `packages/sdk-browser/src/recorder.ts` and stored in `sessionReplayChunk` — but never reaches the agent. This is the highest-leverage upgrade to draft quality.
+
+**Context:** Flagged in `/autoplan` cross-phase themes as the natural follow-up to Sentry removal. Out of scope for that PR.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** Sentry removal (done in chore/remove-sentry-integration).
+
 ## Auth & Onboarding
 
 ### Self-serve workspace creation UI
@@ -58,7 +84,7 @@ When you pick this up: add a `hostedDomain String?` field to `Workspace`, pass i
 
 ### Unified Escalation Timeline Panel
 
-**What:** Build a single timeline that stitches Slack messages, Sentry events, Linear updates, Git activity, and index freshness into one chronological view.
+**What:** Build a single timeline that stitches Slack messages, in-product SDK session events, Linear updates, Git activity, and index freshness into one chronological view.
 
 **Why:** On-call engineers currently context-switch across tools; this deferred expansion unlocks faster root-cause analysis and safer PR intent decisions.
 
@@ -66,7 +92,7 @@ When you pick this up: add a `hostedDomain String?` field to `Workspace`, pass i
 
 **Effort:** L
 **Priority:** P2
-**Depends on:** Shipping the v1 indexing/search foundation and event ingestion contracts (Slack/Sentry/Linear/GitHub)
+**Depends on:** Shipping the v1 indexing/search foundation and event ingestion contracts (Slack/SDK session events/Linear/GitHub)
 
 ### No-Flag Rollout Runbook + Rollback Drill
 
