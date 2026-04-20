@@ -28,3 +28,13 @@ export {
   restoreDraftDispatchContext,
   transitionDraftDispatch,
 } from "./draft-dispatch-state-machine";
+
+export {
+  type ConversationContext,
+  type ConversationEvent,
+  InvalidConversationTransitionError,
+  createConversationContext,
+  getAllowedConversationEvents,
+  restoreConversationContext,
+  transitionConversation,
+} from "./conversation-state-machine";

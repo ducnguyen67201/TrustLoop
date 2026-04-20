@@ -12,15 +12,18 @@ import {
   type AnalysisTriggerType,
   type AnalyzeResponse,
   DRAFT_STATUS,
+  InvalidConversationTransitionError,
   MAX_ANALYSIS_RETRIES,
   type SessionDigest,
   type SupportAnalysisWorkflowResult,
   type ToneConfig,
   analyzeResponseSchema,
   restoreAnalysisContext,
+  restoreConversationContext,
   transitionAnalysis,
+  transitionConversation,
 } from "@shared/types";
-import { heartbeat } from "@temporalio/activity";
+import { ApplicationFailure, heartbeat } from "@temporalio/activity";
 
 interface ThreadSnapshotInput {
   workspaceId: string;
@@ -190,24 +193,65 @@ export async function markAnalyzing(analysisId: string): Promise<void> {
 }
 
 export async function escalateToManualHandling(input: EscalateInput): Promise<void> {
-  await prisma.supportConversation.update({
-    where: { id: input.conversationId },
-    data: { status: "IN_PROGRESS" },
-  });
+  // Route through the conversation FSM so escalation can't silently overwrite
+  // a DONE conversation. The FSM rejects analysisEscalated from DONE with a
+  // typed error; we catch it here and short-circuit cleanly — no Temporal
+  // retry, no timeline write (the conversation is already closed and manual
+  // handling is moot). Any OTHER unexpected invalid transition is a permanent
+  // bug; surface it as ApplicationFailure.nonRetryable so the worker treats
+  // it as terminal rather than looping.
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.supportConversation.findUniqueOrThrow({
+      where: { id: input.conversationId },
+      select: { status: true },
+    });
 
-  await prisma.supportConversationEvent.create({
-    data: {
-      workspaceId: input.workspaceId,
-      conversationId: input.conversationId,
-      eventType: "ANALYSIS_ESCALATED",
-      eventSource: "SYSTEM",
-      summary: `AI analysis failed after ${MAX_ANALYSIS_RETRIES} attempts. Manual handling required.`,
-      detailsJson: {
-        analysisId: input.analysisId,
-        errorMessage: input.errorMessage,
-        retryCount: MAX_ANALYSIS_RETRIES,
-      },
-    },
+    try {
+      const next = transitionConversation(
+        restoreConversationContext(input.conversationId, row.status),
+        { type: "analysisEscalated", analysisId: input.analysisId }
+      );
+
+      await tx.supportConversation.update({
+        where: { id: input.conversationId },
+        data: { status: next.status },
+      });
+
+      await tx.supportConversationEvent.create({
+        data: {
+          workspaceId: input.workspaceId,
+          conversationId: input.conversationId,
+          eventType: "ANALYSIS_ESCALATED",
+          eventSource: "SYSTEM",
+          summary: `AI analysis failed after ${MAX_ANALYSIS_RETRIES} attempts. Manual handling required.`,
+          detailsJson: {
+            analysisId: input.analysisId,
+            errorMessage: input.errorMessage,
+            retryCount: MAX_ANALYSIS_RETRIES,
+          },
+        },
+      });
+    } catch (error) {
+      if (error instanceof InvalidConversationTransitionError) {
+        if (row.status === "DONE") {
+          // Expected: conversation was closed before escalation ran. Skip
+          // silently — nothing to escalate, nothing to write.
+          console.info(
+            `[support-analysis] escalation skipped: conversation ${input.conversationId} already DONE`
+          );
+          return;
+        }
+        // Any other illegal transition shape is a code bug, not a transient
+        // failure. Don't let Temporal retry; the retry will hit the same
+        // wall forever.
+        throw ApplicationFailure.create({
+          type: "InvalidConversationTransition",
+          message: error.message,
+          nonRetryable: true,
+        });
+      }
+      throw error;
+    }
   });
 }
 

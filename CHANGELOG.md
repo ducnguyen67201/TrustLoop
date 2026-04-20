@@ -2,6 +2,22 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.2.0] - 2026-04-20
+
+### Added
+- **`SupportConversation` now has a finite-state machine** (`packages/types/src/support/state-machines/conversation-state-machine.ts`). Every writer — ingress, operator reply, status update, override-done, analysis-failure escalation — goes through a pure `transitionConversation(ctx, event)` function instead of writing `status` directly. The transition table faithfully preserves current product behavior: operators can still drag-drop between any states, DONE still requires delivery evidence, reply-on-DONE preserves DONE, and customer messages still reopen DONE to UNREAD. 69 pure-FSM tests (40 existing + 29 new) cover every legal transition, every illegal transition, and both regression cases below.
+- **`softUpsert` has a new `transformUpdate` callback.** Lets callers derive the update payload from the currently-persisted row atomically. Used by the ingress activity so the FSM transition runs inside the same operation as the write, preserving `softUpsert`'s three-branch shape (update / resurrect / create) without duplicating logic at the call site.
+- **`tryConversationTransition` service helper** translates `InvalidConversationTransitionError` into a tRPC `CONFLICT` response at the API boundary.
+
+### Fixed
+- **Race bug: a late operator reply could silently demote `DONE` to `IN_PROGRESS`.** The previous code read `conversation.status` outside the write transaction and then wrote `IN_PROGRESS` if the pre-read value wasn't `DONE`. Under Postgres `READ COMMITTED` a concurrent `markDoneWithOverride` that committed after the read but before the write would be silently overwritten. Fixed by routing the write through a conditional `updateMany` with `where: { status: { not: DONE } }` so the atomic check replaces the stale pre-read. If the row is already `DONE` at write time the reply still posts but status stays `DONE` (matches the FSM's idempotent DONE+operatorReplied rule).
+- **Analysis-failure escalation could overwrite a `DONE` conversation back to `IN_PROGRESS`.** `escalateToManualHandling` wrote `status: "IN_PROGRESS"` unconditionally — bypassing the delivery-evidence audit and reopening a deliberately-closed conversation. The activity now routes through the FSM which rejects `analysisEscalated` from DONE; the activity catches the typed error and returns cleanly. Any *other* invalid transition surfaces as `ApplicationFailure.nonRetryable` so Temporal treats it as terminal rather than retrying a permanent error forever.
+- **`hasDeliveryEvidence` now queries inside the status-write transaction** (previously it ran outside, allowing a TOCTOU gap) and filters `deletedAt: null` (soft-deleted attempts no longer satisfy the DONE guard).
+
+### Changed
+- **Status writers are now consistent in shape.** Both `updateStatus` (drag-drop / dropdown) and `markDoneWithOverride` load the current row, dispatch a per-target FSM event, and let the FSM write `next.status` — no more scattered branching on `input.status === DONE` at the caller. Per-target events (`operatorSetUnread`, `operatorSetInProgress`, `operatorSetStale`, `operatorSetDone`) preserve compile-time exhaustiveness and let a future UI query `getAllowedConversationEvents(ctx)` to decide which drop targets to enable.
+- **Implementation plan doc shipped at `docs/plans/impl-plan-support-conversation-state-machine.md`** — includes the `/autoplan` review report, 16 audit-trail decisions, and the final design notes reconciling per-target events + conditional-updateMany race fix.
+
 ## [0.2.1.0] - 2026-04-19
 
 ### Fixed

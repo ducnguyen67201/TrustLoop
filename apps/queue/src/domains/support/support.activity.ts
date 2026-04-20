@@ -11,9 +11,12 @@ import {
   SUPPORT_INGRESS_PROCESSING_STATE,
   SUPPORT_REALTIME_REASON,
   type SupportConversationEventSource,
+  type SupportConversationStatus,
   type SupportWorkflowInput,
   type SupportWorkflowResult,
   WORKFLOW_PROCESSING_STATUS,
+  restoreConversationContext,
+  transitionConversation,
 } from "@shared/types";
 import { ConflictError, ValidationError } from "@shared/types/errors";
 import {
@@ -239,14 +242,21 @@ export async function runSupportPipeline(
       resolvedThreadTs
     );
 
-    const conversationData = {
+    // Ingress goes through the conversation FSM's `customerMessageReceived`
+    // event. Per the FSM, that event lands UNREAD from any current state,
+    // matching the pre-FSM behavior where a new customer message on a
+    // DONE/STALE conversation reopened to UNREAD (the analysis trigger
+    // filters out DONE, so preserving DONE would skip re-analysis). The
+    // transition is expressed via a `transformUpdate` callback so the FSM
+    // runs inside the same atomic operation that softUpsert uses — splitting
+    // it out at the caller would drop the resurrect branch or race with
+    // concurrent operator actions.
+    const baseUpdate = {
       teamId: normalized.teamId,
       channelId: normalized.channelId,
       threadTs: resolvedThreadTs,
-      status: SUPPORT_CONVERSATION_STATUS.unread,
       lastCustomerMessageAt: now,
       customerWaitingSince: now,
-      staleAt: computeUnreadStaleAt(now),
       lastActivityAt: now,
     };
 
@@ -256,9 +266,37 @@ export async function runSupportPipeline(
         workspaceId: input.workspaceId,
         installationId: input.installationId,
         canonicalConversationKey,
-        ...conversationData,
+        ...baseUpdate,
+        status: SUPPORT_CONVERSATION_STATUS.unread,
+        staleAt: computeUnreadStaleAt(now),
       },
-      update: conversationData,
+      update: baseUpdate,
+      transformUpdate: (existing) => {
+        const row = existing as { id: string; status: SupportConversationStatus } | null;
+        if (!row) {
+          // transformUpdate only runs on the update branch, so this should
+          // never fire. Defensive fallback preserves the hard-coded UNREAD.
+          return {
+            ...baseUpdate,
+            status: SUPPORT_CONVERSATION_STATUS.unread,
+            staleAt: computeUnreadStaleAt(now),
+          };
+        }
+        const next = transitionConversation(restoreConversationContext(row.id, row.status), {
+          type: "customerMessageReceived",
+        });
+        return {
+          ...baseUpdate,
+          status: next.status,
+          // staleAt only resets when landing in UNREAD (the sweep target);
+          // otherwise leave the existing value alone so a manually-stale
+          // conversation doesn't lose its deadline just because a new
+          // customer message bumped lastActivityAt.
+          ...(next.status === SUPPORT_CONVERSATION_STATUS.unread
+            ? { staleAt: computeUnreadStaleAt(now) }
+            : {}),
+        };
+      },
     });
 
     // Create a new grouping anchor if this is a standalone customer message

@@ -3,20 +3,26 @@ import {
   DRAFT_DISPATCH_STATUS,
   DRAFT_STATUS,
   MAX_ANALYSIS_RETRIES,
+  SUPPORT_CONVERSATION_STATUS,
 } from "@shared/types";
 import {
   InvalidAnalysisTransitionError,
+  InvalidConversationTransitionError,
   InvalidDraftDispatchTransitionError,
   InvalidDraftTransitionError,
   canRetryAnalysis,
   createAnalysisContext,
+  createConversationContext,
   createDraftContext,
   createDraftDispatchContext,
   getAllowedAnalysisEvents,
+  getAllowedConversationEvents,
   getAllowedDraftDispatchEvents,
   getAllowedDraftEvents,
   restoreAnalysisContext,
+  restoreConversationContext,
   transitionAnalysis,
+  transitionConversation,
   transitionDraft,
   transitionDraftDispatch,
 } from "@shared/types";
@@ -436,3 +442,251 @@ function mockDraftResult() {
     tone: "professional",
   };
 }
+
+// ── Conversation State Machine ───────────────────────────────────────
+
+describe("conversation state machine", () => {
+  const ACTOR = "u_operator_1";
+
+  it("starts in UNREAD", () => {
+    const ctx = createConversationContext("c_1");
+    expect(ctx.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+  });
+
+  // Happy paths per §4 transition table — one assertion per cell.
+
+  describe("UNREAD", () => {
+    const ctx = () => createConversationContext("c_1");
+
+    it("customerMessageReceived stays UNREAD", () => {
+      const next = transitionConversation(ctx(), { type: "customerMessageReceived" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+    });
+
+    it("operatorReplied → IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), { type: "operatorReplied" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorSetDone (deliveryConfirmed=true) → DONE", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetDone",
+        actorUserId: ACTOR,
+        deliveryConfirmed: true,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("operatorSetDone (deliveryConfirmed=false) throws", () => {
+      expect(() =>
+        transitionConversation(ctx(), {
+          type: "operatorSetDone",
+          actorUserId: ACTOR,
+          deliveryConfirmed: false,
+        })
+      ).toThrow(InvalidConversationTransitionError);
+    });
+
+    it("operatorSetStale → STALE", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetStale",
+        actorUserId: ACTOR,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.stale);
+    });
+
+    it("markStale → STALE", () => {
+      const next = transitionConversation(ctx(), { type: "markStale" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.stale);
+    });
+
+    it("operatorOverrideDone → DONE without evidence", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorOverrideDone",
+        actorUserId: ACTOR,
+        overrideReason: "customer confirmed via call",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("analysisEscalated → IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), {
+        type: "analysisEscalated",
+        analysisId: "an_1",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+  });
+
+  describe("IN_PROGRESS", () => {
+    const ctx = () => restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.inProgress);
+
+    it("customerMessageReceived stays IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), { type: "customerMessageReceived" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorReplied is idempotent (stays IN_PROGRESS)", () => {
+      const next = transitionConversation(ctx(), { type: "operatorReplied" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("analysisEscalated is idempotent (stays IN_PROGRESS)", () => {
+      const next = transitionConversation(ctx(), {
+        type: "analysisEscalated",
+        analysisId: "an_1",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorSetUnread → UNREAD (operator demote)", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetUnread",
+        actorUserId: ACTOR,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+    });
+
+    it("operatorSetDone (deliveryConfirmed=true) → DONE", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetDone",
+        actorUserId: ACTOR,
+        deliveryConfirmed: true,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("markStale → STALE", () => {
+      const next = transitionConversation(ctx(), { type: "markStale" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.stale);
+    });
+  });
+
+  describe("STALE", () => {
+    const ctx = () => restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.stale);
+
+    it("customerMessageReceived → UNREAD (reopen)", () => {
+      const next = transitionConversation(ctx(), { type: "customerMessageReceived" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+    });
+
+    it("operatorReplied → IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), { type: "operatorReplied" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorSetInProgress → IN_PROGRESS (operator drags card off Stale)", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetInProgress",
+        actorUserId: ACTOR,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("analysisEscalated → IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), {
+        type: "analysisEscalated",
+        analysisId: "an_1",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("markStale throws (sweep should never re-mark already-stale)", () => {
+      expect(() => transitionConversation(ctx(), { type: "markStale" })).toThrow(
+        InvalidConversationTransitionError
+      );
+    });
+  });
+
+  describe("DONE", () => {
+    const ctx = () => restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.done);
+
+    it("customerMessageReceived → UNREAD (auto-reopen matches ingress today)", () => {
+      const next = transitionConversation(ctx(), { type: "customerMessageReceived" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+    });
+
+    it("operatorReplied preserves DONE (race fix regression)", () => {
+      // This is the idempotent half of the reply-race fix. The writer uses
+      // a conditional updateMany `where: status != DONE` so a concurrent
+      // markDoneWithOverride wins; the FSM must also make DONE+operatorReplied
+      // a legal no-op so next.status can be evaluated before the write.
+      const next = transitionConversation(ctx(), { type: "operatorReplied" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("operatorSetInProgress → IN_PROGRESS (operator reopens)", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetInProgress",
+        actorUserId: ACTOR,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorSetDone (deliveryConfirmed=true) is idempotent", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetDone",
+        actorUserId: ACTOR,
+        deliveryConfirmed: true,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("operatorOverrideDone is idempotent", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorOverrideDone",
+        actorUserId: ACTOR,
+        overrideReason: "cleanup",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("analysisEscalated THROWS (escalation-overwrites-DONE bug fix)", () => {
+      // This is the regression for bug #2. Previously
+      // escalateToManualHandling wrote status: IN_PROGRESS unconditionally.
+      // The FSM rejects the event from DONE; the activity catches the typed
+      // error and exits cleanly.
+      expect(() =>
+        transitionConversation(ctx(), { type: "analysisEscalated", analysisId: "an_1" })
+      ).toThrow(InvalidConversationTransitionError);
+    });
+
+    it("markStale THROWS (closed conversations are not sweep targets)", () => {
+      expect(() => transitionConversation(ctx(), { type: "markStale" })).toThrow(
+        InvalidConversationTransitionError
+      );
+    });
+  });
+
+  describe("getAllowedConversationEvents", () => {
+    it("UNREAD allows all operator moves + markStale + analysisEscalated", () => {
+      const allowed = new Set(getAllowedConversationEvents(createConversationContext("c_1")));
+      expect(allowed).toContain("customerMessageReceived");
+      expect(allowed).toContain("operatorReplied");
+      expect(allowed).toContain("operatorSetDone");
+      expect(allowed).toContain("markStale");
+      expect(allowed).toContain("analysisEscalated");
+    });
+
+    it("DONE does NOT list markStale or analysisEscalated", () => {
+      const allowed = new Set(
+        getAllowedConversationEvents(
+          restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.done)
+        )
+      );
+      expect(allowed).not.toContain("markStale");
+      expect(allowed).not.toContain("analysisEscalated");
+      expect(allowed).toContain("operatorReplied");
+      expect(allowed).toContain("customerMessageReceived");
+    });
+
+    it("STALE does NOT list markStale (sweep guard)", () => {
+      const allowed = new Set(
+        getAllowedConversationEvents(
+          restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.stale)
+        )
+      );
+      expect(allowed).not.toContain("markStale");
+    });
+  });
+});

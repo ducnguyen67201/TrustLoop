@@ -28,6 +28,12 @@ export async function findIncludingDeleted<T extends SoftDeletableDelegate>(
  * Prisma's upsert generates ON CONFLICT that doesn't match partial unique
  * indexes (WHERE deletedAt IS NULL). This function uses findFirst + create/update
  * instead, and also handles resurrecting soft-deleted records.
+ *
+ * `transformUpdate` (optional) derives the update payload from the
+ * currently-persisted row. Used by the conversation ingress activity so an
+ * FSM transition runs inside the same atomic operation as the write.
+ * Splitting the find/update out into caller-side code would either drop the
+ * resurrect branch below or race with concurrent operator actions.
  */
 export async function softUpsert<T extends SoftDeletableDelegate>(
   delegate: T,
@@ -36,16 +42,20 @@ export async function softUpsert<T extends SoftDeletableDelegate>(
     create: Record<string, unknown>;
     update: Record<string, unknown>;
     include?: Record<string, unknown>;
+    transformUpdate?: (existing: Awaited<ReturnType<T["findFirst"]>>) => Record<string, unknown>;
   }
 ): Promise<Awaited<ReturnType<T["update"]>>> {
-  const { where, create, update, include } = args;
+  const { where, create, update, include, transformUpdate } = args;
 
   const existing = await delegate.findFirst({ where, ...(include ? { include } : {}) });
 
   if (existing) {
+    const data = transformUpdate
+      ? transformUpdate(existing as Awaited<ReturnType<T["findFirst"]>>)
+      : update;
     return delegate.update({
       where: { id: (existing as { id: string }).id },
-      data: update,
+      data,
       ...(include ? { include } : {}),
     });
   }

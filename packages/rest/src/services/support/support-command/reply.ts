@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@shared/database";
 import * as slackDelivery from "@shared/rest/services/support/adapters/slack/slack-delivery-service";
+import { tryConversationTransition } from "@shared/rest/services/support/conversation-transition";
 import * as supportEvents from "@shared/rest/services/support/support-event-service";
 import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
 import {
@@ -13,6 +14,7 @@ import {
   type SupportSendReplyCommand,
   TransientExternalError,
   ValidationError,
+  restoreConversationContext,
 } from "@shared/types";
 import { TRPCError } from "@trpc/server";
 import { buildCommandResponse } from "./_shared";
@@ -441,21 +443,53 @@ async function sendReplyWithRecordedAttempt(
         },
       });
 
-      await tx.supportConversation.update({
+      // Close the reply race: a concurrent markDoneWithOverride can land
+      // between the pre-tx `conversation.status` read (line ~258) and this
+      // write. Re-reading inside the tx is insufficient because Postgres
+      // READ COMMITTED allows the committed write from a racing transaction
+      // to become visible only AFTER this SELECT, and before our UPDATE.
+      //
+      // The conditional updateMany below does the atomic check: status bumps
+      // to IN_PROGRESS only if the row is still not DONE. If a concurrent
+      // override already moved it to DONE, `count === 0` and we leave status
+      // alone — matching the FSM rule that DONE + operatorReplied is an
+      // idempotent no-op. The non-status fields always need to reflect the
+      // delivery, so a fallback write covers those when the guard fires.
+      const txRow = await tx.supportConversation.findUniqueOrThrow({
+        where: { id: params.conversationId },
+        select: { status: true },
+      });
+      tryConversationTransition(restoreConversationContext(params.conversationId, txRow.status), {
+        type: "operatorReplied",
+      });
+
+      const statusUpdateResult = await tx.supportConversation.updateMany({
         where: {
           id: params.conversationId,
+          status: { not: SUPPORT_CONVERSATION_STATUS.done },
         },
         data: {
-          status:
-            conversation.status === SUPPORT_CONVERSATION_STATUS.done
-              ? SUPPORT_CONVERSATION_STATUS.done
-              : SUPPORT_CONVERSATION_STATUS.inProgress,
+          status: SUPPORT_CONVERSATION_STATUS.inProgress,
           customerWaitingSince: null,
           staleAt: null,
           retryCount: 0,
           lastActivityAt: deliveredAt,
         },
       });
+
+      if (statusUpdateResult.count === 0) {
+        // Row is (now) DONE at write time. FSM rules preserve DONE; still
+        // stamp the delivery-related fields so the UI shows fresh activity.
+        await tx.supportConversation.update({
+          where: { id: params.conversationId },
+          data: {
+            customerWaitingSince: null,
+            staleAt: null,
+            retryCount: 0,
+            lastActivityAt: deliveredAt,
+          },
+        });
+      }
 
       const deliveryEvent = await tx.supportConversationEvent.create({
         data: {
