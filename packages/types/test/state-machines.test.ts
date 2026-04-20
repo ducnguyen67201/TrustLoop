@@ -1,15 +1,24 @@
-import { ANALYSIS_STATUS, DRAFT_STATUS, MAX_ANALYSIS_RETRIES } from "@shared/types";
+import {
+  ANALYSIS_STATUS,
+  DRAFT_DISPATCH_STATUS,
+  DRAFT_STATUS,
+  MAX_ANALYSIS_RETRIES,
+} from "@shared/types";
 import {
   InvalidAnalysisTransitionError,
+  InvalidDraftDispatchTransitionError,
   InvalidDraftTransitionError,
   canRetryAnalysis,
   createAnalysisContext,
   createDraftContext,
+  createDraftDispatchContext,
   getAllowedAnalysisEvents,
+  getAllowedDraftDispatchEvents,
   getAllowedDraftEvents,
   restoreAnalysisContext,
   transitionAnalysis,
   transitionDraft,
+  transitionDraftDispatch,
 } from "@shared/types";
 import { describe, expect, it } from "vitest";
 
@@ -345,6 +354,63 @@ describe("draft state machine", () => {
       slackMessageTs: "1234567890.000100",
     });
     expect(ctx.status).toBe(DRAFT_STATUS.sent);
+  });
+});
+
+// ── Draft Dispatch FSM ───────────────────────────────────────────────
+
+describe("DraftDispatch state machine", () => {
+  it("starts in PENDING with attempts=0 and no error", () => {
+    const ctx = createDraftDispatchContext("disp_1");
+    expect(ctx.status).toBe(DRAFT_DISPATCH_STATUS.pending);
+    expect(ctx.attempts).toBe(0);
+    expect(ctx.lastError).toBeNull();
+  });
+
+  it("PENDING → dispatched → DISPATCHED clears any prior error", () => {
+    const ctx = createDraftDispatchContext("disp_1");
+    const next = transitionDraftDispatch(ctx, { type: "dispatched" });
+    expect(next.status).toBe(DRAFT_DISPATCH_STATUS.dispatched);
+    expect(next.lastError).toBeNull();
+  });
+
+  it("PENDING → dispatchFailed → FAILED increments attempts and records error", () => {
+    const ctx = createDraftDispatchContext("disp_1");
+    const next = transitionDraftDispatch(ctx, {
+      type: "dispatchFailed",
+      error: "Temporal unavailable",
+    });
+    expect(next.status).toBe(DRAFT_DISPATCH_STATUS.failed);
+    expect(next.attempts).toBe(1);
+    expect(next.lastError).toBe("Temporal unavailable");
+  });
+
+  it("DISPATCHED is terminal — no further transitions allowed", () => {
+    let ctx = createDraftDispatchContext("disp_1");
+    ctx = transitionDraftDispatch(ctx, { type: "dispatched" });
+    expect(() => transitionDraftDispatch(ctx, { type: "dispatched" })).toThrow(
+      InvalidDraftDispatchTransitionError
+    );
+    expect(() => transitionDraftDispatch(ctx, { type: "dispatchFailed", error: "x" })).toThrow(
+      InvalidDraftDispatchTransitionError
+    );
+    expect(getAllowedDraftDispatchEvents(ctx)).toEqual([]);
+  });
+
+  it("FAILED is terminal today — no retry event exposed", () => {
+    let ctx = createDraftDispatchContext("disp_1");
+    ctx = transitionDraftDispatch(ctx, { type: "dispatchFailed", error: "x" });
+    expect(() => transitionDraftDispatch(ctx, { type: "dispatched" })).toThrow(
+      InvalidDraftDispatchTransitionError
+    );
+    expect(getAllowedDraftDispatchEvents(ctx)).toEqual([]);
+  });
+
+  it("getAllowedDraftDispatchEvents reflects current state", () => {
+    const pending = createDraftDispatchContext("disp_1");
+    expect([...getAllowedDraftDispatchEvents(pending)].sort()).toEqual(
+      ["dispatchFailed", "dispatched"].sort()
+    );
   });
 });
 

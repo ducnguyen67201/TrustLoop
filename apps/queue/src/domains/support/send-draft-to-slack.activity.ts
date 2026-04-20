@@ -2,12 +2,16 @@ import { prisma } from "@shared/database";
 import * as slackDelivery from "@shared/rest/services/support/adapters/slack/slack-delivery-service";
 import {
   ConflictError,
-  DRAFT_DISPATCH_STATUS,
   DRAFT_STATUS,
+  type DraftDispatchStatus,
   type DraftStatus,
   PermanentExternalError,
   SUPPORT_PROVIDER,
 } from "@shared/types";
+import {
+  restoreDraftDispatchContext,
+  transitionDraftDispatch,
+} from "@shared/types/support/state-machines/draft-dispatch-state-machine";
 import {
   restoreDraftContext,
   transitionDraft,
@@ -46,6 +50,19 @@ async function loadDraft(draftId: string) {
     row: draft,
     context: restoreDraftContext(draft.id, draft.status as DraftStatus, draft.errorMessage),
   };
+}
+
+async function loadDispatch(dispatchId: string) {
+  const row = await prisma.draftDispatch.findUniqueOrThrow({
+    where: { id: dispatchId },
+    select: { id: true, status: true, attempts: true, lastError: true },
+  });
+  return restoreDraftDispatchContext(
+    row.id,
+    row.status as DraftDispatchStatus,
+    row.attempts,
+    row.lastError
+  );
 }
 
 export async function markDraftSending(draftId: string): Promise<void> {
@@ -131,6 +148,12 @@ export async function markDraftSent(input: MarkSentInput): Promise<void> {
           slackMessageTs: input.slackMessageTs,
         });
 
+  // Dispatch-row transition runs through its own FSM so an out-of-order
+  // activity replay (e.g. Temporal retry after a network blip) can't silently
+  // overwrite an already-DISPATCHED/FAILED outbox row.
+  const dispatchCtx = await loadDispatch(input.dispatchId);
+  const dispatchNext = transitionDraftDispatch(dispatchCtx, { type: "dispatched" });
+
   const now = new Date();
   await prisma.$transaction([
     prisma.supportDraft.update({
@@ -146,7 +169,8 @@ export async function markDraftSent(input: MarkSentInput): Promise<void> {
     prisma.draftDispatch.update({
       where: { id: input.dispatchId },
       data: {
-        status: DRAFT_DISPATCH_STATUS.dispatched,
+        status: dispatchNext.status,
+        lastError: dispatchNext.lastError,
         dispatchedAt: now,
       },
     }),
@@ -222,6 +246,13 @@ export async function markDraftSendFailed(input: MarkFailedInput): Promise<void>
       ? transitionDraft(context, { type: "failed", error: input.error })
       : transitionDraft(context, { type: "sendFailed", error: input.error, retryable: false });
 
+  // Dispatch row transitions through its own FSM in lockstep with the draft.
+  const dispatchCtx = await loadDispatch(input.dispatchId);
+  const dispatchNext = transitionDraftDispatch(dispatchCtx, {
+    type: "dispatchFailed",
+    error: input.error,
+  });
+
   await prisma.$transaction([
     prisma.supportDraft.update({
       where: { id: input.draftId },
@@ -234,9 +265,9 @@ export async function markDraftSendFailed(input: MarkFailedInput): Promise<void>
     prisma.draftDispatch.update({
       where: { id: input.dispatchId },
       data: {
-        status: DRAFT_DISPATCH_STATUS.failed,
-        lastError: input.error,
-        attempts: { increment: 1 },
+        status: dispatchNext.status,
+        lastError: dispatchNext.lastError,
+        attempts: dispatchNext.attempts,
       },
     }),
     prisma.supportConversationEvent.create({

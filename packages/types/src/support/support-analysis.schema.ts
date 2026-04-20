@@ -112,6 +112,8 @@ export const draftDispatchStatusValues = [
 
 export const draftDispatchStatusSchema = z.enum(draftDispatchStatusValues);
 
+export type DraftDispatchStatus = z.infer<typeof draftDispatchStatusSchema>;
+
 export const EVIDENCE_SOURCE_TYPE = {
   codeChunk: "CODE_CHUNK",
 } as const;
