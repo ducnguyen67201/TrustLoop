@@ -1,7 +1,12 @@
-import { createTool } from "@mastra/core/tools";
+import { type Tool, createTool } from "@mastra/core/tools";
 import * as codex from "@shared/rest/codex";
 import { z } from "zod";
 
+// `as unknown as Tool` flattens the deeply-inferred Zod schema generics that
+// cause `tsgo` to throw TS2589 (excessively deep) on linux CI builds when
+// many shared Zod schemas are in scope. Runtime behavior is unchanged — only
+// the exposed type is loosened. The agent factory in `src/agent.ts` doesn't
+// rely on the inferred input/output shapes, so flattening is safe here.
 export const createPullRequestTool = createTool({
   id: "create_pull_request",
   description:
@@ -36,4 +41,4 @@ export const createPullRequestTool = createTool({
 
     return result;
   },
-});
+}) as unknown as Tool;
