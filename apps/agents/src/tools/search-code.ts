@@ -2,41 +2,51 @@ import { type Tool, createTool } from "@mastra/core/tools";
 import * as codex from "@shared/rest/codex";
 import { z } from "zod";
 
-// `as unknown as Tool` flattens the deeply-inferred Zod schema generics that
-// cause `tsgo` to throw TS2589 (excessively deep) on linux CI builds when
-// many shared Zod schemas are in scope. Runtime behavior is unchanged — only
-// the exposed type is loosened. The agent factory in `src/agent.ts` doesn't
-// rely on the inferred input/output shapes, so flattening is safe here.
-export const searchCodeTool = createTool({
+// Explicit input/output types for the search-code tool. Defined here (not
+// inferred from the Zod schema) so the exported `Tool<TIn, TOut>` carries
+// the real shapes for any caller and so `tsgo` doesn't have to recurse
+// through the full Mastra + Zod inference chain. The latter trips TS2589
+// ("excessively deep") on linux CI once enough shared Zod schemas are
+// reachable from this file. The schema below is the runtime source of truth;
+// these interfaces are the static contract.
+export interface SearchCodeToolInput {
+  query: string;
+  filePattern?: string;
+  workspaceId: string;
+}
+
+export interface SearchCodeToolResult {
+  file: string;
+  lines: string;
+  symbol: string | null;
+  repo: string;
+  snippet: string;
+  score: number;
+}
+
+export interface SearchCodeToolOutput {
+  message: string;
+  results: SearchCodeToolResult[];
+}
+
+const inputSchema = z.object({
+  query: z.string().describe("Search query: keywords, symbol names, error messages, or file paths"),
+  filePattern: z
+    .string()
+    .optional()
+    .describe(
+      "Optional file path filter, e.g. 'auth' to only search files with 'auth' in the path"
+    ),
+  workspaceId: z.string().describe("The workspace ID to search in"),
+});
+
+export const searchCodeTool: Tool<SearchCodeToolInput, SearchCodeToolOutput> = createTool({
   id: "search_code",
   description:
     "Search the codebase for relevant code. Returns file paths, line numbers, code snippets, and symbol names. " +
     "Use this to find files related to the customer's question. You can call this multiple times with different queries.",
-  inputSchema: z.object({
-    query: z
-      .string()
-      .describe("Search query: keywords, symbol names, error messages, or file paths"),
-    filePattern: z
-      .string()
-      .optional()
-      .describe(
-        "Optional file path filter, e.g. 'auth' to only search files with 'auth' in the path"
-      ),
-    workspaceId: z.string().describe("The workspace ID to search in"),
-  }),
-  execute: async (
-    input
-  ): Promise<{
-    message: string;
-    results: Array<{
-      file: string;
-      lines: string;
-      symbol: string | null;
-      repo: string;
-      snippet: string;
-      score: number;
-    }>;
-  }> => {
+  inputSchema,
+  execute: async (input: SearchCodeToolInput): Promise<SearchCodeToolOutput> => {
     const { query, filePattern, workspaceId } = input;
 
     const results = await codex.searchWorkspaceCode(workspaceId, query, {
@@ -64,4 +74,8 @@ export const searchCodeTool = createTool({
       })),
     };
   },
-}) as unknown as Tool;
+  // The cast target is the explicit `Tool<SearchCodeToolInput,
+  // SearchCodeToolOutput>` declared on the const above — not `unknown`. The
+  // cast bridges Mastra's `InferSchema<>` inferred type to our hand-declared
+  // type (same shape, TS can't prove without deep recursion).
+}) as unknown as Tool<SearchCodeToolInput, SearchCodeToolOutput>;
