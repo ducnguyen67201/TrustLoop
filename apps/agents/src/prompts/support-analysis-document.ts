@@ -1,4 +1,4 @@
-import type { PromptDocument } from "@shared/prompting";
+import { PROMPT_INPUT_FORMAT, type PromptDocument } from "@shared/prompting";
 import {
   POSITIONAL_ANALYSIS_FORMAT_INSTRUCTIONS,
   type SessionDigest,
@@ -17,16 +17,36 @@ export function buildSupportAnalysisPromptDocument(options?: {
   ];
 
   if (options?.sessionDigest) {
-    sections.push({
-      body: `The following session data was captured from the end-user's browser. Use it to understand what the user did before reporting the issue.\n\n${formatSessionDigestForPrompt(
-        options.sessionDigest
-      )}`,
-      title: "Browser Session Context",
-      type: "prose",
-    });
+    sections.push(...buildSessionDigestPromptSections(options.sessionDigest));
   }
 
   return { sections };
+}
+
+function buildSessionDigestPromptSections(digest: SessionDigest): PromptDocument["sections"] {
+  const sections: PromptDocument["sections"] = [
+    {
+      body: `The following session data was captured from the end-user's browser. Use it to understand what the user did before reporting the issue.\n\n${formatSessionDigestContext(
+        digest
+      )}`,
+      title: "Browser Session Context",
+      type: "prose",
+    },
+  ];
+
+  if (digest.routeHistory.length > 0) {
+    sections.push({
+      fallbackFormat: PROMPT_INPUT_FORMAT.json,
+      payload: digest.routeHistory,
+      preferredFormat: PROMPT_INPUT_FORMAT.auto,
+      rationale:
+        "Route history is a uniform ordered URL list and the first measured live TOON section",
+      title: "Route History",
+      type: "structured",
+    });
+  }
+
+  return sections;
 }
 
 function buildSupportAgentInstructions(toneConfig?: ToneConfig): string {
@@ -95,7 +115,7 @@ Respond with ONLY a compressed JSON object. No markdown, no text outside the JSO
 ${POSITIONAL_ANALYSIS_FORMAT_INSTRUCTIONS}`;
 }
 
-function formatSessionDigestForPrompt(digest: SessionDigest): string {
+function formatSessionDigestContext(digest: SessionDigest): string {
   const sections: string[] = [];
 
   sections.push("### Environment");
@@ -116,14 +136,6 @@ function formatSessionDigestForPrompt(digest: SessionDigest): string {
   sections.push("### Session Overview");
   sections.push(`- Duration: ${digest.duration}`);
   sections.push(`- Pages visited: ${digest.pageCount}`);
-
-  if (digest.routeHistory.length > 0) {
-    sections.push("");
-    sections.push("### Route History");
-    digest.routeHistory.forEach((url, index) => {
-      sections.push(`${index + 1}. ${url}`);
-    });
-  }
 
   if (digest.failurePoint) {
     sections.push("");

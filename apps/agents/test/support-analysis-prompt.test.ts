@@ -129,15 +129,15 @@ describe("buildAnalysisPromptWithContext", () => {
   });
 
   describe("route history formatting", () => {
-    it("numbers routes starting from 1", () => {
+    it("renders route history as the first live TOON section", () => {
       const result = buildAnalysisPromptWithContext({
         sessionDigest: baseDigest,
       });
 
-      expect(result).toContain("### Route History");
-      expect(result).toContain("1. /dashboard");
-      expect(result).toContain("2. /settings");
-      expect(result).toContain("3. /billing");
+      expect(result).toContain("## Route History");
+      expect(result).toContain("Format: TOON");
+      expect(result).toContain("```toon");
+      expect(result).toContain("[3]: /dashboard,/settings,/billing");
     });
   });
 
