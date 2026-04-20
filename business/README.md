@@ -8,6 +8,7 @@ scaffolded now so we have a clean place for them when they become real.
 
 ## Folder Map
 
+- `AGENTS.md` — business operating context and entrypoint for non-product work
 - `gtm/` — ICP, sourcing, outreach copy, call notes, and learnings
 - `growth/` — future acquisition experiments, funnels, and metrics
 - `content/` — future writing, distribution, and narrative assets

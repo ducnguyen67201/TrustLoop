@@ -517,7 +517,7 @@ The skill has specialized workflows that produce better results than ad-hoc answ
 
 Key routing rules:
 - Product ideas, "is this worth building", brainstorming → invoke office-hours
-- GTM, outreach, founder sourcing, "who should I DM", "find leads", "draft outreach" → invoke gtm-founder-outreach
+- GTM, outreach, founder sourcing, "who should I DM", "find leads", "draft outreach" → invoke `gtm-founder-outreach` and load `business/AGENTS.md`
 - Bugs, errors, "why is this broken", 500 errors → invoke investigate
 - Ship, deploy, push, create PR → invoke ship
 - QA, test the site, find bugs → invoke qa
