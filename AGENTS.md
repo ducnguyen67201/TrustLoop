@@ -149,6 +149,18 @@ All LLM-generated structured output must use Positional JSON — compressed fiel
 - **Max nesting depth: 2 levels.** LLMs produce unreliable output beyond 2 levels of JSON nesting. If a field needs deeper structure, flatten it (e.g. `"filepath:line|snippet"` instead of `{"f":"filepath","l":line,"t":"snippet"}`). Arrays of primitives (strings, numbers) are fine. Arrays of objects are a smell — prefer flat encoded strings.
 - See `docs/conventions/spec-positional-json-format.md` for the full spec, reliability layers, and extension guide.
 
+### Prompt Input Format: TOON In, Positional JSON Out
+
+Prompt-side structured context should use TOON when it improves token efficiency, while LLM structured output must remain Positional JSON.
+
+- Canonical rule: **TOON in, Positional JSON out.**
+- Use TOON only for prompt/input serialization of structured data passed into the model.
+- Never ask the model to emit TOON. Model output contracts stay Positional JSON with Zod validation + reconstruction.
+- Shared prompt rendering and serialization utilities live in `packages/prompting`.
+- Prefer TOON for shallow, uniform structured payloads (for example arrays of similarly shaped records).
+- Fall back to JSON for deeply nested, irregular, or readability-sensitive payloads.
+- When format choice is dynamic, make the decision in the prompt renderer layer — not in feature code or output parsers.
+
 ### Contract source of truth order
 
 1. Zod schema
