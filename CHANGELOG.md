@@ -2,6 +2,20 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.0.0] - 2026-04-19
+
+### Added
+- **Approved drafts actually reach Slack.** This closes the customer-visible happy path: Slack message in → AI analysis → draft reply → operator approval → reply posts back into the original Slack thread. Previously `approveDraft()` flipped draft status to `APPROVED` and stopped; nothing ever called `chat.postMessage`. Now approval kicks off a new Temporal workflow on the `SUPPORT` queue that does the send, observes Slack's response, and writes the delivery state back to the draft. First-customer pilot is no longer blocked on the reply never being sent.
+- **Ambiguous-delivery reconciliation.** Transient Slack failures (network timeout, retryable 5xx that may have already been accepted server-side) no longer risk duplicate replies. The draft transitions to a new `DELIVERY_UNKNOWN` state and a reconciler queries `conversations.replies` for the draft's `client_msg_id`. Found → `SENT` with the recovered thread ts. Not found → one more send attempt. Still failing → `SEND_FAILED`. The native Slack `client_msg_id` nonce is generated once at draft creation time so both Slack server-side dedup and reconciliation lookups use the same key.
+- **Double-approval is now safe.** A double-click on the approve button or a duplicate tRPC call can no longer post the reply twice. `approveDraft()` wraps the status flip and a new `DraftDispatch` outbox insert in a single Prisma transaction with a compare-and-swap (`updateMany where status=AWAITING_APPROVAL`). The workflow dispatch uses a deterministic workflow ID (`send-draft-${draftId}`) with Temporal's `REJECT_DUPLICATE` reuse policy. The outbox row means a Temporal outage after commit still leaves work the sweep workflow can retry.
+- **New observability events.** `DRAFT_SENT` and `DRAFT_SEND_FAILED` conversation events are emitted so the inbox UI and downstream analytics can see every delivery outcome.
+
+### Changed
+- **`SupportDraft` schema extended** with `deliveredAt`, `deliveryError`, `sendAttempts`, `slackClientMsgId` (unique), `slackMessageTs`. `SupportDraftStatus` enum gains `SENDING`, `SEND_FAILED`, `DELIVERY_UNKNOWN`. New `DraftDispatch` outbox model + `DraftDispatchKind` / `DraftDispatchStatus` enums.
+- **Draft state machine** gains `startSending`, `sendSucceeded`, `sendFailed`, `deliveryUnknown`, `reconcileFound`, `reconcileRetry` events covering the new send loop. The happy path is now `GENERATING → AWAITING_APPROVAL → APPROVED → SENDING → SENT`. Property-style FSM coverage tests are added for every new transition.
+- **Slack delivery adapter** accepts a `clientMsgId` and forwards it as `chat.postMessage.client_msg_id`. New `findReplyByClientMsgId` helper wraps `conversations.replies` for the reconciler.
+- **`approveDraft()` signature** now takes the workflow dispatcher alongside the input. The tRPC router passes it through.
+
 ## [0.1.8.0] - 2026-04-19
 
 ### Added
