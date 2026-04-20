@@ -2,6 +2,17 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.1.8.0] - 2026-04-19
+
+### Added
+- **Workspace-scoped real-time support inbox updates.** The support page now opens a single authenticated SSE stream at `/api/{workspaceId}/support/stream` and refreshes immediately when a conversation changes, instead of waiting for a manual refresh or a tight polling loop. The server side uses a shared Postgres `LISTEN/NOTIFY` fanout layer in `support-realtime-service.ts`, so each `web` instance keeps one listener connection and only forwards invalidation events to subscribers in the matching workspace. The browser receives tiny invalidation events, not full payloads, then reuses the existing inbox/timeline queries as the source of truth.
+- **Focused realtime contracts and tests.** Added `packages/types/src/support/support-realtime.schema.ts` for the SSE event envelope plus targeted tests for the schema and the browser stream hook. This locks the event shape to `{ workspaceId, conversationId, reason, occurredAt }` and keeps message content out of the stream.
+- **Engineering spec for the rollout.** Added `docs/domains/support/spec-support-inbox-realtime-sse.md`, documenting why this feature uses SSE instead of WebSockets, how workspace isolation works, the rollout phases, and the migration path if Postgres fanout eventually needs to move to Redis or another bus.
+
+### Changed
+- **Support inbox refresh strategy is now event-first, polling-second.** `support-inbox.tsx` now relies on the SSE stream for primary freshness and keeps a 60-second visibility-aware recovery poll as a backstop. The open conversation drawer only refreshes when the incoming invalidation matches the selected conversation.
+- **Support write paths now emit committed invalidations.** Slack ingress processing, assignee changes, status changes, delivery updates, and reaction toggles all publish workspace-scoped `CONVERSATION_CHANGED` events only after their authoritative writes commit. That keeps the realtime path consistent with the actual persisted state and avoids speculative client refreshes.
+
 ## [0.1.7.1] - 2026-04-12
 
 ### Added

@@ -1,6 +1,11 @@
 import { prisma } from "@shared/database";
 import * as slackDelivery from "@shared/rest/services/support/adapters/slack/slack-delivery-service";
-import type { SupportReaction, SupportToggleReactionInput } from "@shared/types";
+import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
+import {
+  SUPPORT_REALTIME_REASON,
+  type SupportReaction,
+  type SupportToggleReactionInput,
+} from "@shared/types";
 import { TRPCError } from "@trpc/server";
 
 // ---------------------------------------------------------------------------
@@ -142,6 +147,12 @@ export async function toggle(input: SupportToggleReactionInput): Promise<Support
       createdAt: true,
     },
     orderBy: { createdAt: "asc" },
+  });
+
+  await supportRealtime.emitConversationChanged({
+    workspaceId: input.workspaceId,
+    conversationId: input.conversationId,
+    reason: SUPPORT_REALTIME_REASON.reactionChanged,
   });
 
   return reactions.map((r) => ({

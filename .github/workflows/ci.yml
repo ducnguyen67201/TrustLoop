@@ -33,6 +33,12 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Use repo-pinned npm
+        run: |
+          PINNED_NPM=$(node -p "require('./package.json').packageManager.split('@')[1]")
+          npm install -g "npm@$PINNED_NPM"
+          npm --version
+
       - name: Enable turbo remote cache (GitHub Actions cache backend)
         uses: dtinth/setup-github-actions-caching-for-turbo@v1
 
@@ -54,7 +60,7 @@ jobs:
       - run: npm install
       - name: Install platform-specific native binaries for Linux CI
         run: |
-          npm install --no-save \
+          npm install --no-save --package-lock=false \
             @tailwindcss/oxide-linux-x64-gnu \
             @next/swc-linux-x64-gnu \
             @node-rs/argon2-linux-x64-gnu \
