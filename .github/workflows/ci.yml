@@ -308,6 +308,11 @@ jobs:
             lightningcss-linux-x64-gnu \
             || true
 
+      # Each matrix job runs on a fresh runner, so Prisma client generation
+      # from repo-guards is not available here unless we regenerate it.
+      - name: Generate Prisma client
+        run: npm run db:generate
+
       # Fastest signal first, slowest last: lint catches formatting/import
       # drift quickest, type-check catches contract breakage, tests cover
       # behavior, and build stays last because it's the slowest step.
