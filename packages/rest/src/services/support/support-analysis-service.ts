@@ -5,6 +5,9 @@ import {
   ANALYSIS_STATUS,
   type ApproveDraftInput,
   ConflictError,
+  DRAFT_DISPATCH_KIND,
+  DRAFT_DISPATCH_STATUS,
+  DRAFT_STATUS,
   type DismissDraftInput,
   type DraftStatus,
   InvalidDraftTransitionError,
@@ -120,40 +123,107 @@ export async function trigger(
 }
 
 export async function approveDraft(
-  input: ApproveDraftInput & { workspaceId: string; actorUserId: string }
+  input: ApproveDraftInput & { workspaceId: string; actorUserId: string },
+  dispatcher: WorkflowDispatcher
 ) {
-  const draft = await prisma.supportDraft.findFirst({
-    where: { id: input.draftId, workspaceId: input.workspaceId },
+  // Compare-and-swap inside a transaction so a double-click on the approve
+  // button can never double-dispatch Slack. The outbox row in the same tx
+  // means a Temporal outage after commit still leaves a pending dispatch
+  // the sweep workflow can pick up.
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.supportDraft.updateMany({
+      where: {
+        id: input.draftId,
+        workspaceId: input.workspaceId,
+        status: DRAFT_STATUS.awaitingApproval,
+      },
+      data: {
+        status: DRAFT_STATUS.approved,
+        approvedBy: input.actorUserId,
+        approvedAt: new Date(),
+        editedBody: input.editedBody ?? null,
+      },
+    });
+    if (updated.count === 0) {
+      // Either the draft doesn't exist in this workspace, or it's no longer
+      // AWAITING_APPROVAL (another approval already won the race, or it's
+      // been dismissed/failed). Surface a ConflictError so tRPC returns 409.
+      const existing = await tx.supportDraft.findFirst({
+        where: { id: input.draftId, workspaceId: input.workspaceId },
+        select: { status: true },
+      });
+      if (!existing) {
+        throw new ConflictError("Draft not found in this workspace.");
+      }
+      throw new ConflictError(
+        `Draft is in status ${existing.status}, not AWAITING_APPROVAL. Approval skipped (already processed).`
+      );
+    }
+
+    const dispatch = await tx.draftDispatch.create({
+      data: {
+        draftId: input.draftId,
+        workspaceId: input.workspaceId,
+        kind: DRAFT_DISPATCH_KIND.sendToSlack,
+        status: DRAFT_DISPATCH_STATUS.pending,
+      },
+    });
+
+    await tx.supportConversationEvent.create({
+      data: {
+        workspaceId: input.workspaceId,
+        conversationId: (
+          await tx.supportDraft.findUniqueOrThrow({
+            where: { id: input.draftId },
+            select: { conversationId: true },
+          })
+        ).conversationId,
+        eventType: "DRAFT_APPROVED",
+        eventSource: "OPERATOR",
+        summary: input.editedBody ? "Draft edited and approved" : "Draft approved as-is",
+        detailsJson: { draftId: input.draftId, editedByHuman: !!input.editedBody },
+      },
+    });
+
+    const draft = await tx.supportDraft.findUniqueOrThrow({
+      where: { id: input.draftId },
+    });
+
+    return { draft, dispatchId: dispatch.id };
   });
-  if (!draft) {
-    throw new ConflictError("Draft not found in this workspace.");
+
+  // Best-effort dispatch. Any failure here leaves the outbox row PENDING for
+  // the sweep workflow to retry — never throw back to the caller once the
+  // CAS has committed. The workflow ID is deterministic
+  // (`send-draft-${draftId}`) with REJECT_DUPLICATE, so an accidental retry
+  // that races the sweep is safe.
+  try {
+    const handle = await dispatcher.startSendDraftToSlackWorkflow({
+      draftId: input.draftId,
+      dispatchId: result.dispatchId,
+      workspaceId: input.workspaceId,
+    });
+    await prisma.draftDispatch.update({
+      where: { id: result.dispatchId },
+      data: { workflowId: handle.workflowId },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // WorkflowExecutionAlreadyStarted means the sweep (or a duplicate caller)
+    // got there first. Treat as success — idempotent dispatch.
+    if (!message.includes("WorkflowExecutionAlreadyStarted")) {
+      console.warn("[approveDraft] dispatch failed; outbox will retry", {
+        draftId: input.draftId,
+        error: message,
+      });
+      await prisma.draftDispatch.update({
+        where: { id: result.dispatchId },
+        data: { lastError: message, attempts: { increment: 1 } },
+      });
+    }
   }
 
-  const next = tryDraftTransition(draft, { type: "approve", approvedBy: input.actorUserId });
-
-  const updatedDraft = await prisma.supportDraft.update({
-    where: { id: input.draftId },
-    data: {
-      status: next.status,
-      approvedBy: input.actorUserId,
-      approvedAt: new Date(),
-      editedBody: input.editedBody ?? null,
-    },
-  });
-
-  // Emit conversation event
-  await prisma.supportConversationEvent.create({
-    data: {
-      workspaceId: input.workspaceId,
-      conversationId: draft.conversationId,
-      eventType: "DRAFT_APPROVED",
-      eventSource: "OPERATOR",
-      summary: input.editedBody ? "Draft edited and approved" : "Draft approved as-is",
-      detailsJson: { draftId: draft.id, editedByHuman: !!input.editedBody },
-    },
-  });
-
-  return updatedDraft;
+  return result.draft;
 }
 
 export async function dismissDraft(

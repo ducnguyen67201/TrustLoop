@@ -19,11 +19,14 @@ export function createSupportAnalysisRouter(dispatcher: WorkflowDispatcher) {
         supportAnalysis.trigger({ ...input, workspaceId: ctx.workspaceId }, dispatcher)
       ),
     approveDraft: workspaceProcedure.input(approveDraftInputSchema).mutation(({ ctx, input }) =>
-      supportAnalysis.approveDraft({
-        ...input,
-        workspaceId: ctx.workspaceId,
-        actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
-      })
+      supportAnalysis.approveDraft(
+        {
+          ...input,
+          workspaceId: ctx.workspaceId,
+          actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
+        },
+        dispatcher
+      )
     ),
     dismissDraft: workspaceProcedure.input(dismissDraftInputSchema).mutation(({ ctx, input }) =>
       supportAnalysis.dismissDraft({
