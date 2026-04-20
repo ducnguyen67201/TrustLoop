@@ -116,7 +116,7 @@ export async function sendDraftActivity(input: DispatchTarget): Promise<SendDraf
 }
 
 export async function markDraftSent(input: MarkSentInput): Promise<void> {
-  const { context } = await loadDraft(input.draftId);
+  const { row, context } = await loadDraft(input.draftId);
 
   // Accept the transition from either SENDING (normal) or DELIVERY_UNKNOWN
   // (reconciled). Both land at SENT via distinct events.
@@ -131,14 +131,15 @@ export async function markDraftSent(input: MarkSentInput): Promise<void> {
           slackMessageTs: input.slackMessageTs,
         });
 
+  const now = new Date();
   await prisma.$transaction([
     prisma.supportDraft.update({
       where: { id: input.draftId },
       data: {
         status: next.status,
         slackMessageTs: input.slackMessageTs,
-        sentAt: new Date(),
-        deliveredAt: new Date(),
+        sentAt: now,
+        deliveredAt: now,
         errorMessage: null,
       },
     }),
@@ -146,25 +147,13 @@ export async function markDraftSent(input: MarkSentInput): Promise<void> {
       where: { id: input.dispatchId },
       data: {
         status: DRAFT_DISPATCH_STATUS.dispatched,
-        dispatchedAt: new Date(),
+        dispatchedAt: now,
       },
     }),
     prisma.supportConversationEvent.create({
       data: {
-        workspaceId: context.draftId
-          ? (
-              await prisma.supportDraft.findUniqueOrThrow({
-                where: { id: input.draftId },
-                select: { workspaceId: true, conversationId: true },
-              })
-            ).workspaceId
-          : "",
-        conversationId: (
-          await prisma.supportDraft.findUniqueOrThrow({
-            where: { id: input.draftId },
-            select: { conversationId: true },
-          })
-        ).conversationId,
+        workspaceId: row.workspaceId,
+        conversationId: row.conversationId,
         eventType: "DRAFT_SENT",
         eventSource: "SYSTEM",
         summary: input.reconciled
@@ -227,16 +216,11 @@ export async function reconcileDraftActivity(input: {
 }
 
 export async function markDraftSendFailed(input: MarkFailedInput): Promise<void> {
-  const { context } = await loadDraft(input.draftId);
+  const { row, context } = await loadDraft(input.draftId);
   const next =
     context.status === DRAFT_STATUS.deliveryUnknown
       ? transitionDraft(context, { type: "failed", error: input.error })
       : transitionDraft(context, { type: "sendFailed", error: input.error, retryable: false });
-
-  const draft = await prisma.supportDraft.findUniqueOrThrow({
-    where: { id: input.draftId },
-    select: { workspaceId: true, conversationId: true },
-  });
 
   await prisma.$transaction([
     prisma.supportDraft.update({
@@ -257,8 +241,8 @@ export async function markDraftSendFailed(input: MarkFailedInput): Promise<void>
     }),
     prisma.supportConversationEvent.create({
       data: {
-        workspaceId: draft.workspaceId,
-        conversationId: draft.conversationId,
+        workspaceId: row.workspaceId,
+        conversationId: row.conversationId,
         eventType: "DRAFT_SEND_FAILED",
         eventSource: "SYSTEM",
         summary: `Draft send failed: ${input.error}`,

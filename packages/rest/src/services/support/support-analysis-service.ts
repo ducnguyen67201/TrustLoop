@@ -169,24 +169,19 @@ export async function approveDraft(
       },
     });
 
+    const draft = await tx.supportDraft.findUniqueOrThrow({
+      where: { id: input.draftId },
+    });
+
     await tx.supportConversationEvent.create({
       data: {
         workspaceId: input.workspaceId,
-        conversationId: (
-          await tx.supportDraft.findUniqueOrThrow({
-            where: { id: input.draftId },
-            select: { conversationId: true },
-          })
-        ).conversationId,
+        conversationId: draft.conversationId,
         eventType: "DRAFT_APPROVED",
         eventSource: "OPERATOR",
         summary: input.editedBody ? "Draft edited and approved" : "Draft approved as-is",
         detailsJson: { draftId: input.draftId, editedByHuman: !!input.editedBody },
       },
-    });
-
-    const draft = await tx.supportDraft.findUniqueOrThrow({
-      where: { id: input.draftId },
     });
 
     return { draft, dispatchId: dispatch.id };

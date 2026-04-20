@@ -1,6 +1,6 @@
 import type * as sendActivities from "@/domains/support/send-draft-to-slack.activity";
 import type { SendDraftToSlackInput, SendDraftToSlackResult } from "@shared/types";
-import { proxyActivities } from "@temporalio/workflow";
+import { ActivityFailure, ApplicationFailure, proxyActivities } from "@temporalio/workflow";
 
 // ---------------------------------------------------------------------------
 // sendDraftToSlackWorkflow
@@ -34,6 +34,30 @@ const reconcile = proxyActivities<typeof sendActivities>({
 
 const MAX_RECONCILE_RETRIES = 1;
 
+// Temporal wraps an activity-thrown Error in ActivityFailure whose .cause is
+// ApplicationFailure with .type set to the original error's .name (so
+// `PermanentExternalError` thrown from slackDelivery surfaces as
+// cause.type === "PermanentExternalError"). Classifying via type is stable
+// across message-format changes; string-prefix matching on error.message
+// breaks silently when Temporal reformats the envelope.
+function isPermanentFailure(error: unknown): boolean {
+  if (error instanceof ActivityFailure && error.cause instanceof ApplicationFailure) {
+    return error.cause.type === "PermanentExternalError";
+  }
+  if (error instanceof ApplicationFailure) {
+    return error.type === "PermanentExternalError";
+  }
+  return false;
+}
+
+function describeFailure(error: unknown): string {
+  if (error instanceof ActivityFailure && error.cause instanceof ApplicationFailure) {
+    return `${error.cause.type ?? "ApplicationFailure"}: ${error.cause.message}`;
+  }
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export async function sendDraftToSlackWorkflow(
   input: SendDraftToSlackInput
 ): Promise<SendDraftToSlackResult> {
@@ -55,9 +79,8 @@ export async function sendDraftToSlackWorkflow(
       });
       return { draftId: input.draftId, slackMessageTs: sendResult.slackMessageTs, status: "SENT" };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const isPermanent = message.startsWith("PermanentExternalError");
-      if (isPermanent) {
+      const message = describeFailure(error);
+      if (isPermanentFailure(error)) {
         await sendToSlack.markDraftSendFailed({
           draftId: input.draftId,
           dispatchId: input.dispatchId,

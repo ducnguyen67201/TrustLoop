@@ -17,6 +17,7 @@ export {
 } from "@/domains/support/support-analysis.activity";
 export { mirrorSupportAttachment } from "@/domains/support/support-attachment-mirror.activity";
 export { refreshCustomerProfile } from "@/domains/support/support-customer-profile.activity";
+export { sweepStaleDraftDispatches } from "@/domains/support/send-draft-sweep.activity";
 export {
   markDraftDeliveryUnknown,
   markDraftSendFailed,
