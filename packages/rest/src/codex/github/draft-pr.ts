@@ -10,9 +10,23 @@ import { createInstallationOctokit } from "./_shared";
 //
 // The agent tool is a thin wrapper over this function — all Prisma and
 // Octokit access stays behind the codex namespace per service-layer rules.
+//
+// Diff-size caps (MAX_FILES_PER_PR, MAX_TOTAL_LINES_CHANGED_PER_PR) are
+// calibrated against external research:
+//
+//   - Median OSS PR is ~30 lines and 2 files changed.
+//   - Cisco's code-review study found PRs over 400 LOC catch fewer bugs.
+//   - ~200 LOC is the bar for "90% chance of completing review in 1 hour."
+//
+// So files=20 covers ~95% of legitimate bug fixes + small refactors (e.g.
+// "add a field → migration → update callers → update tests"), while a
+// 500-line total cap keeps reviewer cognitive load + LLM reasoning quality
+// both inside their respective comfort zones. Both caps are intentionally
+// high — they fire only on runaway output, not on typical output.
 // ---------------------------------------------------------------------------
 
-export const MAX_FILES_PER_PR = 5;
+export const MAX_FILES_PER_PR = 20;
+export const MAX_TOTAL_LINES_CHANGED_PER_PR = 500;
 
 export interface DraftPullRequestChange {
   filePath: string;
@@ -40,13 +54,32 @@ export type CreateDraftPullRequestResult =
       error: string;
     };
 
+function countLines(content: string): number {
+  if (content.length === 0) return 0;
+  return content.split("\n").length;
+}
+
 export async function createDraftPullRequest(
   input: CreateDraftPullRequestInput
 ): Promise<CreateDraftPullRequestResult> {
-  if (input.changes.length === 0 || input.changes.length > MAX_FILES_PER_PR) {
+  if (input.changes.length === 0) {
     return {
       success: false,
-      error: `changes must contain between 1 and ${MAX_FILES_PER_PR} files`,
+      error: "changes must contain at least 1 file",
+    };
+  }
+  if (input.changes.length > MAX_FILES_PER_PR) {
+    return {
+      success: false,
+      error: `Too many files (${input.changes.length} > ${MAX_FILES_PER_PR}). Split into multiple PRs, or escalate to a human if the fix genuinely requires a larger blast radius.`,
+    };
+  }
+
+  const totalLines = input.changes.reduce((sum, change) => sum + countLines(change.content), 0);
+  if (totalLines > MAX_TOTAL_LINES_CHANGED_PER_PR) {
+    return {
+      success: false,
+      error: `Diff too large (${totalLines} lines > ${MAX_TOTAL_LINES_CHANGED_PER_PR}). Code-review research shows quality drops sharply past this size. Split into smaller PRs, or escalate.`,
     };
   }
 

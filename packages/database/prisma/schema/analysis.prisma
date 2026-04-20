@@ -37,7 +37,10 @@ enum SupportDraftStatus {
   GENERATING
   AWAITING_APPROVAL
   APPROVED
+  SENDING
   SENT
+  SEND_FAILED
+  DELIVERY_UNKNOWN
   DISMISSED
   FAILED
 }
@@ -110,6 +113,11 @@ model SupportDraft {
   approvedBy     String?
   approvedAt     DateTime?
   sentAt         DateTime?
+  deliveredAt      DateTime?
+  deliveryError    String?             @db.Text
+  sendAttempts     Int                 @default(0)
+  slackClientMsgId String?             @unique
+  slackMessageTs   String?
   prUrl          String?
   prNumber       Int?
   errorMessage   String?             @db.Text
@@ -117,12 +125,47 @@ model SupportDraft {
   analysis       SupportAnalysis     @relation(fields: [analysisId], references: [id], onDelete: Restrict)
   conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   workspace      Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  dispatches     DraftDispatch[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
   @@index([analysisId])
   @@index([conversationId, createdAt])
   @@index([workspaceId, status])
+}
+
+enum DraftDispatchKind {
+  SEND_TO_SLACK
+}
+
+enum DraftDispatchStatus {
+  PENDING
+  DISPATCHED
+  FAILED
+}
+
+// Outbox pattern: approveDraft inserts a row here inside the same transaction
+// that flips draft.status to APPROVED. A sweep workflow retries PENDING rows
+// older than N minutes so a Temporal outage can't orphan the draft.
+model DraftDispatch {
+  id          String              @id @default(cuid())
+  draftId     String
+  workspaceId String
+  kind        DraftDispatchKind
+  status      DraftDispatchStatus @default(PENDING)
+  workflowId  String?
+  attempts    Int                 @default(0)
+  lastError   String?             @db.Text
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  dispatchedAt DateTime?
+
+  draft       SupportDraft        @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([draftId])
+  @@index([workspaceId])
 }
 
 model WorkspaceAiSettings {

@@ -101,6 +101,7 @@ export async function sendThreadReply(input: SlackSendRequest): Promise<SupportA
       text: buildSlackMessageText(input.messageText, input.attachments),
       unfurl_links: false,
       unfurl_media: false,
+      ...(input.clientMsgId ? { client_msg_id: input.clientMsgId } : {}),
       ...(input.agentName ? { username: input.agentName } : {}),
       ...(input.agentAvatarUrl ? { icon_url: input.agentAvatarUrl } : {}),
     }),
@@ -125,6 +126,68 @@ export async function sendThreadReply(input: SlackSendRequest): Promise<SupportA
     providerMessageId: json.ts,
     deliveredAt: new Date().toISOString(),
   };
+}
+
+interface ConversationsRepliesMessage {
+  ts?: string;
+  client_msg_id?: string;
+}
+
+interface ConversationsRepliesResponse {
+  ok?: boolean;
+  messages?: ConversationsRepliesMessage[];
+  error?: string;
+}
+
+/**
+ * Reconciliation lookup for the DELIVERY_UNKNOWN state.
+ *
+ * When sendThreadReply times out mid-call or hits a 5xx after the Slack
+ * server may have already accepted the post, we can't know if the message
+ * landed. This function queries `conversations.replies` for the thread and
+ * looks for our clientMsgId. If found, the delivery succeeded and we can
+ * transition to SENT with the returned ts. If not, it's safe to retry.
+ *
+ * Returns the Slack ts if found, null otherwise.
+ */
+export async function findReplyByClientMsgId(input: {
+  installationMetadata?: unknown;
+  channelId: string;
+  threadTs: string;
+  clientMsgId: string;
+}): Promise<string | null> {
+  const token = resolveSlackBotToken(input.installationMetadata);
+  const url = new URL("https://slack.com/api/conversations.replies");
+  url.searchParams.set("channel", input.channelId);
+  url.searchParams.set("ts", input.threadTs);
+  url.searchParams.set("limit", "200");
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new TransientExternalError(
+      `Slack reconciliation request failed with HTTP ${response.status}`
+    );
+  }
+
+  const json = (await response.json()) as ConversationsRepliesResponse;
+  if (!json.ok) {
+    const errorCode = json.error ?? "unknown_slack_error";
+    if (isTransientSlackError(errorCode)) {
+      throw new TransientExternalError(`Slack reconciliation failed: ${errorCode}`);
+    }
+    throw new PermanentExternalError(`Slack reconciliation failed: ${errorCode}`);
+  }
+
+  for (const message of json.messages ?? []) {
+    if (message.client_msg_id === input.clientMsgId && message.ts) {
+      return message.ts;
+    }
+  }
+  return null;
 }
 
 /**

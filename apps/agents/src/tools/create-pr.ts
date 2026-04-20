@@ -43,10 +43,7 @@ export const createPullRequestTool = new Tool<
   CreatePullRequestToolOutput
 >({
   id: "create_pull_request",
-  description:
-    "Create a draft GitHub pull request with a code fix. Only use this when you have identified " +
-    "a clear, specific fix (wrong config, missing null check, typo). The PR is created in draft mode " +
-    "and requires human approval to merge. Max 5 files per PR.",
+  description: `Create a draft GitHub pull request with a code fix. Only use this when you have identified a clear, specific fix (wrong config, missing null check, typo). The PR is created in draft mode and requires human approval to merge. Max ${MAX_FILES_PER_PR} files per PR. Prefer smaller PRs — research shows review quality drops sharply past ~400 changed lines.`,
   inputSchema: createPullRequestInputSchema,
   execute: async (input: CreatePullRequestToolInput): Promise<CreatePullRequestToolOutput> => {
     const result = await createDraftPullRequest(input);

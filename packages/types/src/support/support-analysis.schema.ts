@@ -70,7 +70,10 @@ export const DRAFT_STATUS = {
   generating: "GENERATING",
   awaitingApproval: "AWAITING_APPROVAL",
   approved: "APPROVED",
+  sending: "SENDING",
   sent: "SENT",
+  sendFailed: "SEND_FAILED",
+  deliveryUnknown: "DELIVERY_UNKNOWN",
   dismissed: "DISMISSED",
   failed: "FAILED",
 } as const;
@@ -79,7 +82,10 @@ export const draftStatusValues = [
   DRAFT_STATUS.generating,
   DRAFT_STATUS.awaitingApproval,
   DRAFT_STATUS.approved,
+  DRAFT_STATUS.sending,
   DRAFT_STATUS.sent,
+  DRAFT_STATUS.sendFailed,
+  DRAFT_STATUS.deliveryUnknown,
   DRAFT_STATUS.dismissed,
   DRAFT_STATUS.failed,
 ] as const;
@@ -87,6 +93,26 @@ export const draftStatusValues = [
 export const MAX_ANALYSIS_RETRIES = 3;
 
 export const draftStatusSchema = z.enum(draftStatusValues);
+
+export const DRAFT_DISPATCH_KIND = {
+  sendToSlack: "SEND_TO_SLACK",
+} as const;
+
+export const DRAFT_DISPATCH_STATUS = {
+  pending: "PENDING",
+  dispatched: "DISPATCHED",
+  failed: "FAILED",
+} as const;
+
+export const draftDispatchStatusValues = [
+  DRAFT_DISPATCH_STATUS.pending,
+  DRAFT_DISPATCH_STATUS.dispatched,
+  DRAFT_DISPATCH_STATUS.failed,
+] as const;
+
+export const draftDispatchStatusSchema = z.enum(draftDispatchStatusValues);
+
+export type DraftDispatchStatus = z.infer<typeof draftDispatchStatusSchema>;
 
 export const EVIDENCE_SOURCE_TYPE = {
   codeChunk: "CODE_CHUNK",

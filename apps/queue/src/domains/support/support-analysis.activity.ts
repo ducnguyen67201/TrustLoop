@@ -351,6 +351,11 @@ async function persistDraft(
       tone: result.draft.tone,
       llmModel: result.meta.model,
       llmLatencyMs: result.meta.totalDurationMs,
+      // Generated once, before the draft is ever sent. Slack's
+      // chat.postMessage accepts this as `client_msg_id`; on an ambiguous
+      // transport failure, reconcileDraftActivity uses it to query
+      // conversations.replies and detect whether the message actually landed.
+      slackClientMsgId: crypto.randomUUID(),
     },
   });
   return draft.id;

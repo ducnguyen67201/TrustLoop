@@ -2,6 +2,7 @@ import { env } from "@shared/env";
 import {
   type CodexWorkflowInput,
   type RepositoryIndexWorkflowInput,
+  type SendDraftToSlackInput,
   type SupportAnalysisWorkflowInput,
   type SupportWorkflowInput,
   TASK_QUEUES,
@@ -9,7 +10,7 @@ import {
   workflowDispatchResponseSchema,
   workflowNames,
 } from "@shared/types";
-import { Client, Connection } from "@temporalio/client";
+import { Client, Connection, WorkflowIdReusePolicy } from "@temporalio/client";
 import { buildTemporalConnectionOptions } from "./temporal-connection";
 
 export interface WorkflowDispatcher {
@@ -21,6 +22,7 @@ export interface WorkflowDispatcher {
     input: RepositoryIndexWorkflowInput
   ): Promise<WorkflowDispatchResponse>;
   startCodexWorkflow(input: CodexWorkflowInput): Promise<WorkflowDispatchResponse>;
+  startSendDraftToSlackWorkflow(input: SendDraftToSlackInput): Promise<WorkflowDispatchResponse>;
 }
 
 let temporalClient: Client | undefined;
@@ -109,6 +111,24 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
       workflowId,
       runId: handle.firstExecutionRunId,
       queue: TASK_QUEUES.CODEX,
+    });
+  },
+  async startSendDraftToSlackWorkflow(input) {
+    const client = await getClient();
+    // Semantic, deterministic workflow ID so a double-approved draft can never
+    // post twice: Temporal rejects duplicates via REJECT_DUPLICATE policy.
+    const workflowId = `send-draft-${input.draftId}`;
+    const handle = await client.workflow.start(workflowNames.sendDraftToSlack, {
+      args: [input],
+      taskQueue: TASK_QUEUES.SUPPORT,
+      workflowId,
+      workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
+    });
+
+    return workflowDispatchResponseSchema.parse({
+      workflowId,
+      runId: handle.firstExecutionRunId,
+      queue: TASK_QUEUES.SUPPORT,
     });
   },
 };
