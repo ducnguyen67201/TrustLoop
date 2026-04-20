@@ -20,6 +20,11 @@ This is the active go-to-market workspace for TrustLoop's first users.
 - `call-notes-template.md` — structure for discovery calls
 - `learnings.md` — what we are hearing and how the thesis changes
 
+## Companion Skill
+
+- `.skills/gtm-founder-outreach/` — reusable sourcing + scoring + DM workflow for
+  founder outreach tasks
+
 ## Working Rules
 
 - Narrow beats broad
