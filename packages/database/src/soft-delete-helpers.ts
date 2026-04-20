@@ -1,10 +1,3 @@
-import type { prisma } from "./index";
-
-/**
- * Transaction client type derived from the extended prisma client.
- */
-type Tx = Parameters<Parameters<(typeof prisma)["$transaction"]>[0]>[0];
-
 /**
  * Prisma model delegates have complex generic signatures that vary per model.
  * This type uses `any` at the boundary to accept all delegate types.
