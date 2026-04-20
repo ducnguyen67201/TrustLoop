@@ -177,6 +177,37 @@ Do not manually maintain parallel OpenAPI and TS contracts for the same payload.
 - Set explicit activity timeouts.
 - Retry only transient failures with bounded backoff.
 - Fail fast on validation/configuration errors.
+- Classify activity failures in workflows by `ApplicationFailure.type` (or `ActivityFailure.cause.type`), not by string-matching `error.message`. Temporal reformats the envelope across the boundary; message prefixes are not a stable contract. Pair with `nonRetryableErrorTypes` in the retry policy so permanent errors fail fast.
+
+## State Machine Conventions
+
+Domain entities with non-trivial status transitions must be driven by a finite-state machine, not scattered `status: "..."` writes across services and activities.
+
+**Canonical pattern:** `packages/types/src/support/state-machines/draft-state-machine.ts` — pure `transition(context, event)` function, each state declares its `allowedEvents` list, illegal transitions throw `Invalid<Entity>TransitionError`. All writers (services, activities, workflows) call `transitionDraft(ctx, event)` to compute the next status — nobody writes the status column directly.
+
+**When to use:**
+- The entity has 4+ statuses AND at least one branching transition (not just a linear A → B → C).
+- Multiple call sites (service, activity, reconciler, sweep) can drive the status.
+- An illegal transition would be a real bug (double-send, skipped approval, race-lost update).
+
+**When NOT to use:**
+- Flat outbox-style tables (`PENDING → DISPATCHED/FAILED`) with a single writer — direct `updateMany` is simpler and equally safe.
+- Boolean flags with a timestamp (`deletedAt`, `completedAt`).
+- One-shot status that never revisits a prior state.
+
+**Rules:**
+- State machines live in `packages/types/src/<domain>/state-machines/<entity>-state-machine.ts`.
+- Status enum + `<entity>StatusValues` array live next to the schema (`<entity>.schema.ts`), imported by the machine — never re-declared.
+- Events are a discriminated union on `type`. Every event shape is exhaustively handled; use `default: throw new Invalid<Entity>TransitionError(...)`.
+- Transitions are pure: input context + event → next context. No I/O, no `Date.now()` captured at machine level — pass timestamps in via the event if needed.
+- Reconcile/retry paths get explicit events (`reconcileFound`, `retry`) — do not piggyback on the happy-path event.
+- Every new state and every new event needs a unit test in `packages/types/test/state-machines.test.ts`.
+
+Current machines:
+- `draft-state-machine.ts` (SupportDraft)
+
+Follow-ups the codebase would benefit from (not yet migrated):
+- `SupportAnalysis` status transitions.
 
 ## Database + Prisma Rules
 
