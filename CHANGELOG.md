@@ -2,6 +2,15 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.1.0] - 2026-04-19
+
+### Fixed
+- **Operator commands now require a human operator.** Every support-inbox and support-analysis mutation (assign, reply, mark done, override, retry delivery, toggle reaction, trigger/approve/dismiss analysis) previously accepted workspace API keys (`tlk_*`) in addition to user sessions. Anyone holding a valid workspace key could send replies, close tickets, or trigger analysis runs without ever being a human operator. Those mutations now route through a role-gated procedure that requires a user session plus at least MEMBER role, and the middleware rejects API-key actors explicitly.
+- **Workflow dispatch is no longer callable unauthenticated.** An unauthenticated tRPC procedure at `dispatchWorkflow` would let any caller enqueue support, support-analysis, repository-index, send-draft-to-slack, and codex workflows via `/api/trpc/dispatchWorkflow`. Most severely, `send-draft-to-slack` could post arbitrary content into customer Slack channels. The procedure had zero callers in the codebase. Removed entirely; internal workflow dispatch now lives only at the authenticated REST endpoint `/api/rest/workflows/dispatch` (behind `withServiceAuth`).
+
+### Changed
+- **`workspaceRoleProcedure` now fails closed on non-session actors.** The middleware used to rely on API-key contexts having a `null` role, which caused `hasRequiredRole` to return `false` and throw `FORBIDDEN`. That was a brittle contract implied by unrelated code. The middleware now asserts `ctx.session && ctx.user` up front and returns `UNAUTHORIZED`, then checks role. Downstream `ctx.user` is narrowed to non-nullable in role-gated handlers, so routers no longer need the `ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system"` fallback.
+
 ## [0.2.0.1] - 2026-04-19
 
 ### Added
