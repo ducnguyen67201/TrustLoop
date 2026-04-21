@@ -81,37 +81,6 @@ export async function getConversationTimeline(
       id: conversationId,
       workspaceId,
     },
-    include: {
-      events: {
-        orderBy: {
-          createdAt: "asc",
-        },
-        include: {
-          attachments: {
-            select: {
-              id: true,
-              mimeType: true,
-              uploadState: true,
-              originalFilename: true,
-              sizeBytes: true,
-              errorCode: true,
-              direction: true,
-            },
-            orderBy: { createdAt: "asc" },
-          },
-          reactions: {
-            select: {
-              id: true,
-              emojiName: true,
-              emojiUnicode: true,
-              actorUserId: true,
-              createdAt: true,
-            },
-            orderBy: { createdAt: "asc" },
-          },
-        },
-      },
-    },
   });
 
   if (!conversation) {
@@ -120,6 +89,49 @@ export async function getConversationTimeline(
       message: "Support conversation not found",
     });
   }
+
+  // Merged-view UNION query — pull events from the primary AND any
+  // conversations that were merged INTO it. Secondaries are soft-deleted
+  // but their events stay on the original rows; we surface them here by
+  // widening the conversationId filter. See plan §6.5.
+  //
+  // Uses `findIncludingDeleted()` semantics via the raw `conversationId` filter
+  // on `SupportConversationEvent` — events themselves aren't soft-deleted, so
+  // a plain `findMany` is enough.
+  const mergedChildren = await prisma.supportConversation.findMany({
+    where: { mergedIntoConversationId: conversationId, workspaceId },
+    select: { id: true },
+  });
+  const timelineConversationIds = [conversationId, ...mergedChildren.map((c) => c.id)];
+
+  const events = await prisma.supportConversationEvent.findMany({
+    where: { conversationId: { in: timelineConversationIds } },
+    orderBy: { createdAt: "asc" },
+    include: {
+      attachments: {
+        select: {
+          id: true,
+          mimeType: true,
+          uploadState: true,
+          originalFilename: true,
+          sizeBytes: true,
+          errorCode: true,
+          direction: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      reactions: {
+        select: {
+          id: true,
+          emojiName: true,
+          emojiUnicode: true,
+          actorUserId: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
 
   return supportConversationTimelineSchema.parse({
     conversation: {
@@ -142,7 +154,7 @@ export async function getConversationTimeline(
       createdAt: conversation.createdAt.toISOString(),
       updatedAt: conversation.updatedAt.toISOString(),
     },
-    events: conversation.events.map((event) => ({
+    events: events.map((event) => ({
       id: event.id,
       conversationId: event.conversationId,
       workspaceId: event.workspaceId,
@@ -179,7 +191,7 @@ export async function getConversationTimeline(
     customerProfiles: await buildCustomerProfileMap(
       workspaceId,
       conversation.installationId,
-      conversation.events
+      events
     ),
   });
 }

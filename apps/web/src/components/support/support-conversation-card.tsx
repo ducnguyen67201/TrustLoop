@@ -2,6 +2,7 @@
 
 import { SupportStatusBadge } from "@/components/support/support-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { SupportConversation } from "@shared/types";
 import type { DragEvent } from "react";
@@ -23,42 +24,84 @@ interface SupportConversationCardProps {
   conversation: SupportConversation;
   isSelected: boolean;
   onSelect: (conversationId: string) => void;
+  /**
+   * When select mode is active (see docs/plans/impl-plan-thread-merge-split-
+   * reassign.md §4.1), drag is suppressed and the checkbox is always visible.
+   * Clicking the card toggles selection instead of opening the conversation
+   * sheet. This is the explicit-mode design that avoids the drag+checkbox
+   * hover collision flagged by the design review.
+   */
+  isSelectMode?: boolean;
+  isChecked?: boolean;
+  onToggleSelection?: (conversationId: string) => void;
 }
 
 /**
- * Draggable conversation card for the kanban board.
- * Uses native HTML Drag and Drop API (no library needed).
+ * Conversation card used as the draggable node in the kanban board.
+ * In select mode, drag is suppressed and the card shows a persistent
+ * checkbox; click toggles selection.
  */
 export function SupportConversationCard({
   conversation,
   isSelected,
   onSelect,
+  isSelectMode = false,
+  isChecked = false,
+  onToggleSelection,
 }: SupportConversationCardProps) {
   function handleDragStart(event: DragEvent) {
+    if (isSelectMode) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.setData("text/plain", conversation.id);
     event.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleClick() {
+    if (isSelectMode) {
+      onToggleSelection?.(conversation.id);
+      return;
+    }
+    onSelect(conversation.id);
   }
 
   return (
     <button
       type="button"
-      onClick={() => onSelect(conversation.id)}
-      draggable
+      onClick={handleClick}
+      draggable={!isSelectMode}
       onDragStart={handleDragStart}
-      className="w-full text-left cursor-grab active:cursor-grabbing"
+      className={cn(
+        "w-full text-left",
+        isSelectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
+      )}
+      aria-pressed={isSelectMode ? isChecked : undefined}
     >
       <Card
         size="sm"
         className={cn(
           "border-border/80 hover:border-foreground/30 hover:bg-muted/40 gap-3 border bg-background transition",
-          isSelected && "border-primary/50 bg-primary/5"
+          isSelected && !isSelectMode && "border-primary/50 bg-primary/5",
+          isSelectMode && isChecked && "border-primary/60 bg-primary/10"
         )}
       >
         <CardHeader className="gap-2">
           <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <CardTitle>{conversation.thread.channelId}</CardTitle>
-              <p className="text-muted-foreground text-[11px]">{conversation.thread.threadTs}</p>
+            <div className="flex items-start gap-2">
+              {isSelectMode ? (
+                <Checkbox
+                  checked={isChecked}
+                  onCheckedChange={() => onToggleSelection?.(conversation.id)}
+                  onClick={(event) => event.stopPropagation()}
+                  aria-label={`Select conversation in ${conversation.thread.channelId}`}
+                  className="mt-0.5"
+                />
+              ) : null}
+              <div className="space-y-1">
+                <CardTitle>{conversation.thread.channelId}</CardTitle>
+                <p className="text-muted-foreground text-[11px]">{conversation.thread.threadTs}</p>
+              </div>
             </div>
             <SupportStatusBadge status={conversation.status} />
           </div>

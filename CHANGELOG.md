@@ -2,6 +2,12 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.6.0] - 2026-04-20
+
+### Added
+- **Operators can merge conversations directly from the inbox UI.** New "Select threads" button on the board header puts the inbox into explicit select mode — checkboxes appear on every card, drag-drop is suppressed for the duration, and clicking a card toggles selection instead of opening the thread. Once ≥2 threads are selected, a "Merge" button in the toolbar opens a chip-based primary picker with a "Recommended" badge on the best candidate (assignee-first, then oldest). Hitting Enter confirms, submitting to the tRPC merge procedure shipped in PR #48. The inbox refreshes to reflect the archived secondaries.
+- **Merged conversations now show the full combined timeline.** Opening a primary conversation unions events from every conversation that was merged into it, sorted by timestamp. Secondaries are archived but their messages still render under the primary.
+
 ## [0.2.5.0] - 2026-04-20
 
 ### Added

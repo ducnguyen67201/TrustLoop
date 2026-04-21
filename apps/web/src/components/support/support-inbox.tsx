@@ -1,6 +1,7 @@
 "use client";
 
 import { ConversationView } from "@/components/support/conversation-view";
+import { MergeConversationsDialog } from "@/components/support/merge-conversations-dialog";
 import { SupportKanbanColumn } from "@/components/support/support-kanban-column";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
+import { useInboxSelection } from "@/hooks/use-inbox-selection";
 import { useSupportInbox } from "@/hooks/use-support-inbox";
 import { useSupportInboxStream } from "@/hooks/use-support-inbox-stream";
 import { useVisibilityAwarePolling } from "@/hooks/use-visibility-aware-polling";
@@ -45,9 +47,11 @@ const KANBAN_COLUMNS = [
  */
 export function SupportInbox() {
   const inbox = useSupportInbox();
+  const selection = useInboxSelection();
   const { data: workspaceData } = useActiveWorkspace();
   const workspaceId = workspaceData?.activeWorkspaceId;
   const [selectedConversationRefreshNonce, setSelectedConversationRefreshNonce] = useState(0);
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -123,6 +127,22 @@ export function SupportInbox() {
     const conversation = inbox.listData?.conversations.find((c) => c.id === conversationId);
     if (conversation && conversation.status !== targetStatus) {
       void handleUpdateConversationStatus(conversationId, targetStatus);
+    }
+  }
+
+  const mergeCandidates = useMemo(
+    () => (inbox.listData?.conversations ?? []).filter((c) => selection.selectedIds.has(c.id)),
+    [inbox.listData, selection.selectedIds]
+  );
+
+  async function handleSubmitMerge(primaryId: string, secondaryIds: string[]) {
+    try {
+      await selection.submitMerge(primaryId, secondaryIds);
+      setIsMergeDialogOpen(false);
+      selection.exitSelectMode();
+      await inbox.refreshList();
+    } catch {
+      // Error surfaced by selection.mergeError in the dialog.
     }
   }
 
@@ -206,6 +226,15 @@ export function SupportInbox() {
             >
               Refresh board
             </Button>
+            {selection.isSelectMode ? (
+              <Button variant="ghost" onClick={selection.exitSelectMode}>
+                Exit select mode
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={selection.enterSelectMode}>
+                Select threads
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -230,6 +259,27 @@ export function SupportInbox() {
             </div>
           ) : null}
 
+          {selection.isSelectMode && selection.selectedIds.size > 0 ? (
+            <div className="bg-primary/10 border-primary/40 sticky top-0 z-10 flex flex-wrap items-center gap-2 border p-3">
+              <span className="text-sm font-medium">{selection.selectedIds.size} selected</span>
+              <Button
+                size="sm"
+                onClick={() => setIsMergeDialogOpen(true)}
+                disabled={selection.selectedIds.size < 2 || selection.isMerging}
+              >
+                Merge
+              </Button>
+              <Button size="sm" variant="ghost" onClick={selection.clearSelection}>
+                Clear
+              </Button>
+              {selection.selectedIds.size < 2 ? (
+                <span className="text-muted-foreground text-xs">
+                  Select at least 2 threads to merge.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
             {boardColumns.map((column) => (
               <SupportKanbanColumn
@@ -241,11 +291,26 @@ export function SupportInbox() {
                 selectedConversationId={inbox.selectedConversationId}
                 status={column.status}
                 title={column.title}
+                isSelectMode={selection.isSelectMode}
+                selectedIds={selection.selectedIds}
+                onToggleSelection={selection.toggleSelection}
               />
             ))}
           </div>
         </CardContent>
       </Card>
+
+      <MergeConversationsDialog
+        open={isMergeDialogOpen}
+        candidates={mergeCandidates}
+        isSubmitting={selection.isMerging}
+        error={selection.mergeError}
+        onSubmit={handleSubmitMerge}
+        onClose={() => {
+          setIsMergeDialogOpen(false);
+          selection.clearMergeError();
+        }}
+      />
 
       <Sheet open={isSheetOpen} onOpenChange={handleSheetOpenChange}>
         <SheetContent
