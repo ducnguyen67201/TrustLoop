@@ -12918,8 +12918,8 @@
       "source_file": "/home/runner/work/TrustLoop/TrustLoop/packages/rest/src/services/support/conversation-transition.ts",
       "source_location": "L25",
       "weight": 1.0,
-      "_src": "conversation_transition_tryconversationtransition",
-      "_tgt": "conversation_state_machine_transitionconversation",
+      "_src": "conversation_state_machine_transitionconversation",
+      "_tgt": "conversation_transition_tryconversationtransition",
       "source": "conversation_state_machine_transitionconversation",
       "target": "conversation_transition_tryconversationtransition"
     },
