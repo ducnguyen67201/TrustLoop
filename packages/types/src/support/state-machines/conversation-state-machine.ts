@@ -5,7 +5,7 @@ import { SUPPORT_CONVERSATION_STATUS } from "../support-conversation.schema";
 // Conversation FSM
 //
 // Rules the transition table must faithfully encode (verified against current
-// product behavior — see docs/plans/impl-plan-support-conversation-state-machine.md):
+// product behavior):
 //
 //   - Operators can move a conversation between any two statuses (drag/drop
 //     + sidebar dropdown). Per-target events preserve that freedom while

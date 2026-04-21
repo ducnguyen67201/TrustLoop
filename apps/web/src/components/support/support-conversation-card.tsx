@@ -25,11 +25,9 @@ interface SupportConversationCardProps {
   isSelected: boolean;
   onSelect: (conversationId: string) => void;
   /**
-   * When select mode is active (see docs/plans/impl-plan-thread-merge-split-
-   * reassign.md §4.1), drag is suppressed and the checkbox is always visible.
-   * Clicking the card toggles selection instead of opening the conversation
-   * sheet. This is the explicit-mode design that avoids the drag+checkbox
-   * hover collision flagged by the design review.
+   * When select mode is active, drag is suppressed and the checkbox is always
+   * visible. Clicking the card toggles selection instead of opening the
+   * conversation sheet. Explicit mode avoids the drag+checkbox hover collision.
    */
   isSelectMode?: boolean;
   isChecked?: boolean;

@@ -8,8 +8,6 @@ import { toast } from "sonner";
 // useEventReassign — move a single SupportConversationEvent between
 // conversations via supportInbox.reassignEvent. Idempotent on
 // (workspaceId, idempotencyKey).
-//
-// Spec: docs/plans/impl-plan-thread-merge-split-reassign.md §6.3.
 // ---------------------------------------------------------------------------
 
 export interface ReassignResultShape {

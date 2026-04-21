@@ -38,7 +38,7 @@ enum SupportConversationEventType {
 }
 
 /// Kind of grouping correction an operator performed. MVP ships MERGE + REASSIGN_EVENT.
-/// Split is deferred (see docs/plans/impl-plan-thread-merge-split-reassign.md §13).
+/// Split is deferred.
 enum SupportGroupingCorrectionKind {
   MERGE
   REASSIGN_EVENT
@@ -417,7 +417,7 @@ model SupportMessageReaction {
 
 /// Log of operator-performed grouping corrections (merge and reassign).
 /// Immutable audit trail + training corpus for future per-workspace
-/// grouping-threshold tuning (see impl-plan-thread-merge-split-reassign.md §9).
+/// grouping-threshold tuning.
 ///
 /// Scoped MVP shape: 8 columns, 2 indexes. No `inferredSignalJson`,
 /// no `deletedAt` — corrections are never soft-deleted, they're an

@@ -12,8 +12,7 @@ import { toast } from "sonner";
 // the list, refresh the timeline, etc.) via the onSuccess callback.
 //
 // Paired with the "Recently merged" pill in support-conversation-sheet and
-// the post-merge toast in use-inbox-selection for the layered undo UX
-// described in docs/plans/impl-plan-thread-merge-split-reassign.md §4.5.
+// the post-merge toast in use-inbox-selection for the layered undo UX.
 // ---------------------------------------------------------------------------
 
 export interface UndoResult {

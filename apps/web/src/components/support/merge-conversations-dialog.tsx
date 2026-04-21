@@ -17,7 +17,6 @@ import { useEffect, useMemo, useState } from "react";
 // ---------------------------------------------------------------------------
 // MergeConversationsDialog — chip-based primary picker.
 //
-// Spec: docs/plans/impl-plan-thread-merge-split-reassign.md §4.2 (D4 fix).
 // Each candidate renders as a mini-card with explicit chips (assignee,
 // customer messages, analysis, age) instead of buried tie-breaker text.
 // The ranked winner gets a `Recommended` badge.

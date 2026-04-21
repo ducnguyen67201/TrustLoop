@@ -1,5 +1,4 @@
--- Thread merge / reassign correction schema (PR 1 of 5).
--- See docs/plans/impl-plan-thread-merge-split-reassign.md §5.
+-- Thread merge / reassign correction schema.
 
 -- CreateEnum
 CREATE TYPE "SupportGroupingCorrectionKind" AS ENUM ('MERGE', 'REASSIGN_EVENT');
