@@ -2,6 +2,7 @@
 
 import { trpcMutation } from "@/lib/trpc-http";
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // useInboxSelection — explicit select-mode state for the kanban inbox.
@@ -80,6 +81,35 @@ export function useInboxSelection() {
           },
           { withCsrf: true }
         );
+
+        // Post-merge toast with undo. Click "Undo" within 24h to reverse via
+        // supportInbox.undoCorrection. The pill on the primary conversation's
+        // sheet header + the inbox-row badge are the longer-horizon undo
+        // surfaces; this toast is the 10-second accelerator.
+        toast.success(
+          `Merged ${secondaryConversationIds.length} thread${
+            secondaryConversationIds.length === 1 ? "" : "s"
+          } into #${primaryConversationId.slice(0, 8)}.`,
+          {
+            duration: 10_000,
+            action: {
+              label: "Undo",
+              onClick: () => {
+                void trpcMutation<{ correctionId: string }, { correctionId: string }>(
+                  "supportInbox.undoCorrection",
+                  { correctionId: result.correctionId },
+                  { withCsrf: true }
+                )
+                  .then(() => toast.success("Merge undone."))
+                  .catch((err) => {
+                    const message = err instanceof Error ? err.message : "Undo failed";
+                    toast.error(message);
+                  });
+              },
+            },
+          }
+        );
+
         return result;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Merge failed";

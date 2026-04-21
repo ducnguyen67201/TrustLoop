@@ -2,6 +2,12 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.8.0] - 2026-04-20
+
+### Added
+- **Undo a merge or a message move with one click.** Every successful merge or reassign now surfaces a 10-second toast with an Undo button. Click it and the operation reverses via `supportInbox.undoCorrection` — the secondary conversation is unarchived, the thread alias is removed, the moved message returns to its origin. Undo works within a 24-hour window and rejects if a later correction depends on the one you're trying to reverse.
+- **Structured correction logs.** Every merge, reassign, and undo emits a `[grouping-correction]` log line with `workspaceId`, `correctionId`, and `kind`. This is the signal that powers the Part B per-workspace grouping-threshold tuning in the plan (§9) — without changing the hot path, a nightly aggregation can compute correction rates from logs alone.
+
 ## [0.2.7.0] - 2026-04-20
 
 ### Added

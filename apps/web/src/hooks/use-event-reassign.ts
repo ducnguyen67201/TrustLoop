@@ -2,6 +2,7 @@
 
 import { trpcMutation } from "@/lib/trpc-http";
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // useEventReassign — move a single SupportConversationEvent between
@@ -37,6 +38,27 @@ export function useEventReassign() {
         { eventId, targetConversationId, idempotencyKey },
         { withCsrf: true }
       );
+
+      // Post-reassign toast accelerator for the undo path.
+      toast.success(`Moved message to #${targetConversationId.slice(0, 8)}.`, {
+        duration: 10_000,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            void trpcMutation<{ correctionId: string }, { correctionId: string }>(
+              "supportInbox.undoCorrection",
+              { correctionId: result.correctionId },
+              { withCsrf: true }
+            )
+              .then(() => toast.success("Move undone."))
+              .catch((err) => {
+                const message = err instanceof Error ? err.message : "Undo failed";
+                toast.error(message);
+              });
+          },
+        },
+      });
+
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Reassign failed";

@@ -355,6 +355,18 @@ export async function merge(input: MergeInput): Promise<MergeResult> {
     )
   );
 
+  // Structured log — stable keys per CLAUDE.md observability guidance. Every
+  // correction emits one line with workspace + correction + kind, so per-
+  // workspace correction rate aggregations (the input to the Part B learning
+  // loop in plan §9) can be computed without a table scan.
+  console.info("[grouping-correction] merge committed", {
+    workspaceId: input.workspaceId,
+    correctionId: resolvedCorrectionId,
+    kind: SUPPORT_GROUPING_CORRECTION_KIND.merge,
+    primaryConversationId: input.primaryConversationId,
+    secondaryCount: input.secondaryConversationIds.length,
+  });
+
   return {
     correctionId: resolvedCorrectionId,
     primaryConversationId: input.primaryConversationId,
@@ -555,6 +567,15 @@ export async function reassignEvent(input: ReassignEventInput): Promise<Reassign
       })
     )
   );
+
+  console.info("[grouping-correction] reassign committed", {
+    workspaceId: input.workspaceId,
+    correctionId: resolvedCorrectionId,
+    kind: SUPPORT_GROUPING_CORRECTION_KIND.reassignEvent,
+    eventId: input.eventId,
+    sourceConversationId,
+    targetConversationId: input.targetConversationId,
+  });
 
   return { correctionId: resolvedCorrectionId, eventId: input.eventId };
 }
@@ -763,6 +784,12 @@ export async function undoCorrection(input: UndoCorrectionInput): Promise<UndoCo
       })
     )
   );
+
+  console.info("[grouping-correction] undo committed", {
+    workspaceId: input.workspaceId,
+    correctionId: correction.id,
+    kind: correction.kind,
+  });
 
   return { correctionId: correction.id, kind: correction.kind };
 }
