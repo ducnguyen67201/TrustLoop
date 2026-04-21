@@ -2,6 +2,12 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.4.0] - 2026-04-20
+
+### Added
+- **Schema foundations for thread merge / reassign.** New `SupportGroupingCorrection` table (8 columns, 3 indexes) captures every operator-driven grouping correction as an immutable audit row, with `@@unique([workspaceId, idempotencyKey])` so duplicate submissions return the existing correction instead of writing a second row. New nullable self-FK on `SupportConversation.mergedIntoConversationId` (with `@@index`) is the breadcrumb for merged conversations — Slack routing still uses `SupportConversationThreadAlias`, this column is for the merged-view UNION query. New `SupportConversationEvent.reassignedFromConversationId` records where a reassigned message originally lived. Three new `SupportConversationEventType` enum values — `REASSIGNED_EVENT`, `MERGE_UNDONE`, `REASSIGN_UNDONE` — and the new `SupportGroupingCorrectionKind` enum (`MERGE`, `REASSIGN_EVENT`) round out the schema.
+- **No behavior changes.** This PR is schema-only. The service layer that writes into these tables lands in PR 2. See `docs/plans/impl-plan-thread-merge-split-reassign.md` §5 for the spec and §10 for the 5-PR rollout.
+
 ## [0.2.3.0] - 2026-04-20
 
 ### Added
