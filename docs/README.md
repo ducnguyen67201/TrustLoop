@@ -1,10 +1,11 @@
 # TrustLoop docs
 
-> Engineering docs for the TrustLoop monorepo. Current-reality only: stable contracts + cross-cutting conventions. Forward-looking plans, specs, and impl checklists do NOT live here — they belong in PR descriptions, GitHub issues, or local `~/.gstack/projects/<slug>/` scratch. See the root `AGENTS.md` "Doc Philosophy" section for the rule.
+> Engineering docs for the TrustLoop monorepo. Three pillars: **concepts** (how the system works right now), **conventions** (the rules you follow when you edit), and **contracts** (generated schemas). No forward-looking plans, specs, or impl checklists committed here — those belong in PR descriptions, GitHub issues, or local `~/.gstack/projects/<slug>/` scratch. See the root `AGENTS.md` "Doc Philosophy" section for the rule.
 
 ## How this folder is organized
 
-- **`conventions/`** — stable contracts and operating rules that apply across the repo (service layer, UI, REST auth, positional JSON, soft-delete, foundation setup). Update these alongside the code when a contract changes.
+- **`concepts/`** — architecture explainers. How each major piece of the system works today, in present tense. Read these when you need the big picture or want to understand how two pieces connect.
+- **`conventions/`** — stable contracts and operating rules that apply across the repo. Update alongside the code when a contract or rule changes.
 - **`contracts/`** — generated schema artifacts (OpenAPI, etc.).
 
 That's it. No `plans/`, no `domains/`, no `specs/`. If you need a forward-looking plan, write it in a PR description or `~/.gstack/` scratch and let it disappear when the work lands.
@@ -12,11 +13,26 @@ That's it. No `plans/`, no `domains/`, no `specs/`. If you need a forward-lookin
 ## Reading order for a new agent
 
 1. `../AGENTS.md` (symlinked as `../CLAUDE.md`) — the operating rules, including the "Doc Philosophy" section.
-2. `conventions/foundation-setup-and-conventions.md` — stack, layering, dependency direction.
-3. `conventions/service-layer-conventions.md` — how all business logic is organized.
-4. The code itself — `apps/web/src/domains/*`, `apps/queue/src/domains/*`, `packages/rest/src/services/*`. The code is authoritative; docs only tell you how to navigate it.
+2. `concepts/architecture.md` — the big picture: three services, two Temporal queues, master data flow.
+3. `conventions/foundation-setup-and-conventions.md` — stack, layering, dependency direction.
+4. `conventions/service-layer-conventions.md` — how all business logic is organized.
+5. Then pull the specific concept under `concepts/` that matches your task (e.g. editing Slack ingestion → read `concepts/slack-ingestion.md`).
 
-## Conventions (cross-cutting)
+## Concepts (architecture explainers)
+
+| Doc | What it covers |
+|---|---|
+| [concepts/architecture.md](concepts/architecture.md) | Big picture: three services (web / queue / agents), two Temporal queues, master data flow, auth surfaces, storage, realtime. Read first. |
+| [concepts/slack-ingestion.md](concepts/slack-ingestion.md) | Slack webhook → signature verify → dedup → Temporal dispatch → realtime fanout. |
+| [concepts/thread-grouping.md](concepts/thread-grouping.md) | How Slack messages collapse into `SupportConversation` records. Thread-alias lookup, grouping anchor, merge/reassign/undo. |
+| [concepts/support-conversation-fsm.md](concepts/support-conversation-fsm.md) | The conversation state machine: states, events, transitions, guards. |
+| [concepts/ai-analysis-pipeline.md](concepts/ai-analysis-pipeline.md) | Analysis trigger (debounce + manual), Temporal workflow, agent service call, positional JSON output, SSE progress stream. |
+| [concepts/ai-draft-generation.md](concepts/ai-draft-generation.md) | Draft lifecycle, state machine, `slackClientMsgId` idempotent delivery, reconciliation, dismiss/retry flows. |
+| [concepts/session-replay-capture.md](concepts/session-replay-capture.md) | Browser SDK → ingest → storage → SessionDigest correlation into analysis. |
+| [concepts/auth-and-workspaces.md](concepts/auth-and-workspaces.md) | Google OAuth, workspace auto-join, membership roles, the three auth surfaces (`tli_` / `tlk_` / operator session). |
+| [concepts/codex-search.md](concepts/codex-search.md) | Repository indexing, embedding (text-embedding-3-small), hybrid search (RRF + LLM reranker), citations, PR intent skeleton. |
+
+## Conventions (cross-cutting rules)
 
 | Doc | What it covers |
 |---|---|
@@ -30,7 +46,7 @@ That's it. No `plans/`, no `domains/`, no `specs/`. If you need a forward-lookin
 
 The `spec-*` files under `conventions/` are stable contracts (schemas, formats, auth patterns) — not forward-looking specs. They describe what the system guarantees, not what we plan to build.
 
-## Contracts
+## Contracts (generated artifacts)
 
 | Doc | What it covers |
 |---|---|
@@ -40,9 +56,14 @@ The `spec-*` files under `conventions/` are stable contracts (schemas, formats, 
 
 Before adding anything under `docs/`, ask: does this describe current reality, or future intent?
 
+- **Architecture / how a piece works now** → `concepts/` (present tense; update alongside code changes)
 - **Current-reality contract or convention** → `conventions/` (update alongside the code that implements it)
 - **Generated schema** → `contracts/`
 - **Forward-looking plan, spec, or impl checklist** → **do not commit here.** Write it in your PR description, a GitHub issue, or `~/.gstack/projects/<slug>/`. Let it disappear when the work ships.
 - **In-flight migration that needs shared state across sessions** → `docs/refactor/<feature>-status.md` (a status doc, not a plan). Delete when the migration lands.
 
-If you need to explain rationale long-term, fold it into the matching `conventions/*.md` or root `AGENTS.md`. Commit the reasoning, not the plan.
+## Keep the concept docs honest
+
+Concept docs rot silently. When you change behavior that a `concepts/*.md` file describes, update that doc in the **same PR** as the code change. Every concept doc ends with a "Keep this doc honest" checklist listing the conditions that should trigger an update. Read that section before you merge.
+
+If you notice a concept doc has drifted, fix it in a follow-up PR — don't leave it rotten. Rotten concept docs are worse than no docs, because agents trust them.
