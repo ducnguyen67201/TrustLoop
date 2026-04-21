@@ -4,14 +4,18 @@ import { ConversationHeader } from "@/components/support/conversation-header";
 import { ConversationPropertiesSidebar } from "@/components/support/conversation-properties-sidebar";
 import { CustomerProfileProvider } from "@/components/support/customer-profile-context";
 import { MessageList } from "@/components/support/message-list";
+import { ReassignEventDialog } from "@/components/support/reassign-event-dialog";
 import { ReplyComposer } from "@/components/support/reply-composer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalysis } from "@/hooks/use-analysis";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useConversationReply } from "@/hooks/use-conversation-reply";
+import { useEventReassign } from "@/hooks/use-event-reassign";
+import { useReassignCandidates } from "@/hooks/use-reassign-candidates";
 import { useSessionReplay } from "@/hooks/use-session-replay";
 import type { SupportConversationStatus } from "@shared/types";
+import { useCallback, useState } from "react";
 
 interface ConversationViewProps {
   conversationId: string;
@@ -48,6 +52,44 @@ export function ConversationView({
   const auth = useAuthSession();
   const analysisHook = useAnalysis(conversationId, workspaceId);
   const sessionReplay = useSessionReplay(conversationId, workspaceId);
+
+  // Reassign picker state. Candidates are fetched lazily the first time the
+  // operator opens the dialog; see useReassignCandidates.
+  const reassignMutation = useEventReassign();
+  const reassignCandidates = useReassignCandidates();
+  const [reassigningEventId, setReassigningEventId] = useState<string | null>(null);
+
+  const handleRequestReassign = useCallback(
+    (eventId: string) => {
+      setReassigningEventId(eventId);
+      if (!reassignCandidates.hasLoaded) {
+        void reassignCandidates.loadCandidates();
+      }
+    },
+    [reassignCandidates]
+  );
+
+  const handleCloseReassign = useCallback(() => {
+    setReassigningEventId(null);
+    reassignMutation.clearReassignError();
+  }, [reassignMutation]);
+
+  const handleSubmitReassign = useCallback(
+    async (targetConversationId: string) => {
+      if (!reassigningEventId) {
+        return;
+      }
+      try {
+        await reassignMutation.submitReassign(reassigningEventId, targetConversationId);
+        setReassigningEventId(null);
+        // Refresh the timeline to hide the moved event.
+        await reply.refresh();
+      } catch {
+        // Error surfaced via reassignMutation.reassignError in the dialog.
+      }
+    },
+    [reassignMutation, reassigningEventId, reply]
+  );
 
   const {
     conversation,
@@ -132,6 +174,7 @@ export function ConversationView({
               onRetryDelivery={handleRetryDelivery}
               onSetReplyToEventId={setReplyToEventId}
               onToggleReaction={handleToggleReaction}
+              onRequestReassign={handleRequestReassign}
               currentUserId={auth.session?.user.id ?? null}
             />
 
@@ -166,6 +209,17 @@ export function ConversationView({
           />
         </div>
       </div>
+
+      <ReassignEventDialog
+        open={reassigningEventId !== null}
+        sourceChannelId={conversation.thread.channelId}
+        sourceConversationId={conversationId}
+        candidates={reassignCandidates.candidates}
+        isSubmitting={reassignMutation.isReassigning}
+        error={reassignMutation.reassignError ?? reassignCandidates.error}
+        onSubmit={handleSubmitReassign}
+        onClose={handleCloseReassign}
+      />
     </CustomerProfileProvider>
   );
 }

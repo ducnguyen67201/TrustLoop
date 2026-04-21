@@ -2,6 +2,11 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.7.0] - 2026-04-20
+
+### Added
+- **Operators can move a single message to a different conversation.** Hover any customer message in the conversation view and click "Move to thread…" — a searchable picker opens listing other open conversations (filtered to the same channel by default; toggle widens to other channels with a warning that the server blocks cross-channel moves). Picking a target and hitting Enter routes through the `supportInbox.reassignEvent` procedure shipped in PR #48, stamps a `REASSIGNED_EVENT` breadcrumb on both sides of the move, and refreshes the timeline.
+
 ## [0.2.6.0] - 2026-04-20
 
 ### Added
