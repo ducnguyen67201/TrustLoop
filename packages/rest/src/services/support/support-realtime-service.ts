@@ -213,7 +213,7 @@ export async function emitConversationChanged(input: {
     occurredAt: new Date().toISOString(),
   });
 
-  await prisma.$queryRaw`SELECT pg_notify(${SUPPORT_INBOX_STREAM_CHANNEL}, ${JSON.stringify(event)})`;
+  await prisma.$executeRaw`SELECT pg_notify(${SUPPORT_INBOX_STREAM_CHANNEL}, ${JSON.stringify(event)})`;
 }
 
 /**
