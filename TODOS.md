@@ -1,12 +1,38 @@
 # TODOS
 
+## Doc Philosophy Enforcement
+
+### Scoped `AGENTS.md` per subtree
+
+**What:** Add a scoped `AGENTS.md` under `apps/web/`, `apps/queue/`, `apps/agents/`, `packages/rest/`, `packages/types/`, `packages/database/`. Each file lists the rules that apply inside that subtree (e.g. "all Prisma reads/writes go through services", "no direct `prisma.*` calls in routers"). Mirror openclaw/openclaw's per-subtree AGENTS.md pattern.
+
+**Why:** Root AGENTS.md is 450+ lines and agents don't always read it end-to-end for scoped tasks. Per-subtree files let agents pull only the rules relevant to the file they're editing. Openclaw's "no plans committed" discipline holds because every subtree enforces its own rules; TrustLoop just adopted "no plans" but lacks the matching enforcement structure.
+
+**Context:** Deferred from the 2026-04-21 docs-cleanup /autoplan. Both CEO dual voices flagged that a philosophy section without scoped enforcement will erode.
+
+**Effort:** M (human) / M (CC — ~1 hour per subtree, 6 subtrees)
+**Priority:** P2
+**Depends on:** Nothing. Do as small PRs, one subtree at a time.
+
+### CI lint blocking forward-looking doc patterns
+
+**What:** Add a CI check that fails the build if any of: `docs/plans/**/*.md`, `docs/specs/**/*.md`, `docs/domains/**/*.md`, `docs/**/impl-plan-*.md`, `docs/**/spec-*.md` (outside `docs/conventions/`), `docs/**/design-*.md`, `docs/**/impl-*.md` (outside `docs/conventions/`) exist.
+
+**Why:** The Doc Philosophy section in AGENTS.md is prose-only. Without mechanical enforcement, a contributor (or an AI agent following old habits) will recreate `docs/plans/impl-plan-*.md` within months. A CI guard catches it at PR time.
+
+**Context:** Deferred from the 2026-04-21 docs-cleanup /autoplan. CEO dual voices (Claude + Codex) both flagged this as the missing enforcement layer.
+
+**Effort:** S (human: ~30 min / CC: ~10 min)
+**Priority:** P3
+**Depends on:** Nothing.
+
 ## AI Analysis
 
 ### Per-workspace Sentry adapter (only if a paying customer asks)
 
 **What:** A per-workspace BYO-Sentry integration. OAuth or PAT, encrypted token in a new `sentryConnection` table, `getConfig(workspaceId)` lookup, gated `searchSentry` tool registration when a workspace has a connection. Mirrors the existing GitHub install pattern.
 
-**Why:** The original env-based Sentry tool was removed (see `docs/plans/impl-plan-remove-sentry-integration.md`) because it leaked across tenants and duplicated SDK-collected signals. A per-workspace adapter is fine to revisit if an enterprise customer with existing Sentry history asks for cross-correlation. Until then, the SDK is the source.
+**Why:** The original env-based Sentry tool was removed on 2026-04-19 because it leaked across tenants and duplicated SDK-collected signals. A per-workspace adapter is fine to revisit if an enterprise customer with existing Sentry history asks for cross-correlation. Until then, the SDK is the source.
 
 **Context:** Removed on 2026-04-19. Both /autoplan dual-voice CEO/Eng reviews recommended disconnect-first; user chose hard-delete and accepted the rebuild cost if BYO-Sentry returns.
 
@@ -140,7 +166,7 @@ When you pick this up: the mechanical fix is to route the listed queries through
 
 **Why:** The TOON prompt-foundation review found that the biggest structured input is still upstream-pre-rendered as a string, which limits how much leverage any serializer can have. Until this boundary is fixed, prompt rendering only owns part of the structured-input problem.
 
-**Context:** Deferred from `/autoplan` review of `docs/plans/impl-plan-toon-prompt-foundation.md` on 2026-04-19. The approved path keeps PR 1 local to `apps/agents` and avoids hiding a larger queue/types/agents contract rewrite inside the serializer refactor.
+**Context:** Deferred during TOON prompt foundation work on 2026-04-19. The approved path keeps PR 1 local to `apps/agents` and avoids hiding a larger queue/types/agents contract rewrite inside the serializer refactor.
 
 **Effort:** M (human) / S-M (CC)
 **Priority:** P2
@@ -152,7 +178,7 @@ When you pick this up: the mechanical fix is to route the listed queries through
 
 **Why:** Shared abstractions are worth it when reuse is real. Doing it earlier turns one prompt refactor into a mini-platform project with extra maintenance surface and weaker local clarity.
 
-**Context:** Deferred from `/autoplan` review of `docs/plans/impl-plan-toon-prompt-foundation.md` on 2026-04-19. The review explicitly narrowed scope away from `packages/types` for renderer-local concerns.
+**Context:** Deferred during TOON prompt foundation work on 2026-04-19. The review explicitly narrowed scope away from `packages/types` for renderer-local concerns.
 
 **Effort:** S (human) / S (CC)
 **Priority:** P3

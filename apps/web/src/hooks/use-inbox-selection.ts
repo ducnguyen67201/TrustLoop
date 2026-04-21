@@ -7,9 +7,8 @@ import { toast } from "sonner";
 // ---------------------------------------------------------------------------
 // useInboxSelection — explicit select-mode state for the kanban inbox.
 //
-// Implements the "select mode" pattern from
-// docs/plans/impl-plan-thread-merge-split-reassign.md §4.1 (D1 fix):
-// drag-drop and checkbox multi-select don't share a hover target. Agents
+// Implements explicit select mode because drag-drop and checkbox
+// multi-select can't share a hover target without collision. Agents
 // toggle into select mode via a button or keyboard shortcut. In select mode,
 // cards are non-draggable and show persistent checkboxes; click toggles
 // selection instead of opening the conversation sheet.

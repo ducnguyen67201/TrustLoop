@@ -1,6 +1,6 @@
 {
   "name": "trustloop",
-  "version": "0.2.8.0",
+  "version": "0.2.9.0",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.6.2",
@@ -32,6 +32,7 @@
     "db:new-workspace": "npm --workspace @shared/database run db:new-workspace --",
     "openapi:generate": "npm --workspace @shared/rest run openapi:generate",
     "openapi:check": "npm --workspace @shared/rest run openapi:check",
+    "check:docs": "node scripts/check-docs-frontmatter.mjs && node scripts/check-docs-links.mjs",
     "clean:artifacts": "rm -rf .turbo apps/*/.turbo packages/*/.turbo apps/*/dist packages/*/dist apps/web/.next coverage && find . -name '*.tsbuildinfo' -type f -delete",
     "prepare": "husky"
   },

@@ -1,0 +1,42 @@
+name: check-docs
+
+# Triggers only when docs or top-level markdown files change. Keeps the check
+# fast and avoids burning CI minutes on unrelated PRs.
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "CHANGELOG.md"
+      - "TODOS.md"
+      - "README.md"
+      - "scripts/check-docs-*.mjs"
+      - ".github/workflows/check-docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "CHANGELOG.md"
+      - "TODOS.md"
+      - "README.md"
+      - "scripts/check-docs-*.mjs"
+
+jobs:
+  check-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Run docs checks
+        run: npm run check:docs

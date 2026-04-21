@@ -18,7 +18,6 @@ import { useEffect, useMemo, useState } from "react";
 // ---------------------------------------------------------------------------
 // ReassignEventDialog — move a single message to a different conversation.
 //
-// Spec: docs/plans/impl-plan-thread-merge-split-reassign.md §4.4.
 // Intentionally simple for MVP — substring search across conversation
 // channel and thread_ts. The richer Command-palette picker (keyboard
 // navigation, fuzzy match) lands post-pilot when we have usage data.

@@ -420,12 +420,52 @@ A feature is done only when:
 
 ## Additional Docs
 
+- Big-picture architecture (start here):
+  - `docs/concepts/architecture.md`
 - Architecture/conventions baseline:
   - `docs/conventions/foundation-setup-and-conventions.md`
-- Implementation plan (MVP):
-  - `docs/plans/impl-plan-first-customer-happy-path-mvp.md`
 - Service layer conventions (namespace imports, naming rules, rollout status):
   - `docs/conventions/service-layer-conventions.md`
+- Full concept + conventions index:
+  - `docs/README.md`
+
+## Doc Philosophy
+
+Three pillars, no more:
+
+- **`docs/concepts/`** — architecture explainers. How each major piece of the
+  system works today, in present tense. Read these for big-picture understanding.
+  (slack-ingestion, thread-grouping, support-conversation-fsm, ai-analysis-pipeline,
+  ai-draft-generation, session-replay-capture, auth-and-workspaces, codex-search,
+  plus the master `architecture.md`.)
+- **`docs/conventions/`** — stable contracts and operating rules (service layer,
+  schemas, auth, formats). The rules you follow when you edit. Update alongside
+  code when contracts change.
+- **`docs/contracts/`** — generated schema artifacts (OpenAPI).
+
+Rules:
+
+- **No forward-looking spec/plan docs committed.** Planning happens in PR
+  descriptions, GitHub issues, or local `~/.gstack/projects/<slug>/` scratch.
+  Committed docs describe *current reality* only.
+- **No `impl-plan-*`, `spec-*`, `impl-*`, `design-*` files under `docs/` going
+  forward** — the `spec-*` files inside `docs/conventions/` are stable contracts
+  and stay. But don't add new `spec-*` prefixes anywhere else.
+- **Keep concept docs in sync with code.** When you change behavior that a
+  `docs/concepts/*.md` file describes, update that concept doc in the **same
+  PR** as the code change. Every concept doc ends with a "Keep this doc honest"
+  checklist listing the conditions that should trigger an update. If you catch
+  yourself skipping that step, stop and update the doc — rotten concept docs
+  are worse than no docs, because agents trust them.
+- **In-flight migrations that need shared state** go to
+  `docs/refactor/<feature>-status.md` (a status doc, not a plan). Delete when
+  the migration lands.
+- **Why this shape:** forward-looking plans become hallucination fuel for AI
+  agents — the docs diverge from reality the moment a plan ships, and agents
+  read stale plans as authoritative. Concept docs (current-state, updated with
+  code) give agents a reliable mental model. Reference: openclaw/openclaw
+  (docs/concepts + docs/reference + scoped AGENTS.md files, zero committed
+  forward-looking plans).
 
 ## Skills + Doc Hygiene
 

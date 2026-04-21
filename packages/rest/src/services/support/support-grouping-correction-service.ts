@@ -22,8 +22,6 @@ import { TRPCError } from "@trpc/server";
 // Namespace import:
 //   import * as groupingCorrection from "@shared/rest/services/support/support-grouping-correction-service";
 //
-// Plan: docs/plans/impl-plan-thread-merge-split-reassign.md §6.
-//
 // Discipline:
 // - Soft-deletes ALWAYS go through `updateMany({ data: { deletedAt: ... } })`
 //   because CLAUDE.md "Soft Delete Rules" forbids `.delete()` inside

@@ -197,8 +197,7 @@ export async function runSupportPipeline(
         },
       });
       if (alias?.conversation) {
-        // Chain-follow for merged conversations (F3 fix per
-        // docs/plans/impl-plan-thread-merge-split-reassign.md §7).
+        // Chain-follow for merged conversations.
         // If the aliased target is soft-deleted via merge, walk the
         // mergedIntoConversationId chain until we find an active
         // conversation or the chain terminates. Bounded at 5 hops to
