@@ -8,7 +8,7 @@ on:
 
 jobs:
   detect-changes:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     permissions:
       contents: read
       pull-requests: read
@@ -202,7 +202,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   repo-guards:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop?schema=public
       APP_BASE_URL: http://localhost:3000
@@ -250,7 +250,7 @@ jobs:
   validate-services:
     needs: [detect-changes, repo-guards]
     if: needs.detect-changes.outputs.validation_jobs != '[]'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     strategy:
       fail-fast: false
       matrix:
@@ -337,7 +337,7 @@ jobs:
       needs.detect-changes.outputs.services != '[]' &&
       needs.repo-guards.result == 'success' &&
       (needs.validate-services.result == 'success' || needs.validate-services.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     strategy:
       fail-fast: false
       matrix:

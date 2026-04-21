@@ -54,7 +54,7 @@ concurrency:
 
 jobs:
   migrate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     permissions:
       contents: read
     # When the run targets production, GitHub's `environment: production`

@@ -29,7 +29,7 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     permissions:
       contents: read
 
