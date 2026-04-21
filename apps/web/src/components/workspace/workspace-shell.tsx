@@ -8,7 +8,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -22,19 +21,15 @@ import { DarkModeToggle } from "@/components/workspace/dark-mode-toggle";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import {
   workspaceInsightsPath,
-  workspaceRootPath,
   workspaceSessionsPath,
   workspaceSettingsPath,
   workspaceSupportPath,
 } from "@/lib/workspace-paths";
 import {
-  RiBook2Line,
-  RiCheckboxCircleLine,
   RiCustomerService2Line,
   RiKey2Line,
   RiLineChartLine,
   RiLogoutBoxRLine,
-  RiPieChartLine,
   RiPlayCircleLine,
   RiSettings3Line,
 } from "@remixicon/react";
@@ -51,7 +46,7 @@ type WorkspaceShellProps = {
 type NavItem = {
   href: string;
   label: string;
-  icon: typeof RiPieChartLine;
+  icon: typeof RiLineChartLine;
   isActive: boolean;
 };
 
@@ -59,19 +54,12 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
   const auth = useAuthSession();
   const pathname = usePathname();
 
-  const rootPath = workspaceRootPath(workspaceId);
   const settingsPath = workspaceSettingsPath(workspaceId);
   const supportPath = workspaceSupportPath(workspaceId);
   const sessionsPath = workspaceSessionsPath(workspaceId);
   const insightsPath = workspaceInsightsPath(workspaceId);
 
   const mainNavItems: NavItem[] = [
-    {
-      href: rootPath,
-      label: "Dashboard",
-      icon: RiPieChartLine,
-      isActive: pathname === rootPath,
-    },
     {
       href: supportPath,
       label: "Support",
@@ -89,21 +77,6 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
       label: "Insights",
       icon: RiLineChartLine,
       isActive: pathname === insightsPath || pathname.startsWith(`${insightsPath}/`),
-    },
-  ];
-
-  const secondaryNavItems: NavItem[] = [
-    {
-      href: rootPath,
-      label: "Projects",
-      icon: RiBook2Line,
-      isActive: false,
-    },
-    {
-      href: rootPath,
-      label: "Lifecycle",
-      icon: RiCheckboxCircleLine,
-      isActive: false,
     },
   ];
 
@@ -142,7 +115,7 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
                 tooltip="TrustLoop AI"
                 className="h-full rounded-none px-3 data-[size=default]:h-full"
               >
-                <Link href={rootPath}>
+                <Link href={supportPath}>
                   <Logo className="size-5 shrink-0" />
                   <span className="font-semibold">TrustLoop AI</span>
                 </Link>
@@ -153,28 +126,9 @@ export function WorkspaceShell({ workspaceId, children }: WorkspaceShellProps) {
 
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Main</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {mainNavItems.map((item) => (
-                  <SidebarMenuItem key={item.label}>
-                    <SidebarMenuButton asChild isActive={item.isActive} tooltip={item.label}>
-                      <Link href={item.href}>
-                        <item.icon />
-                        <span>{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          <SidebarGroup>
-            <SidebarGroupLabel>Documents</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {secondaryNavItems.map((item) => (
                   <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton asChild isActive={item.isActive} tooltip={item.label}>
                       <Link href={item.href}>

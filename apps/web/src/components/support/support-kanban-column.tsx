@@ -14,6 +14,9 @@ interface SupportKanbanColumnProps {
   selectedConversationId: string | null;
   status: SupportConversationStatus;
   title: string;
+  isSelectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelection?: (conversationId: string) => void;
 }
 
 /**
@@ -28,10 +31,16 @@ export function SupportKanbanColumn({
   selectedConversationId,
   status,
   title,
+  isSelectMode = false,
+  selectedIds,
+  onToggleSelection,
 }: SupportKanbanColumnProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   function handleDragOver(event: DragEvent) {
+    if (isSelectMode) {
+      return;
+    }
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     setIsDragOver(true);
@@ -42,6 +51,9 @@ export function SupportKanbanColumn({
   }
 
   function handleDrop(event: DragEvent) {
+    if (isSelectMode) {
+      return;
+    }
     event.preventDefault();
     setIsDragOver(false);
     const conversationId = event.dataTransfer.getData("text/plain");
@@ -54,7 +66,7 @@ export function SupportKanbanColumn({
     <section
       className={cn(
         "border-border/80 bg-card/70 flex min-h-[32rem] flex-col border transition-colors",
-        isDragOver && "border-primary/50 bg-primary/5"
+        isDragOver && !isSelectMode && "border-primary/50 bg-primary/5"
       )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -88,6 +100,9 @@ export function SupportKanbanColumn({
             conversation={conversation}
             isSelected={selectedConversationId === conversation.id}
             onSelect={onSelect}
+            isSelectMode={isSelectMode}
+            isChecked={selectedIds?.has(conversation.id) ?? false}
+            onToggleSelection={onToggleSelection}
           />
         ))}
       </div>

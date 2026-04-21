@@ -4,16 +4,15 @@ import { trpcQuery } from "@/lib/trpc-http";
 import type { SupportConversationTimeline } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const TIMELINE_POLL_MS = 10_000;
 const ANALYSIS_POLL_MS = 2_000;
 
 /**
- * Coordinates timeline and analysis polling for a single conversation.
- * When analysis is active, polls at 2s. Otherwise polls timeline at 10s.
- * Mutations trigger immediate refresh and reset the poll timer.
- * Pauses when the browser tab is hidden.
+ * Coordinates timeline refreshes for a single conversation.
+ * Normal updates are event-driven: initial load, local mutations, stream
+ * invalidations, and tab refocus all refresh immediately. Only active AI
+ * analysis keeps a short 2s polling loop for progress updates.
  */
-export function useConversationPolling(conversationId: string | null) {
+export function useConversationPolling(conversationId: string | null, refreshNonce = 0) {
   const [timelineData, setTimelineData] = useState<SupportConversationTimeline | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,29 +57,30 @@ export function useConversationPolling(conversationId: string | null) {
     }
   }, [conversationId]);
 
-  const schedulePoll = useCallback(() => {
+  const scheduleAnalysisRefresh = useCallback(() => {
     clearPoll();
-    if (!conversationId) return;
+    if (!conversationId || !isAnalysisActive) {
+      return;
+    }
 
-    const interval = isAnalysisActive ? ANALYSIS_POLL_MS : TIMELINE_POLL_MS;
     pollRef.current = setTimeout(async () => {
       if (document.hidden) {
-        schedulePoll();
+        scheduleAnalysisRefresh();
         return;
       }
       await fetchTimeline();
       if (mountedRef.current) {
-        schedulePoll();
+        scheduleAnalysisRefresh();
       }
-    }, interval);
+    }, ANALYSIS_POLL_MS);
   }, [clearPoll, conversationId, fetchTimeline, isAnalysisActive]);
 
   const refresh = useCallback(async () => {
     clearPoll();
     const result = await fetchTimeline();
-    schedulePoll();
+    scheduleAnalysisRefresh();
     return result;
-  }, [clearPoll, fetchTimeline, schedulePoll]);
+  }, [clearPoll, fetchTimeline, scheduleAnalysisRefresh]);
 
   const setAnalysisActive = useCallback((active: boolean) => {
     setIsAnalysisActive(active);
@@ -95,7 +95,7 @@ export function useConversationPolling(conversationId: string | null) {
     if (conversationId) {
       fetchTimeline().then(() => {
         if (mountedRef.current) {
-          schedulePoll();
+          scheduleAnalysisRefresh();
         }
       });
     } else {
@@ -106,17 +106,25 @@ export function useConversationPolling(conversationId: string | null) {
       mountedRef.current = false;
       clearPoll();
     };
-  }, [conversationId, clearPoll, fetchTimeline, schedulePoll]);
+  }, [conversationId, clearPoll, fetchTimeline, scheduleAnalysisRefresh]);
 
   useEffect(() => {
     function handleVisibilityChange() {
       if (!document.hidden && conversationId) {
-        refresh();
+        void refresh();
       }
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [conversationId, refresh]);
+
+  useEffect(() => {
+    if (!conversationId || refreshNonce === 0) {
+      return;
+    }
+
+    void refresh();
+  }, [conversationId, refresh, refreshNonce]);
 
   return {
     timelineData,

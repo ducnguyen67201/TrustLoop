@@ -64,9 +64,9 @@ docker run --rm -p 4000:4000 --env-file .env trustloop-agents
 ```
 
 All four Dockerfiles use the multi-stage `deps → builder → runner` pattern,
-run as non-root (UID 1001), and deliberately skip `package-lock.json`
-(npm/cli#4828: host-generated lockfiles only list the host's native
-bindings, so `npm ci` fails to install the linux variants).
+run as non-root (UID 1001), and install from the committed `package-lock.json`
+via `npm ci` so deploys match the dependency graph used in local development
+and CI.
 
 ## Railway
 
@@ -109,8 +109,8 @@ services in one environment; differs between staging and production.
 
 | Service | Vars |
 |---------|------|
-| web     | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, `SLACK_REPLAY_WINDOW_SECONDS`, `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_PATH`, `SENTRY_*`, `AGENT_SERVICE_URL=http://${{agents.RAILWAY_PRIVATE_DOMAIN}}:4000` |
-| queue   | `SLACK_BOT_TOKEN`, `GITHUB_APP_PRIVATE_KEY`, `AGENT_SERVICE_URL` (same reference as web), `SENTRY_AUTH_TOKEN` |
+| web     | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, `SLACK_REPLAY_WINDOW_SECONDS`, `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_PATH`, `AGENT_SERVICE_URL=http://${{agents.RAILWAY_PRIVATE_DOMAIN}}:4000` |
+| queue   | `SLACK_BOT_TOKEN`, `GITHUB_APP_PRIVATE_KEY`, `AGENT_SERVICE_URL` (same reference as web) |
 | agents  | — (everything comes from Tier 1) |
 | marketing | — |
 

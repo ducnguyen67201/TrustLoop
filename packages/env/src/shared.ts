@@ -51,13 +51,7 @@ export const serverSchemas = {
 
   // AI Analysis (Agent Service)
   OPENAI_API_KEY: z.string().min(1).optional(),
-  AGENT_SERVICE_URL: z.string().url().optional(),
-
-  // Sentry (AI Analysis context)
-  SENTRY_AUTH_TOKEN: z.string().min(1).optional(),
-  SENTRY_ORG: z.string().min(1).optional(),
-  SENTRY_PROJECT: z.string().min(1).optional(),
-  SENTRY_BASE_URL: z.string().url().optional(),
+  AGENT_SERVICE_URL: z.url().optional(),
 
   // Codex / GitHub App
   GITHUB_APP_ID: z.coerce.number().int().positive().optional(),

@@ -2,16 +2,21 @@ import { normalizeSlackMessageEvent } from "@/domains/support/adapters/slack/eve
 import { shouldDropIngressEvent } from "@/domains/support/ingress-drop-rules";
 import { prisma, softUpsert } from "@shared/database";
 import * as supportEvents from "@shared/rest/services/support/support-event-service";
+import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
 import {
   GROUPING_DEFAULTS,
   GROUPING_ELIGIBLE_STATUSES,
   SUPPORT_CONVERSATION_EVENT_SOURCE,
   SUPPORT_CONVERSATION_STATUS,
   SUPPORT_INGRESS_PROCESSING_STATE,
+  SUPPORT_REALTIME_REASON,
   type SupportConversationEventSource,
+  type SupportConversationStatus,
   type SupportWorkflowInput,
   type SupportWorkflowResult,
   WORKFLOW_PROCESSING_STATUS,
+  restoreConversationContext,
+  transitionConversation,
 } from "@shared/types";
 import { ConflictError, ValidationError } from "@shared/types/errors";
 import {
@@ -186,11 +191,34 @@ export async function runSupportPipeline(
           },
         },
         select: {
-          conversation: { select: { threadTs: true, deletedAt: true } },
+          conversation: {
+            select: { id: true, threadTs: true, deletedAt: true, mergedIntoConversationId: true },
+          },
         },
       });
-      if (alias?.conversation && !alias.conversation.deletedAt) {
-        resolvedThreadTs = alias.conversation.threadTs;
+      if (alias?.conversation) {
+        // Chain-follow for merged conversations (F3 fix per
+        // docs/plans/impl-plan-thread-merge-split-reassign.md §7).
+        // If the aliased target is soft-deleted via merge, walk the
+        // mergedIntoConversationId chain until we find an active
+        // conversation or the chain terminates. Bounded at 5 hops to
+        // prevent runaway cycles; chains beyond that indicate data corruption.
+        let current = alias.conversation;
+        let hops = 0;
+        while (current.deletedAt && current.mergedIntoConversationId && hops < 5) {
+          const next = await tx.supportConversation.findUnique({
+            where: { id: current.mergedIntoConversationId },
+            select: { id: true, threadTs: true, deletedAt: true, mergedIntoConversationId: true },
+          });
+          if (!next) {
+            break;
+          }
+          current = next;
+          hops++;
+        }
+        if (!current.deletedAt) {
+          resolvedThreadTs = current.threadTs;
+        }
       }
     }
 
@@ -237,14 +265,21 @@ export async function runSupportPipeline(
       resolvedThreadTs
     );
 
-    const conversationData = {
+    // Ingress goes through the conversation FSM's `customerMessageReceived`
+    // event. Per the FSM, that event lands UNREAD from any current state,
+    // matching the pre-FSM behavior where a new customer message on a
+    // DONE/STALE conversation reopened to UNREAD (the analysis trigger
+    // filters out DONE, so preserving DONE would skip re-analysis). The
+    // transition is expressed via a `transformUpdate` callback so the FSM
+    // runs inside the same atomic operation that softUpsert uses — splitting
+    // it out at the caller would drop the resurrect branch or race with
+    // concurrent operator actions.
+    const baseUpdate = {
       teamId: normalized.teamId,
       channelId: normalized.channelId,
       threadTs: resolvedThreadTs,
-      status: SUPPORT_CONVERSATION_STATUS.unread,
       lastCustomerMessageAt: now,
       customerWaitingSince: now,
-      staleAt: computeUnreadStaleAt(now),
       lastActivityAt: now,
     };
 
@@ -254,9 +289,37 @@ export async function runSupportPipeline(
         workspaceId: input.workspaceId,
         installationId: input.installationId,
         canonicalConversationKey,
-        ...conversationData,
+        ...baseUpdate,
+        status: SUPPORT_CONVERSATION_STATUS.unread,
+        staleAt: computeUnreadStaleAt(now),
       },
-      update: conversationData,
+      update: baseUpdate,
+      transformUpdate: (existing) => {
+        const row = existing as { id: string; status: SupportConversationStatus } | null;
+        if (!row) {
+          // transformUpdate only runs on the update branch, so this should
+          // never fire. Defensive fallback preserves the hard-coded UNREAD.
+          return {
+            ...baseUpdate,
+            status: SUPPORT_CONVERSATION_STATUS.unread,
+            staleAt: computeUnreadStaleAt(now),
+          };
+        }
+        const next = transitionConversation(restoreConversationContext(row.id, row.status), {
+          type: "customerMessageReceived",
+        });
+        return {
+          ...baseUpdate,
+          status: next.status,
+          // staleAt only resets when landing in UNREAD (the sweep target);
+          // otherwise leave the existing value alone so a manually-stale
+          // conversation doesn't lose its deadline just because a new
+          // customer message bumped lastActivityAt.
+          ...(next.status === SUPPORT_CONVERSATION_STATUS.unread
+            ? { staleAt: computeUnreadStaleAt(now) }
+            : {}),
+        };
+      },
     });
 
     // Create a new grouping anchor if this is a standalone customer message
@@ -380,6 +443,12 @@ export async function runSupportPipeline(
     });
 
     return { conversation: upsertedConversation, pendingAttachments };
+  });
+
+  await supportRealtime.emitConversationChanged({
+    workspaceId: input.workspaceId,
+    conversationId: txResult.conversation.id,
+    reason: SUPPORT_REALTIME_REASON.ingressProcessed,
   });
 
   return {

@@ -1,15 +1,30 @@
-import { ANALYSIS_STATUS, DRAFT_STATUS, MAX_ANALYSIS_RETRIES } from "@shared/types";
+import {
+  ANALYSIS_STATUS,
+  DRAFT_DISPATCH_STATUS,
+  DRAFT_STATUS,
+  MAX_ANALYSIS_RETRIES,
+  SUPPORT_CONVERSATION_STATUS,
+} from "@shared/types";
 import {
   InvalidAnalysisTransitionError,
+  InvalidConversationTransitionError,
+  InvalidDraftDispatchTransitionError,
   InvalidDraftTransitionError,
   canRetryAnalysis,
   createAnalysisContext,
+  createConversationContext,
   createDraftContext,
+  createDraftDispatchContext,
   getAllowedAnalysisEvents,
+  getAllowedConversationEvents,
+  getAllowedDraftDispatchEvents,
   getAllowedDraftEvents,
   restoreAnalysisContext,
+  restoreConversationContext,
   transitionAnalysis,
+  transitionConversation,
   transitionDraft,
+  transitionDraftDispatch,
 } from "@shared/types";
 import { describe, expect, it } from "vitest";
 
@@ -213,12 +228,76 @@ describe("draft state machine", () => {
     expect(next.status).toBe(DRAFT_STATUS.dismissed);
   });
 
-  it("APPROVED → send → SENT", () => {
+  it("APPROVED → startSending → SENDING → sendSucceeded → SENT", () => {
     let ctx = createDraftContext("dr_1");
     ctx = transitionDraft(ctx, { type: "generated" });
     ctx = transitionDraft(ctx, { type: "approve", approvedBy: "user_1" });
-    const next = transitionDraft(ctx, { type: "send" });
+    ctx = transitionDraft(ctx, { type: "startSending" });
+    expect(ctx.status).toBe(DRAFT_STATUS.sending);
+    const next = transitionDraft(ctx, {
+      type: "sendSucceeded",
+      slackMessageTs: "1234567890.000100",
+    });
     expect(next.status).toBe(DRAFT_STATUS.sent);
+  });
+
+  it("SENDING → sendFailed (retryable) → DELIVERY_UNKNOWN", () => {
+    let ctx = createDraftContext("dr_1");
+    ctx = transitionDraft(ctx, { type: "generated" });
+    ctx = transitionDraft(ctx, { type: "approve", approvedBy: "user_1" });
+    ctx = transitionDraft(ctx, { type: "startSending" });
+    const next = transitionDraft(ctx, {
+      type: "sendFailed",
+      error: "network timeout",
+      retryable: true,
+    });
+    expect(next.status).toBe(DRAFT_STATUS.deliveryUnknown);
+    expect(next.errorMessage).toBe("network timeout");
+  });
+
+  it("SENDING → sendFailed (permanent) → SEND_FAILED", () => {
+    let ctx = createDraftContext("dr_1");
+    ctx = transitionDraft(ctx, { type: "generated" });
+    ctx = transitionDraft(ctx, { type: "approve", approvedBy: "user_1" });
+    ctx = transitionDraft(ctx, { type: "startSending" });
+    const next = transitionDraft(ctx, {
+      type: "sendFailed",
+      error: "channel_archived",
+      retryable: false,
+    });
+    expect(next.status).toBe(DRAFT_STATUS.sendFailed);
+  });
+
+  it("DELIVERY_UNKNOWN → reconcileFound → SENT", () => {
+    let ctx = createDraftContext("dr_1");
+    ctx = transitionDraft(ctx, { type: "generated" });
+    ctx = transitionDraft(ctx, { type: "approve", approvedBy: "user_1" });
+    ctx = transitionDraft(ctx, { type: "startSending" });
+    ctx = transitionDraft(ctx, {
+      type: "sendFailed",
+      error: "timeout",
+      retryable: true,
+    });
+    const next = transitionDraft(ctx, {
+      type: "reconcileFound",
+      slackMessageTs: "1234567890.000100",
+    });
+    expect(next.status).toBe(DRAFT_STATUS.sent);
+    expect(next.errorMessage).toBeNull();
+  });
+
+  it("SEND_FAILED → retry → APPROVED (allows re-send)", () => {
+    let ctx = createDraftContext("dr_1");
+    ctx = transitionDraft(ctx, { type: "generated" });
+    ctx = transitionDraft(ctx, { type: "approve", approvedBy: "user_1" });
+    ctx = transitionDraft(ctx, { type: "startSending" });
+    ctx = transitionDraft(ctx, {
+      type: "sendFailed",
+      error: "x",
+      retryable: false,
+    });
+    const next = transitionDraft(ctx, { type: "retry" });
+    expect(next.status).toBe(DRAFT_STATUS.approved);
   });
 
   it("APPROVED → failed → FAILED", () => {
@@ -241,7 +320,11 @@ describe("draft state machine", () => {
     let ctx = createDraftContext("dr_1");
     ctx = transitionDraft(ctx, { type: "generated" });
     ctx = transitionDraft(ctx, { type: "approve", approvedBy: "user_1" });
-    ctx = transitionDraft(ctx, { type: "send" });
+    ctx = transitionDraft(ctx, { type: "startSending" });
+    ctx = transitionDraft(ctx, {
+      type: "sendSucceeded",
+      slackMessageTs: "1234567890.000100",
+    });
     expect(() => transitionDraft(ctx, { type: "retry" })).toThrow(InvalidDraftTransitionError);
   });
 
@@ -267,12 +350,73 @@ describe("draft state machine", () => {
     expect(getAllowedDraftEvents(awaiting)).toEqual(["approve", "dismiss"]);
   });
 
-  it("full happy path: generate → approve → send", () => {
+  it("full happy path: generate → approve → startSending → sendSucceeded", () => {
     let ctx = createDraftContext("dr_1");
     ctx = transitionDraft(ctx, { type: "generated" });
     ctx = transitionDraft(ctx, { type: "approve", approvedBy: "user_1" });
-    ctx = transitionDraft(ctx, { type: "send" });
+    ctx = transitionDraft(ctx, { type: "startSending" });
+    ctx = transitionDraft(ctx, {
+      type: "sendSucceeded",
+      slackMessageTs: "1234567890.000100",
+    });
     expect(ctx.status).toBe(DRAFT_STATUS.sent);
+  });
+});
+
+// ── Draft Dispatch FSM ───────────────────────────────────────────────
+
+describe("DraftDispatch state machine", () => {
+  it("starts in PENDING with attempts=0 and no error", () => {
+    const ctx = createDraftDispatchContext("disp_1");
+    expect(ctx.status).toBe(DRAFT_DISPATCH_STATUS.pending);
+    expect(ctx.attempts).toBe(0);
+    expect(ctx.lastError).toBeNull();
+  });
+
+  it("PENDING → dispatched → DISPATCHED clears any prior error", () => {
+    const ctx = createDraftDispatchContext("disp_1");
+    const next = transitionDraftDispatch(ctx, { type: "dispatched" });
+    expect(next.status).toBe(DRAFT_DISPATCH_STATUS.dispatched);
+    expect(next.lastError).toBeNull();
+  });
+
+  it("PENDING → dispatchFailed → FAILED increments attempts and records error", () => {
+    const ctx = createDraftDispatchContext("disp_1");
+    const next = transitionDraftDispatch(ctx, {
+      type: "dispatchFailed",
+      error: "Temporal unavailable",
+    });
+    expect(next.status).toBe(DRAFT_DISPATCH_STATUS.failed);
+    expect(next.attempts).toBe(1);
+    expect(next.lastError).toBe("Temporal unavailable");
+  });
+
+  it("DISPATCHED is terminal — no further transitions allowed", () => {
+    let ctx = createDraftDispatchContext("disp_1");
+    ctx = transitionDraftDispatch(ctx, { type: "dispatched" });
+    expect(() => transitionDraftDispatch(ctx, { type: "dispatched" })).toThrow(
+      InvalidDraftDispatchTransitionError
+    );
+    expect(() => transitionDraftDispatch(ctx, { type: "dispatchFailed", error: "x" })).toThrow(
+      InvalidDraftDispatchTransitionError
+    );
+    expect(getAllowedDraftDispatchEvents(ctx)).toEqual([]);
+  });
+
+  it("FAILED is terminal today — no retry event exposed", () => {
+    let ctx = createDraftDispatchContext("disp_1");
+    ctx = transitionDraftDispatch(ctx, { type: "dispatchFailed", error: "x" });
+    expect(() => transitionDraftDispatch(ctx, { type: "dispatched" })).toThrow(
+      InvalidDraftDispatchTransitionError
+    );
+    expect(getAllowedDraftDispatchEvents(ctx)).toEqual([]);
+  });
+
+  it("getAllowedDraftDispatchEvents reflects current state", () => {
+    const pending = createDraftDispatchContext("disp_1");
+    expect([...getAllowedDraftDispatchEvents(pending)].sort()).toEqual(
+      ["dispatchFailed", "dispatched"].sort()
+    );
   });
 });
 
@@ -298,3 +442,251 @@ function mockDraftResult() {
     tone: "professional",
   };
 }
+
+// ── Conversation State Machine ───────────────────────────────────────
+
+describe("conversation state machine", () => {
+  const ACTOR = "u_operator_1";
+
+  it("starts in UNREAD", () => {
+    const ctx = createConversationContext("c_1");
+    expect(ctx.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+  });
+
+  // Happy paths per §4 transition table — one assertion per cell.
+
+  describe("UNREAD", () => {
+    const ctx = () => createConversationContext("c_1");
+
+    it("customerMessageReceived stays UNREAD", () => {
+      const next = transitionConversation(ctx(), { type: "customerMessageReceived" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+    });
+
+    it("operatorReplied → IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), { type: "operatorReplied" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorSetDone (deliveryConfirmed=true) → DONE", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetDone",
+        actorUserId: ACTOR,
+        deliveryConfirmed: true,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("operatorSetDone (deliveryConfirmed=false) throws", () => {
+      expect(() =>
+        transitionConversation(ctx(), {
+          type: "operatorSetDone",
+          actorUserId: ACTOR,
+          deliveryConfirmed: false,
+        })
+      ).toThrow(InvalidConversationTransitionError);
+    });
+
+    it("operatorSetStale → STALE", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetStale",
+        actorUserId: ACTOR,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.stale);
+    });
+
+    it("markStale → STALE", () => {
+      const next = transitionConversation(ctx(), { type: "markStale" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.stale);
+    });
+
+    it("operatorOverrideDone → DONE without evidence", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorOverrideDone",
+        actorUserId: ACTOR,
+        overrideReason: "customer confirmed via call",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("analysisEscalated → IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), {
+        type: "analysisEscalated",
+        analysisId: "an_1",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+  });
+
+  describe("IN_PROGRESS", () => {
+    const ctx = () => restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.inProgress);
+
+    it("customerMessageReceived stays IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), { type: "customerMessageReceived" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorReplied is idempotent (stays IN_PROGRESS)", () => {
+      const next = transitionConversation(ctx(), { type: "operatorReplied" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("analysisEscalated is idempotent (stays IN_PROGRESS)", () => {
+      const next = transitionConversation(ctx(), {
+        type: "analysisEscalated",
+        analysisId: "an_1",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorSetUnread → UNREAD (operator demote)", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetUnread",
+        actorUserId: ACTOR,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+    });
+
+    it("operatorSetDone (deliveryConfirmed=true) → DONE", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetDone",
+        actorUserId: ACTOR,
+        deliveryConfirmed: true,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("markStale → STALE", () => {
+      const next = transitionConversation(ctx(), { type: "markStale" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.stale);
+    });
+  });
+
+  describe("STALE", () => {
+    const ctx = () => restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.stale);
+
+    it("customerMessageReceived → UNREAD (reopen)", () => {
+      const next = transitionConversation(ctx(), { type: "customerMessageReceived" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+    });
+
+    it("operatorReplied → IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), { type: "operatorReplied" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorSetInProgress → IN_PROGRESS (operator drags card off Stale)", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetInProgress",
+        actorUserId: ACTOR,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("analysisEscalated → IN_PROGRESS", () => {
+      const next = transitionConversation(ctx(), {
+        type: "analysisEscalated",
+        analysisId: "an_1",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("markStale throws (sweep should never re-mark already-stale)", () => {
+      expect(() => transitionConversation(ctx(), { type: "markStale" })).toThrow(
+        InvalidConversationTransitionError
+      );
+    });
+  });
+
+  describe("DONE", () => {
+    const ctx = () => restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.done);
+
+    it("customerMessageReceived → UNREAD (auto-reopen matches ingress today)", () => {
+      const next = transitionConversation(ctx(), { type: "customerMessageReceived" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.unread);
+    });
+
+    it("operatorReplied preserves DONE (race fix regression)", () => {
+      // This is the idempotent half of the reply-race fix. The writer uses
+      // a conditional updateMany `where: status != DONE` so a concurrent
+      // markDoneWithOverride wins; the FSM must also make DONE+operatorReplied
+      // a legal no-op so next.status can be evaluated before the write.
+      const next = transitionConversation(ctx(), { type: "operatorReplied" });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("operatorSetInProgress → IN_PROGRESS (operator reopens)", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetInProgress",
+        actorUserId: ACTOR,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.inProgress);
+    });
+
+    it("operatorSetDone (deliveryConfirmed=true) is idempotent", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorSetDone",
+        actorUserId: ACTOR,
+        deliveryConfirmed: true,
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("operatorOverrideDone is idempotent", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorOverrideDone",
+        actorUserId: ACTOR,
+        overrideReason: "cleanup",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("analysisEscalated THROWS (escalation-overwrites-DONE bug fix)", () => {
+      // This is the regression for bug #2. Previously
+      // escalateToManualHandling wrote status: IN_PROGRESS unconditionally.
+      // The FSM rejects the event from DONE; the activity catches the typed
+      // error and exits cleanly.
+      expect(() =>
+        transitionConversation(ctx(), { type: "analysisEscalated", analysisId: "an_1" })
+      ).toThrow(InvalidConversationTransitionError);
+    });
+
+    it("markStale THROWS (closed conversations are not sweep targets)", () => {
+      expect(() => transitionConversation(ctx(), { type: "markStale" })).toThrow(
+        InvalidConversationTransitionError
+      );
+    });
+  });
+
+  describe("getAllowedConversationEvents", () => {
+    it("UNREAD allows all operator moves + markStale + analysisEscalated", () => {
+      const allowed = new Set(getAllowedConversationEvents(createConversationContext("c_1")));
+      expect(allowed).toContain("customerMessageReceived");
+      expect(allowed).toContain("operatorReplied");
+      expect(allowed).toContain("operatorSetDone");
+      expect(allowed).toContain("markStale");
+      expect(allowed).toContain("analysisEscalated");
+    });
+
+    it("DONE does NOT list markStale or analysisEscalated", () => {
+      const allowed = new Set(
+        getAllowedConversationEvents(
+          restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.done)
+        )
+      );
+      expect(allowed).not.toContain("markStale");
+      expect(allowed).not.toContain("analysisEscalated");
+      expect(allowed).toContain("operatorReplied");
+      expect(allowed).toContain("customerMessageReceived");
+    });
+
+    it("STALE does NOT list markStale (sweep guard)", () => {
+      const allowed = new Set(
+        getAllowedConversationEvents(
+          restoreConversationContext("c_1", SUPPORT_CONVERSATION_STATUS.stale)
+        )
+      );
+      expect(allowed).not.toContain("markStale");
+    });
+  });
+});

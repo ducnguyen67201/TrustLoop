@@ -183,8 +183,8 @@ from another service, use a cross-service reference.
 
 | Service | Vars |
 |---|---|
-| web | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, `SLACK_REPLAY_WINDOW_SECONDS`, `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_PATH`, `SENTRY_*`, `AGENT_SERVICE_URL=https://${{agents.RAILWAY_PRIVATE_DOMAIN}}:4000` |
-| queue | `SLACK_BOT_TOKEN` (for outbound delivery adapter), `GITHUB_APP_PRIVATE_KEY` (codex PR creation), `AGENT_SERVICE_URL` (same reference as web), `SENTRY_AUTH_TOKEN` (if analysis activities need Sentry lookups) |
+| web | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, `SLACK_REPLAY_WINDOW_SECONDS`, `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_PATH`, `AGENT_SERVICE_URL=https://${{agents.RAILWAY_PRIVATE_DOMAIN}}:4000` |
+| queue | `SLACK_BOT_TOKEN` (for outbound delivery adapter), `GITHUB_APP_PRIVATE_KEY` (codex PR creation), `AGENT_SERVICE_URL` (same reference as web) |
 | agents | — nothing beyond Tier 1. `OPENAI_API_KEY` + `DATABASE_URL` + `INTERNAL_SERVICE_KEY` come from shared. |
 | marketing | — none. |
 

@@ -1,6 +1,6 @@
 {
   "name": "trustloop",
-  "version": "0.1.0",
+  "version": "0.2.8.0",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.6.2",
@@ -48,5 +48,11 @@
     "turbo": "^2.5.0",
     "typescript": "^5.9.0",
     "vitest": "^3.1.1"
+  },
+  "optionalDependencies": {
+    "@node-rs/argon2-linux-arm64-gnu": "2.0.2",
+    "@node-rs/argon2-linux-x64-gnu": "2.0.2",
+    "@tailwindcss/oxide-linux-arm64-gnu": "4.2.2",
+    "@tailwindcss/oxide-linux-x64-gnu": "4.2.2"
   }
 }

@@ -13,15 +13,18 @@ FROM node:24-slim AS base
 WORKDIR /app
 
 # -----------------------------------------------------------------------------
-# deps — install workspace dependencies (no lockfile; see marketing.Dockerfile).
+# deps — install workspace dependencies from the committed lockfile so deploys
+# resolve the same graph as local development and CI.
 # -----------------------------------------------------------------------------
 FROM base AS deps
 COPY package.json ./
+COPY package-lock.json ./
 COPY apps/agents/package.json ./apps/agents/
 COPY packages/database/package.json ./packages/database/
 COPY packages/env/package.json ./packages/env/
+COPY packages/rest/package.json ./packages/rest/
 COPY packages/types/package.json ./packages/types/
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 # builder — generate Prisma client. Source is shipped; tsx runs it.
@@ -33,6 +36,7 @@ COPY package.json tsconfig.base.json ./
 COPY apps/agents ./apps/agents
 COPY packages/database ./packages/database
 COPY packages/env ./packages/env
+COPY packages/rest ./packages/rest
 COPY packages/types ./packages/types
 RUN npm --workspace @shared/database run db:generate
 
@@ -52,6 +56,7 @@ COPY --from=builder --chown=agent:nodejs /app/tsconfig.base.json ./tsconfig.base
 COPY --from=builder --chown=agent:nodejs /app/apps/agents ./apps/agents
 COPY --from=builder --chown=agent:nodejs /app/packages/database ./packages/database
 COPY --from=builder --chown=agent:nodejs /app/packages/env ./packages/env
+COPY --from=builder --chown=agent:nodejs /app/packages/rest ./packages/rest
 COPY --from=builder --chown=agent:nodejs /app/packages/types ./packages/types
 
 USER agent

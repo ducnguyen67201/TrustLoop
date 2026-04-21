@@ -13,21 +13,15 @@ FROM node:24-slim AS base
 WORKDIR /app
 
 # -----------------------------------------------------------------------------
-# Stage: deps — install workspace dependencies only
-#
-# node:24-slim is Debian (glibc). We deliberately do NOT copy package-lock.json
-# because of npm/cli#4828: the host-generated lockfile only lists the optional
-# native bindings that were installed on the host (e.g. @tailwindcss/oxide
-# only has darwin-arm64 listed), so npm ci/install inside Docker will not
-# install the linux variant needed to actually build. Fresh `npm install`
-# without a lockfile resolves optional native deps for the target platform
-# correctly.
+# Stage: deps — install workspace dependencies from the committed lockfile so
+# deploys resolve the same graph as local development and CI.
 # -----------------------------------------------------------------------------
 FROM base AS deps
 COPY package.json ./
+COPY package-lock.json ./
 COPY apps/marketing/package.json ./apps/marketing/
 COPY packages/brand/package.json ./packages/brand/
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 # Stage: builder — build marketing with standalone output

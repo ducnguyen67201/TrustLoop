@@ -53,9 +53,12 @@ export interface UseConversationReplyResult {
   isMutating: boolean;
 }
 
-export function useConversationReply(conversationId: string): UseConversationReplyResult {
+export function useConversationReply(
+  conversationId: string,
+  refreshNonce = 0
+): UseConversationReplyResult {
   const inbox = useSupportInbox();
-  const polling = useConversationPolling(conversationId);
+  const polling = useConversationPolling(conversationId, refreshNonce);
   const [replyToEventId, setReplyToEventId] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
 

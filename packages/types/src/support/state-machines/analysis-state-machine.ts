@@ -1,3 +1,4 @@
+import { defineFsm } from "@shared/types/fsm";
 import {
   ANALYSIS_STATUS,
   type AnalysisResult,
@@ -26,6 +27,8 @@ export type AnalysisEvent =
 
 type AnalysisEventType = AnalysisEvent["type"];
 
+// Preserved for back-compat: activity code does
+// `err instanceof InvalidAnalysisTransitionError` to decide retry behavior.
 export class InvalidAnalysisTransitionError extends Error {
   constructor(from: AnalysisStatusValue, event: AnalysisEventType) {
     super(`Invalid transition: cannot handle "${event}" in state "${from}"`);
@@ -33,108 +36,69 @@ export class InvalidAnalysisTransitionError extends Error {
   }
 }
 
-// ── State Interface ────────────────────────────────────────────────��─
+// ── FSM Definition ───────────────────────────────────────────────────
 
-interface AnalysisState {
-  readonly status: AnalysisStatusValue;
-  readonly allowedEvents: readonly AnalysisEventType[];
-  handle(event: AnalysisEvent, context: AnalysisContext): AnalysisContext;
-}
-
-// ── Concrete States ──────────────────────────────────────────────────
-
-const gatheringContextState: AnalysisState = {
-  status: ANALYSIS_STATUS.gatheringContext,
-  allowedEvents: ["contextReady", "failed"],
-  handle(event, context) {
-    switch (event.type) {
-      case "contextReady":
-        return { ...context, status: ANALYSIS_STATUS.analyzing };
-      case "failed":
-        return {
-          ...context,
+const analysisFsm = defineFsm<AnalysisStatusValue, AnalysisEvent, AnalysisContext>({
+  name: "Analysis",
+  initial: ANALYSIS_STATUS.gatheringContext,
+  errorFactory: (_fsm, from, event) =>
+    new InvalidAnalysisTransitionError(from as AnalysisStatusValue, event as AnalysisEventType),
+  states: {
+    [ANALYSIS_STATUS.gatheringContext]: {
+      on: {
+        contextReady: (ctx) => ({ ...ctx, status: ANALYSIS_STATUS.analyzing }),
+        failed: (ctx, event) => ({
+          ...ctx,
           status: ANALYSIS_STATUS.failed,
           errorMessage: event.error,
-        };
-      default:
-        throw new InvalidAnalysisTransitionError(this.status, event.type);
-    }
-  },
-};
+        }),
+      },
+    },
 
-const analyzingState: AnalysisState = {
-  status: ANALYSIS_STATUS.analyzing,
-  allowedEvents: ["analyzed", "needsContext", "failed"],
-  handle(event, context) {
-    switch (event.type) {
-      case "analyzed":
-        return { ...context, status: ANALYSIS_STATUS.analyzed };
-      case "needsContext":
-        return { ...context, status: ANALYSIS_STATUS.needsContext };
-      case "failed":
-        return {
-          ...context,
+    [ANALYSIS_STATUS.analyzing]: {
+      on: {
+        analyzed: (ctx) => ({ ...ctx, status: ANALYSIS_STATUS.analyzed }),
+        needsContext: (ctx) => ({ ...ctx, status: ANALYSIS_STATUS.needsContext }),
+        failed: (ctx, event) => ({
+          ...ctx,
           status: ANALYSIS_STATUS.failed,
           errorMessage: event.error,
-        };
-      default:
-        throw new InvalidAnalysisTransitionError(this.status, event.type);
-    }
+        }),
+      },
+    },
+
+    [ANALYSIS_STATUS.analyzed]: { on: {} },
+
+    [ANALYSIS_STATUS.needsContext]: {
+      on: {
+        retry: (ctx) => ({
+          ...ctx,
+          status: ANALYSIS_STATUS.gatheringContext,
+          retryCount: ctx.retryCount + 1,
+          errorMessage: null,
+        }),
+      },
+    },
+
+    // FAILED allows `retry` — but only while retryCount < MAX_ANALYSIS_RETRIES.
+    // Expressed as a dynamic guard so `transitionAnalysis` and
+    // `getAllowedAnalysisEvents` both respect the cap without duplicating logic.
+    [ANALYSIS_STATUS.failed]: {
+      on: {
+        retry: (ctx) => ({
+          ...ctx,
+          status: ANALYSIS_STATUS.gatheringContext,
+          retryCount: ctx.retryCount + 1,
+          errorMessage: null,
+        }),
+      },
+      guardEvents: (ctx) =>
+        ctx.retryCount >= MAX_ANALYSIS_RETRIES
+          ? new Set<AnalysisEventType>()
+          : new Set<AnalysisEventType>(["retry"]),
+    },
   },
-};
-
-const analyzedState: AnalysisState = {
-  status: ANALYSIS_STATUS.analyzed,
-  allowedEvents: [],
-  handle(event, context) {
-    throw new InvalidAnalysisTransitionError(this.status, event.type);
-  },
-};
-
-const needsContextState: AnalysisState = {
-  status: ANALYSIS_STATUS.needsContext,
-  allowedEvents: ["retry"],
-  handle(event, context) {
-    if (event.type === "retry") {
-      return {
-        ...context,
-        status: ANALYSIS_STATUS.gatheringContext,
-        retryCount: context.retryCount + 1,
-        errorMessage: null,
-      };
-    }
-    throw new InvalidAnalysisTransitionError(this.status, event.type);
-  },
-};
-
-const failedState: AnalysisState = {
-  status: ANALYSIS_STATUS.failed,
-  allowedEvents: ["retry"],
-  handle(event, context) {
-    if (event.type === "retry") {
-      if (context.retryCount >= MAX_ANALYSIS_RETRIES) {
-        throw new InvalidAnalysisTransitionError(this.status, event.type);
-      }
-      return {
-        ...context,
-        status: ANALYSIS_STATUS.gatheringContext,
-        retryCount: context.retryCount + 1,
-        errorMessage: null,
-      };
-    }
-    throw new InvalidAnalysisTransitionError(this.status, event.type);
-  },
-};
-
-// ── State Registry ──────────────────────────────────────────────────���
-
-const STATE_MAP: Record<AnalysisStatusValue, AnalysisState> = {
-  [ANALYSIS_STATUS.gatheringContext]: gatheringContextState,
-  [ANALYSIS_STATUS.analyzing]: analyzingState,
-  [ANALYSIS_STATUS.analyzed]: analyzedState,
-  [ANALYSIS_STATUS.needsContext]: needsContextState,
-  [ANALYSIS_STATUS.failed]: failedState,
-};
+});
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -160,22 +124,17 @@ export function transitionAnalysis(
   context: AnalysisContext,
   event: AnalysisEvent
 ): AnalysisContext {
-  const state = STATE_MAP[context.status];
-  if (!state) {
-    throw new Error(`Unknown analysis status: ${context.status}`);
-  }
-  return state.handle(event, context);
+  return analysisFsm.transition(context, event);
 }
 
 export function getAllowedAnalysisEvents(context: AnalysisContext): readonly AnalysisEventType[] {
-  const state = STATE_MAP[context.status];
-  if (!state) return [];
-  if (context.status === ANALYSIS_STATUS.failed && context.retryCount >= MAX_ANALYSIS_RETRIES) {
-    return [];
-  }
-  return state.allowedEvents;
+  return analysisFsm.allowedEvents(context);
 }
 
+// Preserved as an explicit helper — its exact original semantics include
+// blocking retry on `needsContext` past MAX_ANALYSIS_RETRIES, which the FSM
+// `allowedEvents` does not enforce (only `failed` has the guard). Keeping
+// this function keeps callers' UI hints consistent with the original.
 export function canRetryAnalysis(context: AnalysisContext): boolean {
   return (
     (context.status === ANALYSIS_STATUS.failed ||

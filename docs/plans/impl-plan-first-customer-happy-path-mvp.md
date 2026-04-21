@@ -6,7 +6,7 @@ Ship a paid-pilot-ready MVP that can handle one complete support loop for Slack:
 
 1. Inbound Slack messages are ingested.
 2. Messages are grouped into focused support threads.
-3. AI analyzes using code index + Sentry context.
+3. AI analyzes using code index + first-party session digest (clicks, network, console, exceptions captured by `packages/sdk-browser`).
 4. Agent reviews/approves draft response.
 5. Response is sent back to Slack.
 6. Usage is metered and billable per workspace.
@@ -15,7 +15,7 @@ Ship a paid-pilot-ready MVP that can handle one complete support loop for Slack:
 
 - Slack auto message grouping into issue-focused threads
 - Code indexing + searchable code context
-- AI summary/draft response using thread context + code index + Sentry
+- AI summary/draft response using thread context + code index + session digest from the in-product SDK
 - Workspace auth + tenant isolation
 - Billing + usage metering
 
@@ -101,7 +101,7 @@ Definition of done:
 - Focused execution spec: `docs/domains/ai-analysis/spec-ai-analysis-draft-generation.md`
 
 - [x] Thread analysis prompt pipeline (severity, category, component, summary).
-- [x] Sentry context fetch and attach to analysis input.
+- [x] ~~Sentry context fetch and attach to analysis input.~~ Removed — superseded by SDK-derived session digest. See `docs/plans/impl-plan-remove-sentry-integration.md`.
 - [x] Code search findings attached to analysis input.
 - [x] Draft reply generator with workspace-level prompt/tone controls.
 - [x] Human approval mode (required for MVP).

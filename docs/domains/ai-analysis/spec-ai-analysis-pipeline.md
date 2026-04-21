@@ -59,9 +59,16 @@ Evidence rows collected from agent tool calls. Each row links to a CodeSearchRes
 
 AI-generated draft response awaiting human approval.
 
-- `status`: AWAITING_APPROVAL | APPROVED | SENT | DISMISSED | FAILED
+- `status`: GENERATING | AWAITING_APPROVAL | APPROVED | SENDING | SENT | SEND_FAILED | DELIVERY_UNKNOWN | DISMISSED | FAILED
 - `draftBody`: original AI-generated text
 - `editedBody`: human-edited version (if edited before approval)
+- `slackClientMsgId`: idempotency nonce generated at draft creation. Passed to Slack's `chat.postMessage` as `client_msg_id` for native de-dup, and used by the reconciler to resolve `DELIVERY_UNKNOWN` after an ambiguous transport failure.
+- `slackMessageTs`: the Slack message `ts` once the draft is posted (populated either from the send response or recovered via reconciliation).
+- `deliveredAt` / `deliveryError` / `sendAttempts`: populated by the `sendDraftToSlackWorkflow`.
+
+#### Draft send flow
+
+Approval (`approveDraft`) compare-and-swaps `AWAITING_APPROVAL → APPROVED` inside a Prisma transaction, inserts a `DraftDispatch` outbox row in the same transaction, then dispatches `sendDraftToSlackWorkflow` on the SUPPORT queue with a deterministic workflow ID (`send-draft-${draftId}`) and `REJECT_DUPLICATE` policy. The workflow drives `APPROVED → SENDING → SENT`. Transient Slack failures route to `DELIVERY_UNKNOWN`; a reconciler queries `conversations.replies` for `slackClientMsgId`. Found → `SENT`; not found → one retry; still failing → `SEND_FAILED`.
 
 ## Agent Module
 
@@ -90,7 +97,7 @@ Creates an `Agent<AgentContext>` using the OpenAI Agents SDK. Runs with `maxTurn
 | Procedure | Input | Description |
 |---|---|---|
 | `triggerAnalysis` | `{ conversationId }` | Manually trigger analysis. Checks: API key configured, repos indexed, no duplicate in progress. |
-| `approveDraft` | `{ draftId, editedBody? }` | Approve draft and send via existing reply mechanism. Emits DRAFT_APPROVED event. |
+| `approveDraft` | `{ draftId, editedBody? }` | CAS-flip draft `AWAITING_APPROVAL → APPROVED`, insert outbox row, dispatch `sendDraftToSlackWorkflow` (deterministic workflow ID, `REJECT_DUPLICATE`). Emits DRAFT_APPROVED on commit, DRAFT_SENT or DRAFT_SEND_FAILED once the workflow settles. Idempotent under double-click. |
 | `dismissDraft` | `{ draftId, reason? }` | Dismiss draft. Emits DRAFT_DISMISSED event. |
 | `getLatestAnalysis` | `{ conversationId }` | Get most recent analysis with evidence and draft. |
 

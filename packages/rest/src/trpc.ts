@@ -131,6 +131,18 @@ export const workspaceProcedure = publicProcedure
 
 export function workspaceRoleProcedure(minRole: WorkspaceRole) {
   return workspaceProcedure.use(({ ctx, next }) => {
+    // Role-gated procedures require a user session actor. Workspace API keys
+    // carry a null role (see resolveWorkspaceContext in context.ts) and must
+    // not drive operator commands. Assert session+user presence explicitly so
+    // the downstream ctx is narrowed and the invariant is visible at the
+    // middleware boundary, not implied by the null-role fallthrough.
+    if (!ctx.session || !ctx.user) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "User session required for this operation",
+      });
+    }
+
     if (!hasRequiredRole(ctx.role, minRole)) {
       throw new TRPCError({
         code: "FORBIDDEN",
@@ -138,6 +150,12 @@ export function workspaceRoleProcedure(minRole: WorkspaceRole) {
       });
     }
 
-    return next();
+    return next({
+      ctx: {
+        ...ctx,
+        session: ctx.session,
+        user: ctx.user,
+      },
+    });
   });
 }

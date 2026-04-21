@@ -24,6 +24,11 @@ function createDispatcher(): WorkflowDispatcher {
       runId: "run_codex_1",
       queue: "codex-intensive",
     })),
+    startSendDraftToSlackWorkflow: vi.fn(async () => ({
+      workflowId: "send-draft-draft_1",
+      runId: "run_send_draft_1",
+      queue: "support-general",
+    })),
   };
 }
 

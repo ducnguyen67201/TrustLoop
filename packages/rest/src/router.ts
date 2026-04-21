@@ -8,11 +8,17 @@ import {
   temporalWorkflowDispatcher,
 } from "@shared/rest/temporal-dispatcher";
 import { publicProcedure, router } from "@shared/rest/trpc";
-import { dispatchWorkflow } from "@shared/rest/workflow-router";
 import { workspaceAiSettingsRouter } from "@shared/rest/workspace-ai-settings-router";
 import { workspaceApiKeyRouter } from "@shared/rest/workspace-api-key-router";
 import { workspaceRouter } from "@shared/rest/workspace-router";
-import { healthResponseSchema, workflowDispatchSchema } from "@shared/types";
+import { healthResponseSchema } from "@shared/types";
+
+// Internal workflow dispatch is served exclusively by the authenticated REST
+// endpoint at /api/rest/workflows/dispatch (withServiceAuth). It is NOT exposed
+// via tRPC — the public tRPC router was an unauthenticated path that would let
+// any caller enqueue support, support-analysis, send-draft-to-slack, codex, and
+// repository-index workflows. See docs/domains/support/impl-slack-ingestion-thread-grouping-p0-checklist.md
+// and packages/rest/src/security/rest-auth.ts.
 
 export function createAppRouter(dispatcher: WorkflowDispatcher = temporalWorkflowDispatcher) {
   return router({
@@ -31,9 +37,6 @@ export function createAppRouter(dispatcher: WorkflowDispatcher = temporalWorkflo
         timestamp: new Date().toISOString(),
       })
     ),
-    dispatchWorkflow: publicProcedure.input(workflowDispatchSchema).mutation(({ input }) => {
-      return dispatchWorkflow(dispatcher, input);
-    }),
   });
 }
 

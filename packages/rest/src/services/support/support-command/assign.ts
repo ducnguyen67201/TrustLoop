@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@shared/database";
+import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
 import {
   SUPPORT_CONVERSATION_EVENT_SOURCE,
+  SUPPORT_REALTIME_REASON,
   type SupportAssignCommand,
   type SupportCommandResponse,
 } from "@shared/types";
@@ -44,6 +46,12 @@ export async function assign(input: SupportAssignCommand): Promise<SupportComman
         },
       },
     });
+  });
+
+  await supportRealtime.emitConversationChanged({
+    workspaceId: input.workspaceId,
+    conversationId: input.conversationId,
+    reason: SUPPORT_REALTIME_REASON.assigneeChanged,
   });
 
   return buildCommandResponse(commandId);

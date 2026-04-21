@@ -10,7 +10,8 @@
       "**/tsup.config.bundled_*.mjs",
       "**/src/generated/**",
       "**/src/prisma-generated/client.ts",
-      "docs/contracts/openapi.json"
+      "docs/contracts/openapi.json",
+      "graphify-out"
     ]
   },
   "linter": {

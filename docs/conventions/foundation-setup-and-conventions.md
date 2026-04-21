@@ -39,7 +39,7 @@ Inside the single `worker` deployment, run both queue consumers (support + codex
 Optional but strongly recommended:
 
 - Doppler for secrets management
-- Sentry for app and workflow observability
+- TrustLoop's in-product SDK (`packages/sdk-browser`) for first-party session telemetry consumed by AI analysis
 
 ## 3) Monorepo Boundaries
 
@@ -221,7 +221,7 @@ Avoid maintaining parallel, manually-written OpenAPI and TypeScript contracts fo
 - One file should have one clear reason to change.
 - Prefer pure functions for business logic.
 - Keep orchestration in service/router/workflow layers.
-- Keep adapters at edges (GitHub, Sentry, OpenAI, Discord, etc.).
+- Keep adapters at edges (GitHub, OpenAI, Slack, Discord, etc.).
 
 ### Imports
 
@@ -280,7 +280,7 @@ Nice-to-have:
 - Use `@shared/env` only; no scattered direct `process.env` reads in business code.
 - Never log raw tokens or credentials.
 - Keep webhook and internal API secrets validated and centrally defined.
-- Use least privilege for provider tokens (`CODEX_GITHUB_TOKEN`, Sentry token, etc.).
+- Use least privilege for provider tokens (`CODEX_GITHUB_TOKEN`, Slack tokens, etc.).
 
 ## 13) Practical Growth Plan
 

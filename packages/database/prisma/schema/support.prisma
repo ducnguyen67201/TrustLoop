@@ -21,6 +21,9 @@ enum SupportConversationEventType {
   ASSIGNEE_CHANGED
   MERGED
   SPLIT
+  REASSIGNED_EVENT
+  MERGE_UNDONE
+  REASSIGN_UNDONE
   DELIVERY_ATTEMPTED
   DELIVERY_FAILED
   DELIVERY_SUCCEEDED
@@ -29,7 +32,16 @@ enum SupportConversationEventType {
   ANALYSIS_COMPLETED
   DRAFT_APPROVED
   DRAFT_DISMISSED
+  DRAFT_SENT
+  DRAFT_SEND_FAILED
   ANALYSIS_ESCALATED
+}
+
+/// Kind of grouping correction an operator performed. MVP ships MERGE + REASSIGN_EVENT.
+/// Split is deferred (see docs/plans/impl-plan-thread-merge-split-reassign.md §13).
+enum SupportGroupingCorrectionKind {
+  MERGE
+  REASSIGN_EVENT
 }
 
 enum SupportAttachmentDirection {
@@ -138,10 +150,21 @@ model SupportConversation {
   staleAt                DateTime?
   retryCount             Int                       @default(0)
   lastActivityAt         DateTime                  @default(now())
+  /// Set when this conversation has been merged INTO another conversation.
+  /// The target conversation now owns the merged timeline via UNION query
+  /// on SupportConversationEvent.conversationId. Nullable — only populated
+  /// for soft-deleted secondary rows post-merge. Breadcrumb only; Slack
+  /// routing uses SupportConversationThreadAlias, not this column.
+  mergedIntoConversationId String?
   deletedAt              DateTime?
   workspace              Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   installation           SupportInstallation       @relation(fields: [installationId], references: [id], onDelete: Restrict)
   assignee               User?                     @relation("SupportConversationAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  mergedInto             SupportConversation?      @relation("SupportConversationMergedInto", fields: [mergedIntoConversationId], references: [id], onDelete: SetNull)
+  mergedChildren         SupportConversation[]     @relation("SupportConversationMergedInto")
+  reassignedEvents       SupportConversationEvent[] @relation("SupportConversationEventReassignedFrom")
+  groupingCorrections    SupportGroupingCorrection[] @relation("GroupingCorrectionSource")
+  groupingCorrectionTargets SupportGroupingCorrection[] @relation("GroupingCorrectionTarget")
   events                 SupportConversationEvent[]
   deliveryAttempts       SupportDeliveryAttempt[]
   ticketLinks            SupportTicketLink[]
@@ -159,6 +182,7 @@ model SupportConversation {
   @@index([workspaceId, status, staleAt, customerWaitingSince, retryCount, lastActivityAt])
   @@index([installationId])
   @@index([assigneeUserId])
+  @@index([mergedIntoConversationId])
   // deletedAt: no standalone index (low selectivity). Partial composites cover hot paths.
 }
 
@@ -211,10 +235,17 @@ model SupportConversationEvent {
   /// Null for thread roots, standalone messages, and orphans whose parent
   /// wasn't in the DB at ingest time (rare — Slack webhook ordering race).
   parentEventId  String?
+  /// Set when an operator reassigned this event (typically a MESSAGE_RECEIVED)
+  /// from its original conversation to this one. Points at the source
+  /// conversation. Null for events that have never been moved. Breadcrumb
+  /// for the conversation timeline UI.
+  reassignedFromConversationId String?
   workspace      Workspace                      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   conversation   SupportConversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   parent         SupportConversationEvent?      @relation("SupportConversationEventParent", fields: [parentEventId], references: [id], onDelete: SetNull)
   children       SupportConversationEvent[]     @relation("SupportConversationEventParent")
+  reassignedFrom SupportConversation?           @relation("SupportConversationEventReassignedFrom", fields: [reassignedFromConversationId], references: [id], onDelete: SetNull)
+  reassignedCorrections SupportGroupingCorrection[] @relation("GroupingCorrectionSourceEvent")
   attachments    SupportMessageAttachment[]
   reactions      SupportMessageReaction[]
   createdAt      DateTime                       @default(now())
@@ -382,4 +413,45 @@ model SupportMessageReaction {
   @@unique([eventId, emojiName, actorUserId])
   @@index([eventId])
   @@index([workspaceId])
+}
+
+/// Log of operator-performed grouping corrections (merge and reassign).
+/// Immutable audit trail + training corpus for future per-workspace
+/// grouping-threshold tuning (see impl-plan-thread-merge-split-reassign.md §9).
+///
+/// Scoped MVP shape: 8 columns, 2 indexes. No `inferredSignalJson`,
+/// no `deletedAt` — corrections are never soft-deleted, they're an
+/// audit trail. Extend when the learning loop consumer is actually built.
+model SupportGroupingCorrection {
+  id                   String                        @id @default(cuid())
+  workspaceId          String
+  actorUserId          String
+  kind                 SupportGroupingCorrectionKind
+  /// MERGE: the secondary conversation that was folded in.
+  /// REASSIGN_EVENT: the conversation the event moved FROM.
+  sourceConversationId String
+  /// MERGE: the primary conversation (winner). REASSIGN_EVENT: the conversation
+  /// the event moved TO. Nullable to keep the column reusable if future kinds
+  /// omit a target (none currently).
+  targetConversationId String?
+  /// REASSIGN_EVENT: which event moved. Null for MERGE.
+  sourceEventId        String?
+  /// Client-supplied key scoped per workspace. On collision, the service
+  /// returns the existing correction row instead of creating a duplicate.
+  idempotencyKey       String
+  /// Set when this correction has been reversed. Null while correction is
+  /// still active. Undo rejects if set (already undone) or if the 24h
+  /// window has elapsed.
+  undoneAt             DateTime?
+  createdAt            DateTime                      @default(now())
+  workspace            Workspace                     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor                User                          @relation("SupportGroupingCorrectionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  sourceConversation   SupportConversation           @relation("GroupingCorrectionSource", fields: [sourceConversationId], references: [id], onDelete: Cascade)
+  targetConversation   SupportConversation?          @relation("GroupingCorrectionTarget", fields: [targetConversationId], references: [id], onDelete: SetNull)
+  sourceEvent          SupportConversationEvent?     @relation("GroupingCorrectionSourceEvent", fields: [sourceEventId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, createdAt])
+  @@index([sourceConversationId])
+  @@index([targetConversationId])
 }

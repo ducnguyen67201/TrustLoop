@@ -118,9 +118,6 @@ export function AnalysisPanel({
         <p className="text-sm text-foreground">{analysis.problemStatement}</p>
       )}
 
-      {/* Sentry context badge */}
-      {analysis?.sentryContext != null && <SentryBadge sentryContext={analysis.sentryContext} />}
-
       {/* PR link */}
       {draft?.prUrl && (
         <a
@@ -234,17 +231,5 @@ export function AnalysisPanel({
         />
       )}
     </section>
-  );
-}
-
-function SentryBadge({ sentryContext }: { sentryContext: unknown }) {
-  const ctx = sentryContext as { issues?: unknown[] } | null;
-  const count = ctx?.issues?.length ?? 0;
-  if (count === 0) return null;
-  return (
-    <div className="text-xs text-destructive flex items-center gap-1">
-      <span className="inline-block w-2 h-2 rounded-full bg-destructive" />
-      {count} Sentry {count === 1 ? "issue" : "issues"} found for this user
-    </div>
   );
 }

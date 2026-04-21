@@ -20,7 +20,6 @@ import {
 import { resolveModel } from "./providers";
 import { createPullRequestTool } from "./tools/create-pr";
 import { searchCodeTool } from "./tools/search-code";
-import { searchSentryTool } from "./tools/search-sentry";
 
 const DEFAULT_MAX_STEPS = 8;
 
@@ -57,7 +56,6 @@ function createSupportAgent(
     model: resolveModel(providerConfig),
     tools: {
       searchCode: searchCodeTool,
-      searchSentry: searchSentryTool,
       createPullRequest: createPullRequestTool,
     },
   });

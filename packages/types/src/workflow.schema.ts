@@ -8,6 +8,7 @@ import { z } from "zod";
 export const workflowNames = {
   supportInbox: "supportInboxWorkflow",
   supportAnalysis: "supportAnalysisWorkflow",
+  sendDraftToSlack: "sendDraftToSlackWorkflow",
   fixPr: "fixPrWorkflow",
   repositoryIndex: "repositoryIndexWorkflow",
 } as const;
@@ -85,6 +86,18 @@ export const supportAnalysisWorkflowResultSchema = z.object({
   toolCallCount: z.number(),
 });
 
+export const sendDraftToSlackInputSchema = z.object({
+  draftId: z.string().min(1),
+  dispatchId: z.string().min(1),
+  workspaceId: z.string().min(1),
+});
+
+export const sendDraftToSlackResultSchema = z.object({
+  draftId: z.string().min(1),
+  slackMessageTs: z.string().nullable(),
+  status: z.enum(["SENT", "SEND_FAILED"]),
+});
+
 export const workflowDispatchSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("support"),
@@ -102,7 +115,14 @@ export const workflowDispatchSchema = z.discriminatedUnion("type", [
     type: z.literal("repository-index"),
     payload: repositoryIndexWorkflowInputSchema,
   }),
+  z.object({
+    type: z.literal("send-draft-to-slack"),
+    payload: sendDraftToSlackInputSchema,
+  }),
 ]);
+
+export type SendDraftToSlackInput = z.infer<typeof sendDraftToSlackInputSchema>;
+export type SendDraftToSlackResult = z.infer<typeof sendDraftToSlackResultSchema>;
 
 export type WorkflowNames = typeof workflowNames;
 export type SupportWorkflowInput = z.infer<typeof supportWorkflowInputSchema>;

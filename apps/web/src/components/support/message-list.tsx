@@ -61,6 +61,7 @@ interface MessageListProps {
   onRetryDelivery: (deliveryAttemptId: string) => void;
   onSetReplyToEventId: (eventId: string | null) => void;
   onToggleReaction: (eventId: string, emojiName: string, emojiUnicode: string | null) => void;
+  onRequestReassign?: (eventId: string) => void;
   currentUserId: string | null;
 }
 
@@ -75,6 +76,7 @@ export function MessageList({
   onRetryDelivery,
   onSetReplyToEventId,
   onToggleReaction,
+  onRequestReassign,
   currentUserId,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -200,6 +202,7 @@ export function MessageList({
                     showHeader
                     onReplyToThread={() => onSetReplyToEventId(event.id)}
                     onToggleReaction={onToggleReaction}
+                    onRequestReassign={onRequestReassign}
                     currentUserId={currentUserId}
                   >
                     {replies.length > 0 ? (

@@ -1,18 +1,25 @@
 import * as supportCommand from "@shared/rest/services/support/support-command";
+import * as groupingCorrection from "@shared/rest/services/support/support-grouping-correction-service";
 import * as supportProjection from "@shared/rest/services/support/support-projection-service";
 import * as supportReaction from "@shared/rest/services/support/support-reaction-service";
-import { router, workspaceProcedure } from "@shared/rest/trpc";
+import { router, workspaceProcedure, workspaceRoleProcedure } from "@shared/rest/trpc";
 import {
   SUPPORT_COMMAND_TYPE,
+  WORKSPACE_ROLE,
   supportAssignCommandSchema,
   supportConversationStatusSchema,
   supportMarkDoneWithOverrideCommandSchema,
+  supportMergeConversationsRequestSchema,
+  supportReassignEventRequestSchema,
   supportRetryDeliveryCommandSchema,
   supportSendReplyCommandSchema,
   supportToggleReactionInputSchema,
+  supportUndoCorrectionRequestSchema,
   supportUpdateStatusCommandSchema,
 } from "@shared/types";
 import { z } from "zod";
+
+const operatorProcedure = workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER);
 
 const supportConversationListInputSchema = z.object({
   statuses: z.array(supportConversationStatusSchema).optional(),
@@ -42,7 +49,7 @@ export const supportInboxRouter = router({
     .query(({ ctx, input }) =>
       supportProjection.getConversationTimeline(ctx.workspaceId, input.conversationId)
     ),
-  assignConversation: workspaceProcedure
+  assignConversation: operatorProcedure
     .input(
       supportAssignCommandSchema.omit({ workspaceId: true, actorUserId: true, commandType: true })
     )
@@ -51,10 +58,10 @@ export const supportInboxRouter = router({
         ...input,
         commandType: SUPPORT_COMMAND_TYPE.assign,
         workspaceId: ctx.workspaceId,
-        actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
+        actorUserId: ctx.user.id,
       })
     ),
-  updateConversationStatus: workspaceProcedure
+  updateConversationStatus: operatorProcedure
     .input(
       supportUpdateStatusCommandSchema.omit({
         workspaceId: true,
@@ -67,10 +74,10 @@ export const supportInboxRouter = router({
         ...input,
         commandType: SUPPORT_COMMAND_TYPE.updateStatus,
         workspaceId: ctx.workspaceId,
-        actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
+        actorUserId: ctx.user.id,
       })
     ),
-  markDoneWithOverrideReason: workspaceProcedure
+  markDoneWithOverrideReason: operatorProcedure
     .input(
       supportMarkDoneWithOverrideCommandSchema.omit({
         workspaceId: true,
@@ -83,10 +90,10 @@ export const supportInboxRouter = router({
         ...input,
         commandType: SUPPORT_COMMAND_TYPE.markDoneWithOverride,
         workspaceId: ctx.workspaceId,
-        actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
+        actorUserId: ctx.user.id,
       })
     ),
-  retryDelivery: workspaceProcedure
+  retryDelivery: operatorProcedure
     .input(
       supportRetryDeliveryCommandSchema.omit({
         workspaceId: true,
@@ -99,10 +106,10 @@ export const supportInboxRouter = router({
         ...input,
         commandType: SUPPORT_COMMAND_TYPE.retryDelivery,
         workspaceId: ctx.workspaceId,
-        actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
+        actorUserId: ctx.user.id,
       })
     ),
-  sendReply: workspaceProcedure
+  sendReply: operatorProcedure
     .input(
       supportSendReplyCommandSchema
         .omit({
@@ -120,10 +127,10 @@ export const supportInboxRouter = router({
         ...input,
         commandType: SUPPORT_COMMAND_TYPE.sendReply,
         workspaceId: ctx.workspaceId,
-        actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
+        actorUserId: ctx.user.id,
       })
     ),
-  toggleReaction: workspaceProcedure
+  toggleReaction: operatorProcedure
     .input(
       supportToggleReactionInputSchema.omit({
         workspaceId: true,
@@ -134,7 +141,38 @@ export const supportInboxRouter = router({
       supportReaction.toggle({
         ...input,
         workspaceId: ctx.workspaceId,
-        actorUserId: ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system",
+        actorUserId: ctx.user.id,
+      })
+    ),
+  mergeConversations: operatorProcedure
+    .input(supportMergeConversationsRequestSchema.omit({ workspaceId: true }))
+    .mutation(({ ctx, input }) =>
+      groupingCorrection.merge({
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        primaryConversationId: input.primaryConversationId,
+        secondaryConversationIds: input.secondaryConversationIds,
+        idempotencyKey: input.idempotencyKey,
+      })
+    ),
+  reassignEvent: operatorProcedure
+    .input(supportReassignEventRequestSchema.omit({ workspaceId: true }))
+    .mutation(({ ctx, input }) =>
+      groupingCorrection.reassignEvent({
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        eventId: input.eventId,
+        targetConversationId: input.targetConversationId,
+        idempotencyKey: input.idempotencyKey,
+      })
+    ),
+  undoCorrection: operatorProcedure
+    .input(supportUndoCorrectionRequestSchema.omit({ workspaceId: true }))
+    .mutation(({ ctx, input }) =>
+      groupingCorrection.undoCorrection({
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        correctionId: input.correctionId,
       })
     ),
 });

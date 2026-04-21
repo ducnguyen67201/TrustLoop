@@ -37,9 +37,11 @@ model Workspace {
   groupingAnchors          SupportGroupingAnchor[]
   supportAnalyses          SupportAnalysis[]
   supportDrafts            SupportDraft[]
+  draftDispatches          DraftDispatch[]
   supportAttachments       SupportMessageAttachment[]
   supportCustomerProfiles  SupportCustomerProfile[]
   supportMessageReactions  SupportMessageReaction[]
+  supportGroupingCorrections SupportGroupingCorrection[]
   aiSettings               WorkspaceAiSettings?
   sessionRecords           SessionRecord[]
   sessionEvents            SessionEvent[]
@@ -69,6 +71,7 @@ model User {
   auditLogs                  AuditLog[]            @relation("AuditActor")
   assignedSupportConvos      SupportConversation[] @relation("SupportConversationAssignee")
   messageReactions           SupportMessageReaction[] @relation("SupportMessageReactionActor")
+  groupingCorrections        SupportGroupingCorrection[] @relation("SupportGroupingCorrectionActor")
   createdAt                  DateTime              @default(now())
   updatedAt                  DateTime              @updatedAt
 
