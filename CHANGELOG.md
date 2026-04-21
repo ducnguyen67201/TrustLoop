@@ -2,6 +2,14 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.3.0] - 2026-04-20
+
+### Added
+- **Implementation plan: thread merge / split / reassign (B7).** Shipped `docs/plans/impl-plan-thread-merge-split-reassign.md` covering the manual correction primitives for the support grouper (merge + reassign; split deferred post-MVP), a `SupportGroupingCorrection` log that feeds future per-workspace learning, and the UX spec (explicit inbox select mode, chip-based merge dialog, layered 24h undo). Includes full `/autoplan` review (CEO/Design/Eng) with dual voices, two blockers caught (phantom `SupportMessage` model + soft-delete-in-transaction violations), and 10 literal error-copy strings.
+
+### Fixed
+- **`package.json` version synced to match `VERSION`.** Pre-existing drift: `package.json` had been stuck at `0.1.0` while the `VERSION` file advanced. Now both track together at `0.2.3.0`.
+
 ## [0.2.2.0] - 2026-04-20
 
 ### Added
