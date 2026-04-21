@@ -191,11 +191,34 @@ export async function runSupportPipeline(
           },
         },
         select: {
-          conversation: { select: { threadTs: true, deletedAt: true } },
+          conversation: {
+            select: { id: true, threadTs: true, deletedAt: true, mergedIntoConversationId: true },
+          },
         },
       });
-      if (alias?.conversation && !alias.conversation.deletedAt) {
-        resolvedThreadTs = alias.conversation.threadTs;
+      if (alias?.conversation) {
+        // Chain-follow for merged conversations (F3 fix per
+        // docs/plans/impl-plan-thread-merge-split-reassign.md §7).
+        // If the aliased target is soft-deleted via merge, walk the
+        // mergedIntoConversationId chain until we find an active
+        // conversation or the chain terminates. Bounded at 5 hops to
+        // prevent runaway cycles; chains beyond that indicate data corruption.
+        let current = alias.conversation;
+        let hops = 0;
+        while (current.deletedAt && current.mergedIntoConversationId && hops < 5) {
+          const next = await tx.supportConversation.findUnique({
+            where: { id: current.mergedIntoConversationId },
+            select: { id: true, threadTs: true, deletedAt: true, mergedIntoConversationId: true },
+          });
+          if (!next) {
+            break;
+          }
+          current = next;
+          hops++;
+        }
+        if (!current.deletedAt) {
+          resolvedThreadTs = current.threadTs;
+        }
       }
     }
 

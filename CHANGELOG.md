@@ -2,6 +2,17 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.5.0] - 2026-04-20
+
+### Added
+- **Operators can now merge two or more support conversations into one and reassign individual messages to a different conversation.** Backend wiring only — the inbox UI lands in PR 3. New tRPC procedures on `supportInbox`: `mergeConversations`, `reassignEvent`, `undoCorrection` (all operator-role). Every correction is idempotent via a `(workspaceId, idempotencyKey)` unique so a double-clicked submit returns the same correction id instead of a duplicate. Undo works within 24 hours and rejects if a later correction depends on the one being undone (formal dependency check over source/target conversations and the reassigned event).
+- **Merge uses a two-phase commit that closes the ingress race.** Thread-alias rows are written in a dedicated transaction committed BEFORE the merge transaction starts, so a Slack webhook arriving for the secondary's `threadTs` during the merge still finds the alias and routes to the primary instead of spawning a phantom conversation.
+- **Reassigned messages get a timeline breadcrumb on both sides.** Source and target conversations each get a `REASSIGNED_EVENT` row pointing at each other. Undo produces matching `REASSIGN_UNDONE` breadcrumbs. Merges get `MERGED` + `MERGE_UNDONE` the same way.
+- **Three new realtime reasons** (`GROUPING_MERGED`, `GROUPING_REASSIGNED`, `GROUPING_UNDONE`) so the inbox SSE stream invalidates the right workspace view after every correction.
+
+### Fixed
+- **Ingress no longer spawns a phantom conversation when a Slack reply lands on a merged thread chain.** Previously the alias lookup ignored aliases where the target conversation was soft-deleted, which broke A→B→C merge chains (the A-alias still pointed at B, which was deleted). The lookup now follows `mergedIntoConversationId` up to 5 hops until it finds an active target.
+
 ## [0.2.4.0] - 2026-04-20
 
 ### Added
