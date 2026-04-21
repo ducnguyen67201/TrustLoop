@@ -25,7 +25,7 @@ export const sessionRecordSchema = z.object({
   workspaceId: z.string().min(1),
   sessionId: z.string().min(1),
   userId: z.string().min(1).nullable(),
-  userEmail: z.string().email().nullable(),
+  userEmail: z.email().nullable(),
   status: sessionRecordStatusSchema,
   startedAt: z.iso.datetime(),
   endedAt: z.iso.datetime().nullable(),

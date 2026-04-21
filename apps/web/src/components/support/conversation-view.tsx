@@ -4,19 +4,30 @@ import { ConversationHeader } from "@/components/support/conversation-header";
 import { ConversationPropertiesSidebar } from "@/components/support/conversation-properties-sidebar";
 import { CustomerProfileProvider } from "@/components/support/customer-profile-context";
 import { MessageList } from "@/components/support/message-list";
+import { ReassignEventDialog } from "@/components/support/reassign-event-dialog";
 import { ReplyComposer } from "@/components/support/reply-composer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalysis } from "@/hooks/use-analysis";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useConversationReply } from "@/hooks/use-conversation-reply";
+import { useEventReassign } from "@/hooks/use-event-reassign";
+import { useReassignCandidates } from "@/hooks/use-reassign-candidates";
 import { useSessionReplay } from "@/hooks/use-session-replay";
-import { useSupportInbox } from "@/hooks/use-support-inbox";
+import type { SupportConversationStatus } from "@shared/types";
+import { useCallback, useState } from "react";
 
 interface ConversationViewProps {
   conversationId: string;
+  onAssignConversation: (conversationId: string, assigneeUserId: string | null) => Promise<unknown>;
+  refreshNonce: number;
   workspaceId: string;
   onBack: () => void;
+  onMarkDoneWithOverride: (conversationId: string, overrideReason: string) => Promise<unknown>;
+  onUpdateConversationStatus: (
+    conversationId: string,
+    status: SupportConversationStatus
+  ) => Promise<unknown>;
 }
 
 /**
@@ -27,15 +38,58 @@ interface ConversationViewProps {
  * useConversationReply. The component focuses on layout + delegating
  * analysis / session-replay concerns to their own hooks.
  */
-export function ConversationView({ conversationId, workspaceId, onBack }: ConversationViewProps) {
+export function ConversationView({
+  conversationId,
+  onAssignConversation,
+  refreshNonce,
+  workspaceId,
+  onBack,
+  onMarkDoneWithOverride,
+  onUpdateConversationStatus,
+}: ConversationViewProps) {
   // Reply/send/retry/polling flow — owns timeline state + reply handlers.
-  const reply = useConversationReply(conversationId);
+  const reply = useConversationReply(conversationId, refreshNonce);
   const auth = useAuthSession();
-  // Non-reply mutations (assign, status change, mark-done) still come
-  // straight from the shared inbox hook.
-  const inbox = useSupportInbox();
   const analysisHook = useAnalysis(conversationId, workspaceId);
   const sessionReplay = useSessionReplay(conversationId, workspaceId);
+
+  // Reassign picker state. Candidates are fetched lazily the first time the
+  // operator opens the dialog; see useReassignCandidates.
+  const reassignMutation = useEventReassign();
+  const reassignCandidates = useReassignCandidates();
+  const [reassigningEventId, setReassigningEventId] = useState<string | null>(null);
+
+  const handleRequestReassign = useCallback(
+    (eventId: string) => {
+      setReassigningEventId(eventId);
+      if (!reassignCandidates.hasLoaded) {
+        void reassignCandidates.loadCandidates();
+      }
+    },
+    [reassignCandidates]
+  );
+
+  const handleCloseReassign = useCallback(() => {
+    setReassigningEventId(null);
+    reassignMutation.clearReassignError();
+  }, [reassignMutation]);
+
+  const handleSubmitReassign = useCallback(
+    async (targetConversationId: string) => {
+      if (!reassigningEventId) {
+        return;
+      }
+      try {
+        await reassignMutation.submitReassign(reassigningEventId, targetConversationId);
+        setReassigningEventId(null);
+        // Refresh the timeline to hide the moved event.
+        await reply.refresh();
+      } catch {
+        // Error surfaced via reassignMutation.reassignError in the dialog.
+      }
+    },
+    [reassignMutation, reassigningEventId, reply]
+  );
 
   const {
     conversation,
@@ -105,8 +159,8 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
           conversation={conversation}
           isMutating={isMutating}
           onBack={onBack}
-          onMarkDoneWithOverride={inbox.markDoneWithOverrideReason}
-          onUpdateStatus={inbox.updateConversationStatus}
+          onMarkDoneWithOverride={onMarkDoneWithOverride}
+          onUpdateStatus={onUpdateConversationStatus}
         />
 
         {/* Two-panel body */}
@@ -120,6 +174,7 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
               onRetryDelivery={handleRetryDelivery}
               onSetReplyToEventId={setReplyToEventId}
               onToggleReaction={handleToggleReaction}
+              onRequestReassign={handleRequestReassign}
               currentUserId={auth.session?.user.id ?? null}
             />
 
@@ -138,8 +193,8 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
             conversation={conversation}
             events={events}
             isMutating={isMutating}
-            onAssign={inbox.assignConversation}
-            onUpdateStatus={inbox.updateConversationStatus}
+            onAssign={onAssignConversation}
+            onUpdateStatus={onUpdateConversationStatus}
             analysis={analysisHook.analysis}
             isAnalyzing={analysisHook.isAnalyzing}
             isAnalysisMutating={analysisHook.isMutating}
@@ -154,6 +209,17 @@ export function ConversationView({ conversationId, workspaceId, onBack }: Conver
           />
         </div>
       </div>
+
+      <ReassignEventDialog
+        open={reassigningEventId !== null}
+        sourceChannelId={conversation.thread.channelId}
+        sourceConversationId={conversationId}
+        candidates={reassignCandidates.candidates}
+        isSubmitting={reassignMutation.isReassigning}
+        error={reassignMutation.reassignError ?? reassignCandidates.error}
+        onSubmit={handleSubmitReassign}
+        onClose={handleCloseReassign}
+      />
     </CustomerProfileProvider>
   );
 }

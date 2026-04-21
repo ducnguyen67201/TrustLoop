@@ -1,9 +1,11 @@
 # AI Analysis + Draft Generation — Engineering Spec
 
-**Status:** Draft
+**Status:** Partially superseded (2026-04-19) — Sentry sections are deprecated
 **Date:** 2026-04-11
 **Branch:** `anh/ai-analysis-draft-generation`
 **Parent:** `docs/plans/impl-plan-first-customer-happy-path-mvp.md` § D
+
+> **2026-04-19 — Sentry integration removed.** The agent's observability source is now the first-party session digest (`packages/sdk-browser` → `sessionEvent` → `session-correlation/digest.ts`), not external Sentry. Wherever this spec refers to `sentryContext`, `searchSentry`, `fetchSentryContextActivity`, or "Sentry" as a source, treat those sections as historical context only. Implementation is documented in `docs/plans/impl-plan-remove-sentry-integration.md`. The PR tool, state machines, and tone config sections remain accurate.
 
 ---
 

@@ -41,6 +41,46 @@ export const supportConversationEventSourceValues = [
 
 export const supportConversationEventSourceSchema = z.enum(supportConversationEventSourceValues);
 
+export const SUPPORT_GROUPING_CORRECTION_KIND = {
+  merge: "MERGE",
+  reassignEvent: "REASSIGN_EVENT",
+} as const;
+
+export const supportGroupingCorrectionKindValues = [
+  SUPPORT_GROUPING_CORRECTION_KIND.merge,
+  SUPPORT_GROUPING_CORRECTION_KIND.reassignEvent,
+] as const;
+
+export const supportGroupingCorrectionKindSchema = z.enum(supportGroupingCorrectionKindValues);
+
+export type SupportGroupingCorrectionKind = z.infer<typeof supportGroupingCorrectionKindSchema>;
+
+// Input schemas for the tRPC procedures in support-grouping-correction-service.ts.
+export const supportMergeConversationsRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  primaryConversationId: z.string().min(1),
+  secondaryConversationIds: z.array(z.string().min(1)).min(1).max(10),
+  idempotencyKey: z.string().min(1).max(128),
+});
+
+export const supportReassignEventRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  eventId: z.string().min(1),
+  targetConversationId: z.string().min(1),
+  idempotencyKey: z.string().min(1).max(128),
+});
+
+export const supportUndoCorrectionRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  correctionId: z.string().min(1),
+});
+
+export type SupportMergeConversationsRequest = z.infer<
+  typeof supportMergeConversationsRequestSchema
+>;
+export type SupportReassignEventRequest = z.infer<typeof supportReassignEventRequestSchema>;
+export type SupportUndoCorrectionRequest = z.infer<typeof supportUndoCorrectionRequestSchema>;
+
 export const supportConversationSchema = z.object({
   id: z.string().min(1),
   workspaceId: z.string().min(1),

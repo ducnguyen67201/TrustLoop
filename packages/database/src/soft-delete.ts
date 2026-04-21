@@ -1,4 +1,4 @@
-import { Prisma } from "@shared/database/generated/prisma/client";
+import { Prisma } from "./generated/prisma/client";
 
 /**
  * Models that support soft delete via `deletedAt` field.

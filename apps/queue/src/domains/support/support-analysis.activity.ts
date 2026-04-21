@@ -1,6 +1,5 @@
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import * as sentry from "@shared/rest/services/sentry/sentry-service";
 import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
 import * as sessionCorrelation from "@shared/rest/services/support/session-correlation";
 import * as aiSettings from "@shared/rest/services/workspace-ai-settings-service";
@@ -13,16 +12,18 @@ import {
   type AnalysisTriggerType,
   type AnalyzeResponse,
   DRAFT_STATUS,
+  InvalidConversationTransitionError,
   MAX_ANALYSIS_RETRIES,
-  type SentryContext,
   type SessionDigest,
   type SupportAnalysisWorkflowResult,
   type ToneConfig,
   analyzeResponseSchema,
   restoreAnalysisContext,
+  restoreConversationContext,
   transitionAnalysis,
+  transitionConversation,
 } from "@shared/types";
-import { heartbeat } from "@temporalio/activity";
+import { ApplicationFailure, heartbeat } from "@temporalio/activity";
 
 interface ThreadSnapshotInput {
   workspaceId: string;
@@ -35,16 +36,6 @@ interface ThreadSnapshotResult {
   threadSnapshot: string;
   customerEmail: string | null;
   sessionDigest: SessionDigest | null;
-}
-
-interface FetchSentryContextInput {
-  customerEmail: string | null;
-  workspaceId: string;
-  analysisId: string;
-}
-
-interface FetchSentryContextResult {
-  sentryContext: SentryContext | null;
 }
 
 interface AnalysisAgentInput {
@@ -169,25 +160,6 @@ export async function runAnalysisAgent(
   }
 }
 
-export async function fetchSentryContextActivity(
-  input: FetchSentryContextInput
-): Promise<FetchSentryContextResult> {
-  if (!input.customerEmail || !sentry.isConfigured()) {
-    return { sentryContext: null };
-  }
-
-  const sentryContext = await sentry.fetchContext(input.customerEmail);
-
-  if (sentryContext) {
-    await prisma.supportAnalysis.update({
-      where: { id: input.analysisId },
-      data: { sentryContext: JSON.parse(JSON.stringify(sentryContext)) },
-    });
-  }
-
-  return { sentryContext };
-}
-
 /**
  * Load the current SupportAnalysis row as a state-machine context so
  * transitions can be validated against the DB truth. Every status write in
@@ -221,24 +193,65 @@ export async function markAnalyzing(analysisId: string): Promise<void> {
 }
 
 export async function escalateToManualHandling(input: EscalateInput): Promise<void> {
-  await prisma.supportConversation.update({
-    where: { id: input.conversationId },
-    data: { status: "IN_PROGRESS" },
-  });
+  // Route through the conversation FSM so escalation can't silently overwrite
+  // a DONE conversation. The FSM rejects analysisEscalated from DONE with a
+  // typed error; we catch it here and short-circuit cleanly — no Temporal
+  // retry, no timeline write (the conversation is already closed and manual
+  // handling is moot). Any OTHER unexpected invalid transition is a permanent
+  // bug; surface it as ApplicationFailure.nonRetryable so the worker treats
+  // it as terminal rather than looping.
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.supportConversation.findUniqueOrThrow({
+      where: { id: input.conversationId },
+      select: { status: true },
+    });
 
-  await prisma.supportConversationEvent.create({
-    data: {
-      workspaceId: input.workspaceId,
-      conversationId: input.conversationId,
-      eventType: "ANALYSIS_ESCALATED",
-      eventSource: "SYSTEM",
-      summary: `AI analysis failed after ${MAX_ANALYSIS_RETRIES} attempts. Manual handling required.`,
-      detailsJson: {
-        analysisId: input.analysisId,
-        errorMessage: input.errorMessage,
-        retryCount: MAX_ANALYSIS_RETRIES,
-      },
-    },
+    try {
+      const next = transitionConversation(
+        restoreConversationContext(input.conversationId, row.status),
+        { type: "analysisEscalated", analysisId: input.analysisId }
+      );
+
+      await tx.supportConversation.update({
+        where: { id: input.conversationId },
+        data: { status: next.status },
+      });
+
+      await tx.supportConversationEvent.create({
+        data: {
+          workspaceId: input.workspaceId,
+          conversationId: input.conversationId,
+          eventType: "ANALYSIS_ESCALATED",
+          eventSource: "SYSTEM",
+          summary: `AI analysis failed after ${MAX_ANALYSIS_RETRIES} attempts. Manual handling required.`,
+          detailsJson: {
+            analysisId: input.analysisId,
+            errorMessage: input.errorMessage,
+            retryCount: MAX_ANALYSIS_RETRIES,
+          },
+        },
+      });
+    } catch (error) {
+      if (error instanceof InvalidConversationTransitionError) {
+        if (row.status === "DONE") {
+          // Expected: conversation was closed before escalation ran. Skip
+          // silently — nothing to escalate, nothing to write.
+          console.info(
+            `[support-analysis] escalation skipped: conversation ${input.conversationId} already DONE`
+          );
+          return;
+        }
+        // Any other illegal transition shape is a code bug, not a transient
+        // failure. Don't let Temporal retry; the retry will hit the same
+        // wall forever.
+        throw ApplicationFailure.create({
+          type: "InvalidConversationTransition",
+          message: error.message,
+          nonRetryable: true,
+        });
+      }
+      throw error;
+    }
   });
 }
 
@@ -382,6 +395,11 @@ async function persistDraft(
       tone: result.draft.tone,
       llmModel: result.meta.model,
       llmLatencyMs: result.meta.totalDurationMs,
+      // Generated once, before the draft is ever sent. Slack's
+      // chat.postMessage accepts this as `client_msg_id`; on an ambiguous
+      // transport failure, reconcileDraftActivity uses it to query
+      // conversations.replies and detect whether the message actually landed.
+      slackClientMsgId: crypto.randomUUID(),
     },
   });
   return draft.id;

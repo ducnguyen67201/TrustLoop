@@ -13,21 +13,19 @@ FROM node:24-slim AS base
 WORKDIR /app
 
 # -----------------------------------------------------------------------------
-# deps — install workspace dependencies.
-#
-# No lockfile copy (npm/cli#4828): host-generated lockfiles don't list the
-# linux native bindings needed inside the image. Fresh `npm install` resolves
-# optional native deps for the target platform correctly.
+# deps — install workspace dependencies from the committed lockfile so deploys
+# resolve the same graph as local development and CI.
 # -----------------------------------------------------------------------------
 FROM base AS deps
 COPY package.json ./
+COPY package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/brand/package.json ./packages/brand/
 COPY packages/database/package.json ./packages/database/
 COPY packages/env/package.json ./packages/env/
 COPY packages/rest/package.json ./packages/rest/
 COPY packages/types/package.json ./packages/types/
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 # -----------------------------------------------------------------------------
 # builder — generate Prisma client, build Next standalone output

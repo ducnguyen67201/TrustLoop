@@ -2,6 +2,119 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.8.0] - 2026-04-20
+
+### Added
+- **Undo a merge or a message move with one click.** Every successful merge or reassign now surfaces a 10-second toast with an Undo button. Click it and the operation reverses via `supportInbox.undoCorrection` — the secondary conversation is unarchived, the thread alias is removed, the moved message returns to its origin. Undo works within a 24-hour window and rejects if a later correction depends on the one you're trying to reverse.
+- **Structured correction logs.** Every merge, reassign, and undo emits a `[grouping-correction]` log line with `workspaceId`, `correctionId`, and `kind`. This is the signal that powers the Part B per-workspace grouping-threshold tuning in the plan (§9) — without changing the hot path, a nightly aggregation can compute correction rates from logs alone.
+
+## [0.2.7.0] - 2026-04-20
+
+### Added
+- **Operators can move a single message to a different conversation.** Hover any customer message in the conversation view and click "Move to thread…" — a searchable picker opens listing other open conversations (filtered to the same channel by default; toggle widens to other channels with a warning that the server blocks cross-channel moves). Picking a target and hitting Enter routes through the `supportInbox.reassignEvent` procedure shipped in PR #48, stamps a `REASSIGNED_EVENT` breadcrumb on both sides of the move, and refreshes the timeline.
+
+## [0.2.6.0] - 2026-04-20
+
+### Added
+- **Operators can merge conversations directly from the inbox UI.** New "Select threads" button on the board header puts the inbox into explicit select mode — checkboxes appear on every card, drag-drop is suppressed for the duration, and clicking a card toggles selection instead of opening the thread. Once ≥2 threads are selected, a "Merge" button in the toolbar opens a chip-based primary picker with a "Recommended" badge on the best candidate (assignee-first, then oldest). Hitting Enter confirms, submitting to the tRPC merge procedure shipped in PR #48. The inbox refreshes to reflect the archived secondaries.
+- **Merged conversations now show the full combined timeline.** Opening a primary conversation unions events from every conversation that was merged into it, sorted by timestamp. Secondaries are archived but their messages still render under the primary.
+
+## [0.2.5.0] - 2026-04-20
+
+### Added
+- **Operators can now merge two or more support conversations into one and reassign individual messages to a different conversation.** Backend wiring only — the inbox UI lands in PR 3. New tRPC procedures on `supportInbox`: `mergeConversations`, `reassignEvent`, `undoCorrection` (all operator-role). Every correction is idempotent via a `(workspaceId, idempotencyKey)` unique so a double-clicked submit returns the same correction id instead of a duplicate. Undo works within 24 hours and rejects if a later correction depends on the one being undone (formal dependency check over source/target conversations and the reassigned event).
+- **Merge uses a two-phase commit that closes the ingress race.** Thread-alias rows are written in a dedicated transaction committed BEFORE the merge transaction starts, so a Slack webhook arriving for the secondary's `threadTs` during the merge still finds the alias and routes to the primary instead of spawning a phantom conversation.
+- **Reassigned messages get a timeline breadcrumb on both sides.** Source and target conversations each get a `REASSIGNED_EVENT` row pointing at each other. Undo produces matching `REASSIGN_UNDONE` breadcrumbs. Merges get `MERGED` + `MERGE_UNDONE` the same way.
+- **Three new realtime reasons** (`GROUPING_MERGED`, `GROUPING_REASSIGNED`, `GROUPING_UNDONE`) so the inbox SSE stream invalidates the right workspace view after every correction.
+
+### Fixed
+- **Ingress no longer spawns a phantom conversation when a Slack reply lands on a merged thread chain.** Previously the alias lookup ignored aliases where the target conversation was soft-deleted, which broke A→B→C merge chains (the A-alias still pointed at B, which was deleted). The lookup now follows `mergedIntoConversationId` up to 5 hops until it finds an active target.
+
+## [0.2.4.0] - 2026-04-20
+
+### Added
+- **Schema foundations for thread merge / reassign.** New `SupportGroupingCorrection` table (8 columns, 3 indexes) captures every operator-driven grouping correction as an immutable audit row, with `@@unique([workspaceId, idempotencyKey])` so duplicate submissions return the existing correction instead of writing a second row. New nullable self-FK on `SupportConversation.mergedIntoConversationId` (with `@@index`) is the breadcrumb for merged conversations — Slack routing still uses `SupportConversationThreadAlias`, this column is for the merged-view UNION query. New `SupportConversationEvent.reassignedFromConversationId` records where a reassigned message originally lived. Three new `SupportConversationEventType` enum values — `REASSIGNED_EVENT`, `MERGE_UNDONE`, `REASSIGN_UNDONE` — and the new `SupportGroupingCorrectionKind` enum (`MERGE`, `REASSIGN_EVENT`) round out the schema.
+- **No behavior changes.** This PR is schema-only. The service layer that writes into these tables lands in PR 2. See `docs/plans/impl-plan-thread-merge-split-reassign.md` §5 for the spec and §10 for the 5-PR rollout.
+
+## [0.2.3.0] - 2026-04-20
+
+### Added
+- **Implementation plan: thread merge / split / reassign (B7).** Shipped `docs/plans/impl-plan-thread-merge-split-reassign.md` covering the manual correction primitives for the support grouper (merge + reassign; split deferred post-MVP), a `SupportGroupingCorrection` log that feeds future per-workspace learning, and the UX spec (explicit inbox select mode, chip-based merge dialog, layered 24h undo). Includes full `/autoplan` review (CEO/Design/Eng) with dual voices, two blockers caught (phantom `SupportMessage` model + soft-delete-in-transaction violations), and 10 literal error-copy strings.
+
+### Fixed
+- **`package.json` version synced to match `VERSION`.** Pre-existing drift: `package.json` had been stuck at `0.1.0` while the `VERSION` file advanced. Now both track together at `0.2.3.0`.
+
+## [0.2.2.0] - 2026-04-20
+
+### Added
+- **`SupportConversation` now has a finite-state machine** (`packages/types/src/support/state-machines/conversation-state-machine.ts`). Every writer — ingress, operator reply, status update, override-done, analysis-failure escalation — goes through a pure `transitionConversation(ctx, event)` function instead of writing `status` directly. The transition table faithfully preserves current product behavior: operators can still drag-drop between any states, DONE still requires delivery evidence, reply-on-DONE preserves DONE, and customer messages still reopen DONE to UNREAD. 69 pure-FSM tests (40 existing + 29 new) cover every legal transition, every illegal transition, and both regression cases below.
+- **`softUpsert` has a new `transformUpdate` callback.** Lets callers derive the update payload from the currently-persisted row atomically. Used by the ingress activity so the FSM transition runs inside the same operation as the write, preserving `softUpsert`'s three-branch shape (update / resurrect / create) without duplicating logic at the call site.
+- **`tryConversationTransition` service helper** translates `InvalidConversationTransitionError` into a tRPC `CONFLICT` response at the API boundary.
+
+### Fixed
+- **Race bug: a late operator reply could silently demote `DONE` to `IN_PROGRESS`.** The previous code read `conversation.status` outside the write transaction and then wrote `IN_PROGRESS` if the pre-read value wasn't `DONE`. Under Postgres `READ COMMITTED` a concurrent `markDoneWithOverride` that committed after the read but before the write would be silently overwritten. Fixed by routing the write through a conditional `updateMany` with `where: { status: { not: DONE } }` so the atomic check replaces the stale pre-read. If the row is already `DONE` at write time the reply still posts but status stays `DONE` (matches the FSM's idempotent DONE+operatorReplied rule).
+- **Analysis-failure escalation could overwrite a `DONE` conversation back to `IN_PROGRESS`.** `escalateToManualHandling` wrote `status: "IN_PROGRESS"` unconditionally — bypassing the delivery-evidence audit and reopening a deliberately-closed conversation. The activity now routes through the FSM which rejects `analysisEscalated` from DONE; the activity catches the typed error and returns cleanly. Any *other* invalid transition surfaces as `ApplicationFailure.nonRetryable` so Temporal treats it as terminal rather than retrying a permanent error forever.
+- **`hasDeliveryEvidence` now queries inside the status-write transaction** (previously it ran outside, allowing a TOCTOU gap) and filters `deletedAt: null` (soft-deleted attempts no longer satisfy the DONE guard).
+
+### Changed
+- **Status writers are now consistent in shape.** Both `updateStatus` (drag-drop / dropdown) and `markDoneWithOverride` load the current row, dispatch a per-target FSM event, and let the FSM write `next.status` — no more scattered branching on `input.status === DONE` at the caller. Per-target events (`operatorSetUnread`, `operatorSetInProgress`, `operatorSetStale`, `operatorSetDone`) preserve compile-time exhaustiveness and let a future UI query `getAllowedConversationEvents(ctx)` to decide which drop targets to enable.
+- **Implementation plan doc shipped at `docs/plans/impl-plan-support-conversation-state-machine.md`** — includes the `/autoplan` review report, 16 audit-trail decisions, and the final design notes reconciling per-target events + conditional-updateMany race fix.
+
+## [0.2.1.0] - 2026-04-19
+
+### Fixed
+- **Operator commands now require a human operator.** Every support-inbox and support-analysis mutation (assign, reply, mark done, override, retry delivery, toggle reaction, trigger/approve/dismiss analysis) previously accepted workspace API keys (`tlk_*`) in addition to user sessions. Anyone holding a valid workspace key could send replies, close tickets, or trigger analysis runs without ever being a human operator. Those mutations now route through a role-gated procedure that requires a user session plus at least MEMBER role, and the middleware rejects API-key actors explicitly.
+- **Workflow dispatch is no longer callable unauthenticated.** An unauthenticated tRPC procedure at `dispatchWorkflow` would let any caller enqueue support, support-analysis, repository-index, send-draft-to-slack, and codex workflows via `/api/trpc/dispatchWorkflow`. Most severely, `send-draft-to-slack` could post arbitrary content into customer Slack channels. The procedure had zero callers in the codebase. Removed entirely; internal workflow dispatch now lives only at the authenticated REST endpoint `/api/rest/workflows/dispatch` (behind `withServiceAuth`).
+
+### Changed
+- **`workspaceRoleProcedure` now fails closed on non-session actors.** The middleware used to rely on API-key contexts having a `null` role, which caused `hasRequiredRole` to return `false` and throw `FORBIDDEN`. That was a brittle contract implied by unrelated code. The middleware now asserts `ctx.session && ctx.user` up front and returns `UNAUTHORIZED`, then checks role. Downstream `ctx.user` is narrowed to non-nullable in role-gated handlers, so routers no longer need the `ctx.user?.id ?? ctx.apiKeyAuth?.keyId ?? "system"` fallback.
+
+## [0.2.0.1] - 2026-04-19
+
+### Added
+- **First live TOON section in the support-analysis prompt.** Browser session route history now renders as its own structured prompt block, letting the agent receive the ordered URL trail in TOON format when the payload shape is eligible instead of burying it inside prose formatting.
+
+### Changed
+- **Support-analysis prompt rollout has moved from foundation-only to first measured usage.** The browser session appendix stays readable prose for environment, failure, network, console, and exception context, while the uniform `routeHistory` list becomes the first live TOON-powered section with the existing JSON fallback still intact.
+
+## [0.2.0.0] - 2026-04-19
+
+### Added
+- **Approved drafts actually reach Slack.** This closes the customer-visible happy path: Slack message in → AI analysis → draft reply → operator approval → reply posts back into the original Slack thread. Previously `approveDraft()` flipped draft status to `APPROVED` and stopped; nothing ever called `chat.postMessage`. Now approval kicks off a new Temporal workflow on the `SUPPORT` queue that does the send, observes Slack's response, and writes the delivery state back to the draft. First-customer pilot is no longer blocked on the reply never being sent.
+- **Ambiguous-delivery reconciliation.** Transient Slack failures (network timeout, retryable 5xx that may have already been accepted server-side) no longer risk duplicate replies. The draft transitions to a new `DELIVERY_UNKNOWN` state and a reconciler queries `conversations.replies` for the draft's `client_msg_id`. Found → `SENT` with the recovered thread ts. Not found → one more send attempt. Still failing → `SEND_FAILED`. The native Slack `client_msg_id` nonce is generated once at draft creation time so both Slack server-side dedup and reconciliation lookups use the same key.
+- **Double-approval is now safe.** A double-click on the approve button or a duplicate tRPC call can no longer post the reply twice. `approveDraft()` wraps the status flip and a new `DraftDispatch` outbox insert in a single Prisma transaction with a compare-and-swap (`updateMany where status=AWAITING_APPROVAL`). The workflow dispatch uses a deterministic workflow ID (`send-draft-${draftId}`) with Temporal's `REJECT_DUPLICATE` reuse policy. The outbox row means a Temporal outage after commit still leaves work the sweep workflow can retry.
+- **New observability events.** `DRAFT_SENT` and `DRAFT_SEND_FAILED` conversation events are emitted so the inbox UI and downstream analytics can see every delivery outcome.
+- **Raised AI-generated PR size caps to realistic numbers.** The previous `MAX_FILES_PER_PR = 5` cap was too tight for typical bug fixes that also need to touch migrations, callers, and tests. The new caps are `MAX_FILES_PER_PR = 20` and a new `MAX_TOTAL_LINES_CHANGED_PER_PR = 500`. Calibration is backed by code-review research: median OSS PR is ~30 LOC / 2 files, Cisco found PRs over 400 LOC catch fewer bugs, and 200 LOC is the bar for "90% chance of completing review in an hour." Both caps intentionally sit above typical output so they only fire on runaway diffs, not legitimate fixes. Error messages now instruct the agent to split or escalate rather than silently failing.
+
+### Changed
+- **`SupportDraft` schema extended** with `deliveredAt`, `deliveryError`, `sendAttempts`, `slackClientMsgId` (unique), `slackMessageTs`. `SupportDraftStatus` enum gains `SENDING`, `SEND_FAILED`, `DELIVERY_UNKNOWN`. New `DraftDispatch` outbox model + `DraftDispatchKind` / `DraftDispatchStatus` enums.
+- **Draft state machine** gains `startSending`, `sendSucceeded`, `sendFailed`, `deliveryUnknown`, `reconcileFound`, `reconcileRetry` events covering the new send loop. The happy path is now `GENERATING → AWAITING_APPROVAL → APPROVED → SENDING → SENT`. Property-style FSM coverage tests are added for every new transition.
+- **Slack delivery adapter** accepts a `clientMsgId` and forwards it as `chat.postMessage.client_msg_id`. New `findReplyByClientMsgId` helper wraps `conversations.replies` for the reconciler.
+- **`approveDraft()` signature** now takes the workflow dispatcher alongside the input. The tRPC router passes it through.
+
+## [0.1.8.1] - 2026-04-19
+
+### Added
+- **Local prompt-rendering foundation for the agents runtime.** Support analysis prompts now build through a typed prompt document and renderer seam inside `apps/agents`, instead of assembling everything through one growing string builder. The new seam stays local to the agents service, which keeps `packages/types` free of renderer-only abstractions while making future prompt growth easier to manage.
+- **TOON input-serialization support and benchmark fixtures.** Added the official `@toon-format/toon` SDK plus renderer utilities for JSON and TOON serialization. TOON is not live by default yet, but the branch now has fixture tests that compare candidate structured payloads and prove fallback behavior before any production rollout.
+- **Agents package test coverage for prompt infrastructure.** `@trustloop/agents` now has a real `vitest` test suite and Biome lint coverage for `src/` and `test/`, including new tests for prompt document rendering, TOON format selection, serializer fallback, and benchmark fixtures.
+- **Implementation plan for staged TOON rollout.** Added `docs/plans/impl-plan-toon-prompt-foundation.md`, documenting the reviewed rollout: local-first renderer seam, measurement before live TOON enablement, delayed shared-package extraction, and explicit follow-up work for the `threadSnapshot` contract.
+
+### Changed
+- **Support-analysis prompt assembly now uses the new local renderer seam without changing live behavior.** `buildSupportAgentSystemPrompt()` and `buildAnalysisPromptWithContext()` now render from a prompt document, but the current support-analysis prompt text stays JSON-equivalent and session-context behavior remains intact while TOON stays behind the seam.
+- **Prompt rollout strategy is now benchmark-led, not format-led.** The plan and TODOs now explicitly defer shared-package extraction and `threadSnapshot` contract redesign, and treat TOON as a measured optimization rather than a new repo-wide prompt platform.
+
+## [0.1.8.0] - 2026-04-19
+
+### Added
+- **Workspace-scoped real-time support inbox updates.** The support page now opens a single authenticated SSE stream at `/api/{workspaceId}/support/stream` and refreshes immediately when a conversation changes, instead of waiting for a manual refresh or a tight polling loop. The server side uses a shared Postgres `LISTEN/NOTIFY` fanout layer in `support-realtime-service.ts`, so each `web` instance keeps one listener connection and only forwards invalidation events to subscribers in the matching workspace. The browser receives tiny invalidation events, not full payloads, then reuses the existing inbox/timeline queries as the source of truth.
+- **Focused realtime contracts and tests.** Added `packages/types/src/support/support-realtime.schema.ts` for the SSE event envelope plus targeted tests for the schema and the browser stream hook. This locks the event shape to `{ workspaceId, conversationId, reason, occurredAt }` and keeps message content out of the stream.
+- **Engineering spec for the rollout.** Added `docs/domains/support/spec-support-inbox-realtime-sse.md`, documenting why this feature uses SSE instead of WebSockets, how workspace isolation works, the rollout phases, and the migration path if Postgres fanout eventually needs to move to Redis or another bus.
+
+### Changed
+- **Support inbox refresh strategy is now event-first, polling-second.** `support-inbox.tsx` now relies on the SSE stream for primary freshness and keeps a 60-second visibility-aware recovery poll as a backstop. The open conversation drawer only refreshes when the incoming invalidation matches the selected conversation.
+- **Support write paths now emit committed invalidations.** Slack ingress processing, assignee changes, status changes, delivery updates, and reaction toggles all publish workspace-scoped `CONVERSATION_CHANGED` events only after their authoritative writes commit. That keeps the realtime path consistent with the actual persisted state and avoids speculative client refreshes.
+
 ## [0.1.7.1] - 2026-04-12
 
 ### Added

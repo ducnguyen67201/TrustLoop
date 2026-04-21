@@ -63,6 +63,10 @@ export const supportAdapterSendRequestSchema = z.object({
   thread: supportThreadReferenceSchema,
   messageText: z.string().trim().min(1),
   attachments: z.array(supportAttachmentSchema).default([]),
+  // Idempotency nonce. Slack's chat.postMessage accepts client_msg_id;
+  // callers generate this once per draft so a retry after an ambiguous
+  // network timeout can reconcile the delivery instead of duplicating.
+  clientMsgId: z.string().min(1).optional(),
 });
 
 export const supportAdapterSendResultSchema = z.object({

@@ -3,16 +3,35 @@
 import { trpcMutation, trpcQuery } from "@/lib/trpc-http";
 import type {
   SupportCommandResponse,
+  SupportConversation,
   SupportConversationListResponse,
   SupportConversationStatus,
   SupportConversationTimeline,
   SupportReaction,
 } from "@shared/types";
+import { SUPPORT_CONVERSATION_STATUS } from "@shared/types";
 import { useCallback, useEffect, useState } from "react";
 
 interface SupportInboxActionState {
   actionError: string | null;
   isMutating: boolean;
+}
+
+function updateConversationInList(
+  list: SupportConversationListResponse | null,
+  conversationId: string,
+  updater: (conversation: SupportConversation) => SupportConversation
+): SupportConversationListResponse | null {
+  if (!list) {
+    return list;
+  }
+
+  return {
+    ...list,
+    conversations: list.conversations.map((conversation) =>
+      conversation.id === conversationId ? updater(conversation) : conversation
+    ),
+  };
 }
 
 /**
@@ -124,30 +143,72 @@ export function useSupportInbox() {
   );
 
   const assignConversation = useCallback(
-    async (conversationId: string, assigneeUserId: string | null) =>
-      runMutation("supportInbox.assignConversation", {
-        conversationId,
-        assigneeUserId,
-      }),
-    [runMutation]
+    async (conversationId: string, assigneeUserId: string | null) => {
+      const previousListData = listData;
+      setListData((current) =>
+        updateConversationInList(current, conversationId, (conversation) => ({
+          ...conversation,
+          assigneeUserId,
+        }))
+      );
+
+      try {
+        return await runMutation("supportInbox.assignConversation", {
+          conversationId,
+          assigneeUserId,
+        });
+      } catch (error) {
+        setListData(previousListData);
+        throw error;
+      }
+    },
+    [listData, runMutation]
   );
 
   const updateConversationStatus = useCallback(
-    async (conversationId: string, status: SupportConversationStatus) =>
-      runMutation("supportInbox.updateConversationStatus", {
-        conversationId,
-        status,
-      }),
-    [runMutation]
+    async (conversationId: string, status: SupportConversationStatus) => {
+      const previousListData = listData;
+      setListData((current) =>
+        updateConversationInList(current, conversationId, (conversation) => ({
+          ...conversation,
+          status,
+        }))
+      );
+
+      try {
+        return await runMutation("supportInbox.updateConversationStatus", {
+          conversationId,
+          status,
+        });
+      } catch (error) {
+        setListData(previousListData);
+        throw error;
+      }
+    },
+    [listData, runMutation]
   );
 
   const markDoneWithOverrideReason = useCallback(
-    async (conversationId: string, overrideReason: string) =>
-      runMutation("supportInbox.markDoneWithOverrideReason", {
-        conversationId,
-        overrideReason,
-      }),
-    [runMutation]
+    async (conversationId: string, overrideReason: string) => {
+      const previousListData = listData;
+      setListData((current) =>
+        updateConversationInList(current, conversationId, (conversation) => ({
+          ...conversation,
+          status: SUPPORT_CONVERSATION_STATUS.done,
+        }))
+      );
+
+      try {
+        return await runMutation("supportInbox.markDoneWithOverrideReason", {
+          conversationId,
+          overrideReason,
+        });
+      } catch (error) {
+        setListData(previousListData);
+        throw error;
+      }
+    },
+    [listData, runMutation]
   );
 
   const retryDelivery = useCallback(

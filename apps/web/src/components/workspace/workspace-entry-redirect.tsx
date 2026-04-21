@@ -40,7 +40,7 @@ export function WorkspaceEntryRedirect() {
     <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center p-6">
       <Alert className="max-w-xl">
         <AlertTitle>Resolving workspace</AlertTitle>
-        <AlertDescription>Routing you to your dashboard...</AlertDescription>
+        <AlertDescription>Routing you to your workspace...</AlertDescription>
       </Alert>
     </main>
   );

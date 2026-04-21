@@ -288,6 +288,12 @@ interface MessageBlockProps {
   showHeader: boolean;
   onReplyToThread: () => void;
   onToggleReaction?: (eventId: string, emojiName: string, emojiUnicode: string | null) => void;
+  /**
+   * Opens the reassign picker for this event. Only wired when the event is a
+   * MESSAGE_RECEIVED (the server rejects reassign on other event types).
+   * See docs/plans/impl-plan-thread-merge-split-reassign.md §4.4 / §6.3.
+   */
+  onRequestReassign?: (eventId: string) => void;
   currentUserId?: string | null;
   children?: React.ReactNode;
 }
@@ -297,9 +303,11 @@ export function MessageBlock({
   showHeader,
   onReplyToThread,
   onToggleReaction,
+  onRequestReassign,
   currentUserId,
   children,
 }: MessageBlockProps) {
+  const canReassign = onRequestReassign && event.eventType === "MESSAGE_RECEIVED";
   const messageText = extractMessageText(event);
   const isOperator = event.eventSource === SUPPORT_CONVERSATION_EVENT_SOURCE.operator;
   const slackUserId =
@@ -422,6 +430,15 @@ export function MessageBlock({
                     />
                   </PopoverContent>
                 </Popover>
+              ) : null}
+              {canReassign ? (
+                <button
+                  type="button"
+                  onClick={() => onRequestReassign?.(event.id)}
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                >
+                  Move to thread…
+                </button>
               ) : null}
             </div>
           ) : null}

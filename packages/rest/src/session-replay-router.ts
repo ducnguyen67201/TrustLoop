@@ -9,7 +9,7 @@ export const sessionReplayRouter = router({
       z
         .object({
           limit: z.number().int().min(1).max(100).default(50),
-          cursor: z.string().datetime().optional(),
+          cursor: z.iso.datetime().optional(),
         })
         .default({ limit: 50 })
     )
@@ -79,10 +79,10 @@ export const sessionReplayRouter = router({
     .input(
       z.object({
         conversationId: z.string().min(1).optional(),
-        userEmail: z.string().email().optional(),
+        userEmail: z.email().optional(),
         userId: z.string().optional(),
-        windowStartAt: z.string().datetime(),
-        windowEndAt: z.string().datetime(),
+        windowStartAt: z.iso.datetime(),
+        windowEndAt: z.iso.datetime(),
       })
     )
     .query(async ({ ctx, input }) => {

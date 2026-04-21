@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@shared/database/generated/prisma/client";
+import type { PrismaClient } from "./generated/prisma/client";
 import type { SOFT_DELETE_MODELS } from "./soft-delete";
 
 const DEFAULT_RETENTION_DAYS = 90;

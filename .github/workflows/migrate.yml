@@ -8,6 +8,13 @@ name: Migrate DB
 #   push to production  →  github env `production`  →  Doppler `prd`  →  prod Postgres
 #   workflow_dispatch   →  user-selected           →  mapped → corresponding DB
 #
+# Release model:
+#   - Railway staging deploys must come from the `staging` branch.
+#   - Railway production deploys must come from the `production` branch.
+#   - If code is deployed to an environment from some other branch (for example
+#     deploying `main` into staging), this workflow will not auto-apply that
+#     environment's migrations for the deployed commit.
+#
 # Prereq: each GitHub Environment (staging, production) must have a
 # DOPPLER_TOKEN secret set to a Doppler Service Token scoped to the
 # matching config. GitHub resolves `environment:` first and loads
@@ -68,6 +75,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      - name: Use repo-pinned npm
+        run: |
+          PINNED_NPM=$(node -p "require('./package.json').packageManager.split('@')[1]")
+          npm install -g "npm@$PINNED_NPM"
+          npm --version
 
       - name: Resolve Doppler config
         id: resolve

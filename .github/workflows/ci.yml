@@ -7,7 +7,201 @@ on:
       - main
 
 jobs:
-  validate:
+  detect-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      validation_jobs: ${{ steps.set-scope.outputs.validation_jobs }}
+      services: ${{ steps.set-scope.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            marketing:
+              - 'apps/marketing/**'
+              - 'packages/brand/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'biome.json'
+              - '.nvmrc'
+              - '.github/workflows/**'
+            web:
+              - 'apps/web/**'
+              - 'packages/brand/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/rest/**'
+              - 'packages/types/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'biome.json'
+              - '.nvmrc'
+              - '.github/workflows/**'
+            queue:
+              - 'apps/queue/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/rest/**'
+              - 'packages/types/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'biome.json'
+              - '.nvmrc'
+              - '.github/workflows/**'
+            agents:
+              - 'apps/agents/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/rest/**'
+              - 'packages/types/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'biome.json'
+              - '.nvmrc'
+              - '.github/workflows/**'
+            demo_app:
+              - 'apps/demo-app/**'
+              - 'packages/sdk-browser/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'biome.json'
+              - '.nvmrc'
+              - '.github/workflows/**'
+            sdk:
+              - 'packages/sdk-browser/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'turbo.json'
+              - 'tsconfig.json'
+              - 'tsconfig.base.json'
+              - 'biome.json'
+              - '.nvmrc'
+              - '.github/workflows/**'
+            docker_marketing:
+              - 'apps/marketing/**'
+              - 'packages/brand/**'
+              - 'deploy/marketing.Dockerfile'
+              - 'deploy/railway.marketing.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.dockerignore'
+            docker_web:
+              - 'apps/web/**'
+              - 'packages/brand/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/rest/**'
+              - 'packages/types/**'
+              - 'deploy/web.Dockerfile'
+              - 'deploy/railway.web.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.dockerignore'
+            docker_queue:
+              - 'apps/queue/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/rest/**'
+              - 'packages/types/**'
+              - 'deploy/queue.Dockerfile'
+              - 'deploy/railway.queue.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.dockerignore'
+            docker_agents:
+              - 'apps/agents/**'
+              - 'packages/database/**'
+              - 'packages/env/**'
+              - 'packages/rest/**'
+              - 'packages/types/**'
+              - 'deploy/agents.Dockerfile'
+              - 'deploy/railway.agents.json'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.dockerignore'
+
+      - name: Build validation and docker scope
+        id: set-scope
+        run: |
+          validation_jobs=()
+          services=()
+
+          [[ "${{ steps.changes.outputs.marketing }}" == "true" ]] && validation_jobs+=('{"service":"marketing","workspace":"@trustloop/marketing"}')
+          [[ "${{ steps.changes.outputs.web }}" == "true" ]] && validation_jobs+=('{"service":"web","workspace":"@trustloop/web"}')
+          [[ "${{ steps.changes.outputs.queue }}" == "true" ]] && validation_jobs+=('{"service":"queue","workspace":"@apps/queue"}')
+          [[ "${{ steps.changes.outputs.agents }}" == "true" ]] && validation_jobs+=('{"service":"agents","workspace":"@trustloop/agents"}')
+          [[ "${{ steps.changes.outputs.demo_app }}" == "true" ]] && validation_jobs+=('{"service":"demo-app","workspace":"@trustloop/demo-app"}')
+          [[ "${{ steps.changes.outputs.sdk }}" == "true" ]] && validation_jobs+=('{"service":"sdk","workspace":"@trustloop/sdk"}')
+
+          [[ "${{ steps.changes.outputs.docker_marketing }}" == "true" ]] && services+=('"marketing"')
+          [[ "${{ steps.changes.outputs.docker_web }}" == "true" ]] && services+=('"web"')
+          [[ "${{ steps.changes.outputs.docker_queue }}" == "true" ]] && services+=('"queue"')
+          [[ "${{ steps.changes.outputs.docker_agents }}" == "true" ]] && services+=('"agents"')
+
+          if [ ${#validation_jobs[@]} -eq 0 ]; then
+            validation_jobs_json='[]'
+          else
+            IFS=,
+            validation_jobs_json="[${validation_jobs[*]}]"
+          fi
+
+          if [ ${#services[@]} -eq 0 ]; then
+            services_json='[]'
+          else
+            IFS=,
+            services_json="[${services[*]}]"
+          fi
+
+          echo "validation_jobs=$validation_jobs_json" >> "$GITHUB_OUTPUT"
+          echo "services=$services_json" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Validation scope"
+            echo ""
+            echo "| Workspace scope | Validate |"
+            echo "|-----------------|----------|"
+            echo "| marketing       | ${{ steps.changes.outputs.marketing == 'true' && '✅' || '⏭️' }} |"
+            echo "| web             | ${{ steps.changes.outputs.web == 'true' && '✅' || '⏭️' }} |"
+            echo "| queue           | ${{ steps.changes.outputs.queue == 'true' && '✅' || '⏭️' }} |"
+            echo "| agents          | ${{ steps.changes.outputs.agents == 'true' && '✅' || '⏭️' }} |"
+            echo "| demo-app        | ${{ steps.changes.outputs.demo_app == 'true' && '✅' || '⏭️' }} |"
+            echo "| sdk             | ${{ steps.changes.outputs.sdk == 'true' && '✅' || '⏭️' }} |"
+            echo ""
+            echo "Validation jobs: \`${validation_jobs_json}\`"
+            echo ""
+            echo "### Docker build scope"
+            echo ""
+            echo "| Service | Build |"
+            echo "|---------|-------|"
+            echo "| marketing | ${{ steps.changes.outputs.docker_marketing == 'true' && '✅' || '⏭️' }} |"
+            echo "| web       | ${{ steps.changes.outputs.docker_web == 'true' && '✅' || '⏭️' }} |"
+            echo "| queue     | ${{ steps.changes.outputs.docker_queue == 'true' && '✅' || '⏭️' }} |"
+            echo "| agents    | ${{ steps.changes.outputs.docker_agents == 'true' && '✅' || '⏭️' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  repo-guards:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop?schema=public
@@ -33,17 +227,11 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Enable turbo remote cache (GitHub Actions cache backend)
-        uses: dtinth/setup-github-actions-caching-for-turbo@v1
-
-      - name: Determine turbo filter base
-        id: turbo-base
+      - name: Use repo-pinned npm
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "ref=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=HEAD^1" >> "$GITHUB_OUTPUT"
-          fi
+          PINNED_NPM=$(node -p "require('./package.json').packageManager.split('@')[1]")
+          npm install -g "npm@$PINNED_NPM"
+          npm --version
 
       - name: Remove yarn to prevent Corepack/SWC registry conflict
         run: |
@@ -52,9 +240,67 @@ jobs:
           rm -f "$(which yarn 2>/dev/null)" "$(which yarnpkg 2>/dev/null)" 2>/dev/null || true
 
       - run: npm install
+
+      # Cheap repo-wide guards first. These catch generated artifact drift
+      # before we fan out into slower service-specific jobs.
+      - run: npm run db:generate
+      - run: git diff --exit-code
+      - run: npm run openapi:check
+
+  validate-services:
+    needs: [detect-changes, repo-guards]
+    if: needs.detect-changes.outputs.validation_jobs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.detect-changes.outputs.validation_jobs) }}
+    name: build-${{ matrix.service }}
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop?schema=public
+      APP_BASE_URL: http://localhost:3000
+      NODE_ENV: test
+      SESSION_COOKIE_NAME: trustloop-session
+      SESSION_TTL_HOURS: "24"
+      SESSION_SECRET: ci-test-secret-minimum-16
+      API_KEY_PEPPER: ci-test-pepper-minimum-16
+      SLACK_SIGNING_SECRET: ci-test-slack-signing-secret
+      TEMPORAL_ADDRESS: localhost:7233
+      TEMPORAL_NAMESPACE: default
+      INTERNAL_SERVICE_KEY: tli_ci_test_service_key_12345
+      COREPACK_ENABLE_STRICT: "0"
+      COREPACK_ENABLE_AUTO_PIN: "0"
+      SKIP_ENV_VALIDATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Use repo-pinned npm
+        run: |
+          PINNED_NPM=$(node -p "require('./package.json').packageManager.split('@')[1]")
+          npm install -g "npm@$PINNED_NPM"
+          npm --version
+
+      - name: Enable turbo remote cache (GitHub Actions cache backend)
+        uses: dtinth/setup-github-actions-caching-for-turbo@v1
+
+      - name: Remove yarn to prevent Corepack/SWC registry conflict
+        run: |
+          corepack disable || true
+          npm rm -g yarn 2>/dev/null || true
+          rm -f "$(which yarn 2>/dev/null)" "$(which yarnpkg 2>/dev/null)" 2>/dev/null || true
+
+      - run: npm install
+
       - name: Install platform-specific native binaries for Linux CI
         run: |
-          npm install --no-save \
+          npm install --no-save --package-lock=false \
             @tailwindcss/oxide-linux-x64-gnu \
             @next/swc-linux-x64-gnu \
             @node-rs/argon2-linux-x64-gnu \
@@ -62,111 +308,35 @@ jobs:
             lightningcss-linux-x64-gnu \
             || true
 
-      # Global guards — always run, cheap, protect committed artifacts.
-      - run: npm run db:generate
-      - run: git diff --exit-code
-      - run: npm run openapi:check
+      # Each matrix job runs on a fresh runner, so Prisma client generation
+      # from repo-guards is not available here unless we regenerate it.
+      - name: Generate Prisma client
+        run: npm run db:generate
 
-      # Scoped validation — only workspaces changed since base ref + their dependents.
-      # `[ref]` matches changed packages; trailing `...` pulls in everything that depends on them.
-      - name: Validate affected workspaces
-        run: npx turbo run type-check lint test build --filter="[${{ steps.turbo-base.outputs.ref }}]..."
-        env:
-          SKIP_ENV_VALIDATION: "1"
+      # Fastest signal first, slowest last: lint catches formatting/import
+      # drift quickest, type-check catches contract breakage, tests cover
+      # behavior, and build stays last because it's the slowest step.
+      - name: Lint ${{ matrix.service }}
+        run: npx turbo run lint --filter="${{ matrix.workspace }}..."
 
-  # Detect which services have changed inputs. Emits a dynamic matrix the
-  # docker-build job expands into parallel per-service jobs. Mirrors the
-  # watchPatterns in deploy/railway.*.json so CI matches Railway's rebuild
-  # triggers — no drift between them.
-  detect-changes:
-    runs-on: ubuntu-latest
-    needs: validate
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      services: ${{ steps.set-matrix.outputs.services }}
-    steps:
-      - uses: actions/checkout@v4
+      - name: Type-check ${{ matrix.service }}
+        run: npx turbo run type-check --filter="${{ matrix.workspace }}..."
 
-      - uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            marketing:
-              - 'apps/marketing/**'
-              - 'packages/brand/**'
-              - 'deploy/marketing.Dockerfile'
-              - 'deploy/railway.marketing.json'
-              - 'package.json'
-              - 'package-lock.json'
-              - '.dockerignore'
-            web:
-              - 'apps/web/**'
-              - 'packages/brand/**'
-              - 'packages/database/**'
-              - 'packages/env/**'
-              - 'packages/rest/**'
-              - 'packages/types/**'
-              - 'deploy/web.Dockerfile'
-              - 'deploy/railway.web.json'
-              - 'package.json'
-              - 'package-lock.json'
-              - '.dockerignore'
-            queue:
-              - 'apps/queue/**'
-              - 'packages/database/**'
-              - 'packages/env/**'
-              - 'packages/rest/**'
-              - 'packages/types/**'
-              - 'deploy/queue.Dockerfile'
-              - 'deploy/railway.queue.json'
-              - 'package.json'
-              - 'package-lock.json'
-              - '.dockerignore'
-            agents:
-              - 'apps/agents/**'
-              - 'packages/database/**'
-              - 'packages/env/**'
-              - 'packages/types/**'
-              - 'deploy/agents.Dockerfile'
-              - 'deploy/railway.agents.json'
-              - 'package.json'
-              - 'package-lock.json'
-              - '.dockerignore'
+      - name: Test ${{ matrix.service }}
+        run: npx turbo run test --filter="${{ matrix.workspace }}..."
 
-      - name: Build matrix from changed services
-        id: set-matrix
-        run: |
-          services=()
-          [[ "${{ steps.changes.outputs.marketing }}" == "true" ]] && services+=('"marketing"')
-          [[ "${{ steps.changes.outputs.web }}"       == "true" ]] && services+=('"web"')
-          [[ "${{ steps.changes.outputs.queue }}"     == "true" ]] && services+=('"queue"')
-          [[ "${{ steps.changes.outputs.agents }}"    == "true" ]] && services+=('"agents"')
-          if [ ${#services[@]} -eq 0 ]; then
-            matrix='[]'
-          else
-            IFS=,
-            matrix="[${services[*]}]"
-          fi
-          echo "services=$matrix" >> "$GITHUB_OUTPUT"
-          echo "Matrix: $matrix"
-          {
-            echo "### Changed services"
-            echo ""
-            echo "| Service | Changed |"
-            echo "|---------|---------|"
-            echo "| marketing | ${{ steps.changes.outputs.marketing == 'true' && '✅' || '⏭️' }} |"
-            echo "| web       | ${{ steps.changes.outputs.web       == 'true' && '✅' || '⏭️' }} |"
-            echo "| queue     | ${{ steps.changes.outputs.queue     == 'true' && '✅' || '⏭️' }} |"
-            echo "| agents    | ${{ steps.changes.outputs.agents    == 'true' && '✅' || '⏭️' }} |"
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build ${{ matrix.service }}
+        run: npx turbo run build --filter="${{ matrix.workspace }}..."
 
-  # One parallel job per changed service. Uses GHA layer cache scoped per
-  # service so changes to one service don't invalidate the others' cache.
+  # One parallel job per changed deployable service. Uses GHA layer cache scoped
+  # per service so changes to one service don't invalidate the others' cache.
   docker-build:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.services != '[]'
+    needs: [detect-changes, repo-guards, validate-services]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.services != '[]' &&
+      needs.repo-guards.result == 'success' &&
+      (needs.validate-services.result == 'success' || needs.validate-services.result == 'skipped')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

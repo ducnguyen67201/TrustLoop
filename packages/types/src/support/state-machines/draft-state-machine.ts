@@ -1,3 +1,4 @@
+import { defineFsm } from "@shared/types/fsm";
 import { DRAFT_STATUS } from "../support-analysis.schema";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -14,12 +15,20 @@ export type DraftEvent =
   | { type: "generated" }
   | { type: "approve"; approvedBy: string }
   | { type: "dismiss"; reason?: string }
-  | { type: "send" }
+  | { type: "startSending" }
+  | { type: "sendSucceeded"; slackMessageTs: string }
+  | { type: "sendFailed"; error: string; retryable: boolean }
+  | { type: "deliveryUnknown"; error: string }
+  | { type: "reconcileFound"; slackMessageTs: string }
+  | { type: "reconcileRetry" }
   | { type: "failed"; error: string }
   | { type: "retry" };
 
 type DraftEventType = DraftEvent["type"];
 
+// Preserved for back-compat: service-layer code does
+// `err instanceof InvalidDraftTransitionError` to translate invalid
+// transitions into ConflictError at the tRPC boundary.
 export class InvalidDraftTransitionError extends Error {
   constructor(from: DraftStatusValue, event: DraftEventType) {
     super(`Invalid transition: cannot handle "${event}" in state "${from}"`);
@@ -27,110 +36,106 @@ export class InvalidDraftTransitionError extends Error {
   }
 }
 
-// ── State Interface ──────────────────────────────────────────────────
+// ── FSM Definition ───────────────────────────────────────────────────
 
-interface DraftState {
-  readonly status: DraftStatusValue;
-  readonly allowedEvents: readonly DraftEventType[];
-  handle(event: DraftEvent, context: DraftContext): DraftContext;
-}
-
-// ── Concrete States ──────────────────────────────────────────────────
-
-const generatingState: DraftState = {
-  status: DRAFT_STATUS.generating,
-  allowedEvents: ["generated", "failed"],
-  handle(event, context) {
-    switch (event.type) {
-      case "generated":
-        return { ...context, status: DRAFT_STATUS.awaitingApproval };
-      case "failed":
-        return {
-          ...context,
+const draftFsm = defineFsm<DraftStatusValue, DraftEvent, DraftContext>({
+  name: "Draft",
+  initial: DRAFT_STATUS.generating,
+  errorFactory: (_fsm, from, event) =>
+    new InvalidDraftTransitionError(from as DraftStatusValue, event as DraftEventType),
+  states: {
+    [DRAFT_STATUS.generating]: {
+      on: {
+        generated: (ctx) => ({ ...ctx, status: DRAFT_STATUS.awaitingApproval }),
+        failed: (ctx, event) => ({
+          ...ctx,
           status: DRAFT_STATUS.failed,
           errorMessage: event.error,
-        };
-      default:
-        throw new InvalidDraftTransitionError(this.status, event.type);
-    }
-  },
-};
+        }),
+      },
+    },
 
-const awaitingApprovalState: DraftState = {
-  status: DRAFT_STATUS.awaitingApproval,
-  allowedEvents: ["approve", "dismiss"],
-  handle(event, context) {
-    switch (event.type) {
-      case "approve":
-        return { ...context, status: DRAFT_STATUS.approved };
-      case "dismiss":
-        return { ...context, status: DRAFT_STATUS.dismissed };
-      default:
-        throw new InvalidDraftTransitionError(this.status, event.type);
-    }
-  },
-};
+    [DRAFT_STATUS.awaitingApproval]: {
+      on: {
+        approve: (ctx) => ({ ...ctx, status: DRAFT_STATUS.approved }),
+        dismiss: (ctx) => ({ ...ctx, status: DRAFT_STATUS.dismissed }),
+      },
+    },
 
-const approvedState: DraftState = {
-  status: DRAFT_STATUS.approved,
-  allowedEvents: ["send", "failed"],
-  handle(event, context) {
-    switch (event.type) {
-      case "send":
-        return { ...context, status: DRAFT_STATUS.sent };
-      case "failed":
-        return {
-          ...context,
+    [DRAFT_STATUS.approved]: {
+      on: {
+        startSending: (ctx) => ({ ...ctx, status: DRAFT_STATUS.sending }),
+        failed: (ctx, event) => ({
+          ...ctx,
           status: DRAFT_STATUS.failed,
           errorMessage: event.error,
-        };
-      default:
-        throw new InvalidDraftTransitionError(this.status, event.type);
-    }
+        }),
+      },
+    },
+
+    // Slack delivery in flight. Three outcomes:
+    //   sendSucceeded      → SENT (clean path)
+    //   sendFailed retryable → DELIVERY_UNKNOWN (reconciler investigates)
+    //   sendFailed permanent → SEND_FAILED (terminal-ish, can retry via operator)
+    //   deliveryUnknown    → DELIVERY_UNKNOWN (explicit, same landing as retryable)
+    [DRAFT_STATUS.sending]: {
+      on: {
+        sendSucceeded: (ctx) => ({
+          ...ctx,
+          status: DRAFT_STATUS.sent,
+          errorMessage: null,
+        }),
+        sendFailed: (ctx, event) =>
+          event.retryable
+            ? { ...ctx, status: DRAFT_STATUS.deliveryUnknown, errorMessage: event.error }
+            : { ...ctx, status: DRAFT_STATUS.sendFailed, errorMessage: event.error },
+        deliveryUnknown: (ctx, event) => ({
+          ...ctx,
+          status: DRAFT_STATUS.deliveryUnknown,
+          errorMessage: event.error,
+        }),
+      },
+    },
+
+    [DRAFT_STATUS.sent]: { on: {} },
+
+    // Reconciler landed here because we didn't get a confirmed Slack ts.
+    // Queries Slack for our client_msg_id. Found → SENT. Not found → retry SENDING.
+    [DRAFT_STATUS.deliveryUnknown]: {
+      on: {
+        reconcileFound: (ctx) => ({
+          ...ctx,
+          status: DRAFT_STATUS.sent,
+          errorMessage: null,
+        }),
+        reconcileRetry: (ctx) => ({
+          ...ctx,
+          status: DRAFT_STATUS.sending,
+          errorMessage: null,
+        }),
+        failed: (ctx, event) => ({
+          ...ctx,
+          status: DRAFT_STATUS.sendFailed,
+          errorMessage: event.error,
+        }),
+      },
+    },
+
+    [DRAFT_STATUS.sendFailed]: {
+      on: {
+        retry: (ctx) => ({ ...ctx, status: DRAFT_STATUS.approved, errorMessage: null }),
+      },
+    },
+
+    [DRAFT_STATUS.dismissed]: { on: {} },
+
+    [DRAFT_STATUS.failed]: {
+      on: {
+        retry: (ctx) => ({ ...ctx, status: DRAFT_STATUS.generating, errorMessage: null }),
+      },
+    },
   },
-};
-
-const sentState: DraftState = {
-  status: DRAFT_STATUS.sent,
-  allowedEvents: [],
-  handle(event, context) {
-    throw new InvalidDraftTransitionError(this.status, event.type);
-  },
-};
-
-const dismissedState: DraftState = {
-  status: DRAFT_STATUS.dismissed,
-  allowedEvents: [],
-  handle(event, context) {
-    throw new InvalidDraftTransitionError(this.status, event.type);
-  },
-};
-
-const failedState: DraftState = {
-  status: DRAFT_STATUS.failed,
-  allowedEvents: ["retry"],
-  handle(event, context) {
-    if (event.type === "retry") {
-      return {
-        ...context,
-        status: DRAFT_STATUS.generating,
-        errorMessage: null,
-      };
-    }
-    throw new InvalidDraftTransitionError(this.status, event.type);
-  },
-};
-
-// ── State Registry ───────────────────────────────────────────────────
-
-const STATE_MAP: Record<DraftStatusValue, DraftState> = {
-  [DRAFT_STATUS.generating]: generatingState,
-  [DRAFT_STATUS.awaitingApproval]: awaitingApprovalState,
-  [DRAFT_STATUS.approved]: approvedState,
-  [DRAFT_STATUS.sent]: sentState,
-  [DRAFT_STATUS.dismissed]: dismissedState,
-  [DRAFT_STATUS.failed]: failedState,
-};
+});
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -151,15 +156,9 @@ export function restoreDraftContext(
 }
 
 export function transitionDraft(context: DraftContext, event: DraftEvent): DraftContext {
-  const state = STATE_MAP[context.status];
-  if (!state) {
-    throw new Error(`Unknown draft status: ${context.status}`);
-  }
-  return state.handle(event, context);
+  return draftFsm.transition(context, event);
 }
 
 export function getAllowedDraftEvents(context: DraftContext): readonly DraftEventType[] {
-  const state = STATE_MAP[context.status];
-  if (!state) return [];
-  return state.allowedEvents;
+  return draftFsm.allowedEvents(context);
 }

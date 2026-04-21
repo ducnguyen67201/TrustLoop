@@ -1,6 +1,7 @@
 "use client";
 
 import { ConversationView } from "@/components/support/conversation-view";
+import { MergeConversationsDialog } from "@/components/support/merge-conversations-dialog";
 import { SupportKanbanColumn } from "@/components/support/support-kanban-column";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -8,10 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
+import { useInboxSelection } from "@/hooks/use-inbox-selection";
 import { useSupportInbox } from "@/hooks/use-support-inbox";
+import { useSupportInboxStream } from "@/hooks/use-support-inbox-stream";
+import { useVisibilityAwarePolling } from "@/hooks/use-visibility-aware-polling";
 import { SUPPORT_CONVERSATION_STATUS, type SupportConversationStatus } from "@shared/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+const SUPPORT_INBOX_RECOVERY_POLL_MS = 60_000;
 
 const KANBAN_COLUMNS = [
   {
@@ -41,8 +47,11 @@ const KANBAN_COLUMNS = [
  */
 export function SupportInbox() {
   const inbox = useSupportInbox();
+  const selection = useInboxSelection();
   const { data: workspaceData } = useActiveWorkspace();
   const workspaceId = workspaceData?.activeWorkspaceId;
+  const [selectedConversationRefreshNonce, setSelectedConversationRefreshNonce] = useState(0);
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -53,6 +62,22 @@ export function SupportInbox() {
       inbox.setSelectedConversationId(threadParam);
     }
   }, [threadParam, inbox.selectedConversationId, inbox.setSelectedConversationId]);
+
+  useSupportInboxStream({
+    enabled: Boolean(workspaceId),
+    workspaceId: workspaceId ?? null,
+    selectedConversationId: threadParam,
+    onRefreshInbox: inbox.refreshList,
+    onSelectedConversationChanged: () => {
+      setSelectedConversationRefreshNonce((current) => current + 1);
+    },
+  });
+
+  useVisibilityAwarePolling({
+    enabled: !inbox.isListLoading && !inbox.isMutating,
+    intervalMs: SUPPORT_INBOX_RECOVERY_POLL_MS,
+    onPoll: inbox.refreshList,
+  });
 
   const updateThreadParam = useCallback(
     (conversationId: string | null) => {
@@ -101,7 +126,23 @@ export function SupportInbox() {
   function handleDrop(conversationId: string, targetStatus: SupportConversationStatus) {
     const conversation = inbox.listData?.conversations.find((c) => c.id === conversationId);
     if (conversation && conversation.status !== targetStatus) {
-      void inbox.updateConversationStatus(conversationId, targetStatus);
+      void handleUpdateConversationStatus(conversationId, targetStatus);
+    }
+  }
+
+  const mergeCandidates = useMemo(
+    () => (inbox.listData?.conversations ?? []).filter((c) => selection.selectedIds.has(c.id)),
+    [inbox.listData, selection.selectedIds]
+  );
+
+  async function handleSubmitMerge(primaryId: string, secondaryIds: string[]) {
+    try {
+      await selection.submitMerge(primaryId, secondaryIds);
+      setIsMergeDialogOpen(false);
+      selection.exitSelectMode();
+      await inbox.refreshList();
+    } catch {
+      // Error surfaced by selection.mergeError in the dialog.
     }
   }
 
@@ -120,6 +161,40 @@ export function SupportInbox() {
         (conversation) => conversation.status === column.status
       ) ?? [],
   }));
+
+  const refreshSelectedConversation = useCallback(() => {
+    setSelectedConversationRefreshNonce((current) => current + 1);
+  }, []);
+
+  const handleUpdateConversationStatus = useCallback(
+    async (conversationId: string, status: SupportConversationStatus) => {
+      await inbox.updateConversationStatus(conversationId, status);
+      if (conversationId === threadParam) {
+        refreshSelectedConversation();
+      }
+    },
+    [inbox, refreshSelectedConversation, threadParam]
+  );
+
+  const handleAssignConversation = useCallback(
+    async (conversationId: string, assigneeUserId: string | null) => {
+      await inbox.assignConversation(conversationId, assigneeUserId);
+      if (conversationId === threadParam) {
+        refreshSelectedConversation();
+      }
+    },
+    [inbox, refreshSelectedConversation, threadParam]
+  );
+
+  const handleMarkDoneWithOverride = useCallback(
+    async (conversationId: string, overrideReason: string) => {
+      await inbox.markDoneWithOverrideReason(conversationId, overrideReason);
+      if (conversationId === threadParam) {
+        refreshSelectedConversation();
+      }
+    },
+    [inbox, refreshSelectedConversation, threadParam]
+  );
 
   return (
     <main className="flex min-h-[calc(100svh-3.5rem)] w-full flex-col gap-4 p-4 md:p-6">
@@ -151,6 +226,15 @@ export function SupportInbox() {
             >
               Refresh board
             </Button>
+            {selection.isSelectMode ? (
+              <Button variant="ghost" onClick={selection.exitSelectMode}>
+                Exit select mode
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={selection.enterSelectMode}>
+                Select threads
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -175,6 +259,27 @@ export function SupportInbox() {
             </div>
           ) : null}
 
+          {selection.isSelectMode && selection.selectedIds.size > 0 ? (
+            <div className="bg-primary/10 border-primary/40 sticky top-0 z-10 flex flex-wrap items-center gap-2 border p-3">
+              <span className="text-sm font-medium">{selection.selectedIds.size} selected</span>
+              <Button
+                size="sm"
+                onClick={() => setIsMergeDialogOpen(true)}
+                disabled={selection.selectedIds.size < 2 || selection.isMerging}
+              >
+                Merge
+              </Button>
+              <Button size="sm" variant="ghost" onClick={selection.clearSelection}>
+                Clear
+              </Button>
+              {selection.selectedIds.size < 2 ? (
+                <span className="text-muted-foreground text-xs">
+                  Select at least 2 threads to merge.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
             {boardColumns.map((column) => (
               <SupportKanbanColumn
@@ -186,11 +291,26 @@ export function SupportInbox() {
                 selectedConversationId={inbox.selectedConversationId}
                 status={column.status}
                 title={column.title}
+                isSelectMode={selection.isSelectMode}
+                selectedIds={selection.selectedIds}
+                onToggleSelection={selection.toggleSelection}
               />
             ))}
           </div>
         </CardContent>
       </Card>
+
+      <MergeConversationsDialog
+        open={isMergeDialogOpen}
+        candidates={mergeCandidates}
+        isSubmitting={selection.isMerging}
+        error={selection.mergeError}
+        onSubmit={handleSubmitMerge}
+        onClose={() => {
+          setIsMergeDialogOpen(false);
+          selection.clearMergeError();
+        }}
+      />
 
       <Sheet open={isSheetOpen} onOpenChange={handleSheetOpenChange}>
         <SheetContent
@@ -204,8 +324,12 @@ export function SupportInbox() {
           {threadParam && workspaceId ? (
             <ConversationView
               conversationId={threadParam}
+              refreshNonce={selectedConversationRefreshNonce}
               workspaceId={workspaceId}
+              onAssignConversation={handleAssignConversation}
               onBack={() => handleSheetOpenChange(false)}
+              onMarkDoneWithOverride={handleMarkDoneWithOverride}
+              onUpdateConversationStatus={handleUpdateConversationStatus}
             />
           ) : null}
         </SheetContent>

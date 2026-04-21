@@ -1,5 +1,5 @@
 /**
- * Returns the root path for a workspace-scoped dashboard.
+ * Returns the root path for a workspace-scoped home route.
  */
 export function workspaceRootPath(workspaceId: string): string {
   return `/${workspaceId}`;
