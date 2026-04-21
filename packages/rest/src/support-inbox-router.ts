@@ -1,4 +1,5 @@
 import * as supportCommand from "@shared/rest/services/support/support-command";
+import * as groupingCorrection from "@shared/rest/services/support/support-grouping-correction-service";
 import * as supportProjection from "@shared/rest/services/support/support-projection-service";
 import * as supportReaction from "@shared/rest/services/support/support-reaction-service";
 import { router, workspaceProcedure, workspaceRoleProcedure } from "@shared/rest/trpc";
@@ -8,9 +9,12 @@ import {
   supportAssignCommandSchema,
   supportConversationStatusSchema,
   supportMarkDoneWithOverrideCommandSchema,
+  supportMergeConversationsRequestSchema,
+  supportReassignEventRequestSchema,
   supportRetryDeliveryCommandSchema,
   supportSendReplyCommandSchema,
   supportToggleReactionInputSchema,
+  supportUndoCorrectionRequestSchema,
   supportUpdateStatusCommandSchema,
 } from "@shared/types";
 import { z } from "zod";
@@ -138,6 +142,37 @@ export const supportInboxRouter = router({
         ...input,
         workspaceId: ctx.workspaceId,
         actorUserId: ctx.user.id,
+      })
+    ),
+  mergeConversations: operatorProcedure
+    .input(supportMergeConversationsRequestSchema.omit({ workspaceId: true }))
+    .mutation(({ ctx, input }) =>
+      groupingCorrection.merge({
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        primaryConversationId: input.primaryConversationId,
+        secondaryConversationIds: input.secondaryConversationIds,
+        idempotencyKey: input.idempotencyKey,
+      })
+    ),
+  reassignEvent: operatorProcedure
+    .input(supportReassignEventRequestSchema.omit({ workspaceId: true }))
+    .mutation(({ ctx, input }) =>
+      groupingCorrection.reassignEvent({
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        eventId: input.eventId,
+        targetConversationId: input.targetConversationId,
+        idempotencyKey: input.idempotencyKey,
+      })
+    ),
+  undoCorrection: operatorProcedure
+    .input(supportUndoCorrectionRequestSchema.omit({ workspaceId: true }))
+    .mutation(({ ctx, input }) =>
+      groupingCorrection.undoCorrection({
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+        correctionId: input.correctionId,
       })
     ),
 });

@@ -23,6 +23,9 @@ export const SUPPORT_REALTIME_REASON = {
   reactionChanged: "REACTION_CHANGED",
   attachmentUpdated: "ATTACHMENT_UPDATED",
   reconnectRecovery: "RECONNECT_RECOVERY",
+  groupingMerged: "GROUPING_MERGED",
+  groupingReassigned: "GROUPING_REASSIGNED",
+  groupingUndone: "GROUPING_UNDONE",
 } as const;
 
 export const supportRealtimeReasonValues = [
@@ -34,6 +37,9 @@ export const supportRealtimeReasonValues = [
   SUPPORT_REALTIME_REASON.reactionChanged,
   SUPPORT_REALTIME_REASON.attachmentUpdated,
   SUPPORT_REALTIME_REASON.reconnectRecovery,
+  SUPPORT_REALTIME_REASON.groupingMerged,
+  SUPPORT_REALTIME_REASON.groupingReassigned,
+  SUPPORT_REALTIME_REASON.groupingUndone,
 ] as const;
 
 export const supportRealtimeReasonSchema = z.enum(supportRealtimeReasonValues);
