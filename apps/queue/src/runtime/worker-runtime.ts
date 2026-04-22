@@ -1,10 +1,29 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { registerAgentTeamArchiveSchedule } from "@/domains/agent-team/register-archive-schedule";
 import { registerAgentTeamMetricsRollupSchedule } from "@/domains/agent-team/register-metrics-rollup-schedule";
 import { env } from "@shared/env";
 import { buildTemporalConnectionOptions } from "@shared/rest/temporal-connection";
 import { TASK_QUEUES } from "@shared/types";
 import { Client, Connection } from "@temporalio/client";
-import { NativeConnection, Worker } from "@temporalio/worker";
+import { NativeConnection, Worker, type WorkerOptions } from "@temporalio/worker";
+
+const queueSourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function createWorkflowBundlerOptions(): NonNullable<WorkerOptions["bundlerOptions"]> {
+  return {
+    webpackConfigHook: (config) => ({
+      ...config,
+      resolve: {
+        ...config.resolve,
+        alias: {
+          ...(config.resolve?.alias ?? {}),
+          "@": queueSourceRoot,
+        },
+      },
+    }),
+  };
+}
 
 /**
  * Start both support and codex workers against the shared runtime while keeping task queues isolated.
@@ -15,6 +34,7 @@ import { NativeConnection, Worker } from "@temporalio/worker";
  */
 export async function startQueueWorkers(workflowsPath: string, activities: object): Promise<void> {
   const connection = await NativeConnection.connect(buildTemporalConnectionOptions());
+  const bundlerOptions = createWorkflowBundlerOptions();
 
   const supportWorker = await Worker.create({
     connection,
@@ -22,6 +42,7 @@ export async function startQueueWorkers(workflowsPath: string, activities: objec
     taskQueue: TASK_QUEUES.SUPPORT,
     workflowsPath,
     activities,
+    bundlerOptions,
   });
 
   const codexWorker = await Worker.create({
@@ -30,6 +51,7 @@ export async function startQueueWorkers(workflowsPath: string, activities: objec
     taskQueue: TASK_QUEUES.CODEX,
     workflowsPath,
     activities,
+    bundlerOptions,
   });
 
   await ensureAgentTeamSchedules();
