@@ -26,6 +26,7 @@ export const SUPPORT_REALTIME_REASON = {
   groupingMerged: "GROUPING_MERGED",
   groupingReassigned: "GROUPING_REASSIGNED",
   groupingUndone: "GROUPING_UNDONE",
+  prLinked: "PR_LINKED",
 } as const;
 
 export const supportRealtimeReasonValues = [
@@ -40,6 +41,7 @@ export const supportRealtimeReasonValues = [
   SUPPORT_REALTIME_REASON.groupingMerged,
   SUPPORT_REALTIME_REASON.groupingReassigned,
   SUPPORT_REALTIME_REASON.groupingUndone,
+  SUPPORT_REALTIME_REASON.prLinked,
 ] as const;
 
 export const supportRealtimeReasonSchema = z.enum(supportRealtimeReasonValues);
