@@ -140,6 +140,86 @@ describe("agentTeamRuns.start", () => {
       })
     );
   });
+
+  it("persists analysisId on the run row and forwards it to the workflow input", async () => {
+    const dispatcher = createDispatcher();
+    const startedAt = new Date("2026-04-12T12:00:00Z");
+    const baseTeam = {
+      id: "team_1",
+      workspaceId: "ws_1",
+      name: "Default Team",
+      isDefault: true,
+      deletedAt: null,
+      roles: [
+        {
+          id: "role_1",
+          teamId: "team_1",
+          slug: "architect",
+          label: "Architect",
+          provider: "openai",
+          model: null,
+          toolIds: ["searchCode"],
+          systemPromptOverride: null,
+          maxSteps: 6,
+          sortOrder: 0,
+          metadata: null,
+        },
+      ],
+      edges: [],
+    };
+
+    mockFindFirstTeam.mockResolvedValue(baseTeam);
+    mockFindUniqueConversation.mockResolvedValue({
+      id: "conv_1",
+      channelId: "C123",
+      threadTs: "1710000000.0001",
+      status: "UNREAD",
+      events: [],
+    });
+    const createdRun = {
+      id: "run_42",
+      workspaceId: "ws_1",
+      teamId: "team_1",
+      conversationId: "conv_1",
+      analysisId: "analysis_99",
+      status: "queued",
+      workflowId: null,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      teamSnapshot: { roles: baseTeam.roles, edges: [] },
+      messages: [],
+      roleInboxes: [],
+      facts: [],
+      openQuestions: [],
+    };
+    mockCreateRun.mockResolvedValue(createdRun);
+    mockUpdateRun.mockResolvedValue({
+      ...createdRun,
+      workflowId: "agent-team-run-run_42",
+    });
+
+    const result = await agentTeamRuns.start(
+      {
+        workspaceId: "ws_1",
+        conversationId: "conv_1",
+        analysisId: "analysis_99",
+      },
+      dispatcher
+    );
+
+    expect(result.analysisId).toBe("analysis_99");
+    expect(mockCreateRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ analysisId: "analysis_99" }),
+      })
+    );
+    expect(dispatcher.startAgentTeamRunWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({ analysisId: "analysis_99" })
+    );
+  });
 });
 
 describe("agentTeamRuns.getRun", () => {
