@@ -100,6 +100,86 @@ describe("runTeamTurn", () => {
     expect(result.proposedFacts[0]?.statement).toContain("Slack reply threading");
     expect(result.meta.turnCount).toBe(2);
   });
+
+  it("attaches a structured tool result on a successful create_pull_request return", async () => {
+    mockGenerate.mockResolvedValue({
+      text: JSON.stringify({
+        m: [
+          {
+            k: 7,
+            t: "broadcast",
+            s: "PR drafted",
+            b: "Draft PR opened against main.",
+            p: null,
+            r: [],
+          },
+        ],
+        f: [],
+        q: [],
+        n: [],
+        d: 1,
+        b: null,
+      }),
+      steps: [{ id: "step_1" }],
+      toolResults: [
+        {
+          toolName: "create_pull_request",
+          args: { workspaceId: "ws_1", repositoryFullName: "acme/repo" },
+          result: {
+            success: true,
+            prUrl: "https://github.com/acme/repo/pull/42",
+            prNumber: 42,
+            branchName: "trustloop/fix-thread-1",
+          },
+        },
+      ],
+    });
+
+    const result = await runTeamTurn(buildRequest());
+    const toolResultMessage = result.messages.find((message) => message.kind === "tool_result");
+    expect(toolResultMessage).toBeDefined();
+    const structured = toolResultMessage?.metadata?.toolStructuredResult as
+      | { kind: string; result: { success: boolean; prNumber: number; prUrl: string } }
+      | undefined;
+    expect(structured?.kind).toBe("create_pull_request");
+    expect(structured?.result.success).toBe(true);
+    expect(structured?.result.prNumber).toBe(42);
+    expect(structured?.result.prUrl).toBe("https://github.com/acme/repo/pull/42");
+  });
+
+  it("does NOT attach a structured tool result when the PR URL is malformed", async () => {
+    mockGenerate.mockResolvedValue({
+      text: JSON.stringify({
+        m: [
+          {
+            k: 10,
+            t: "broadcast",
+            s: "Tool returned junk",
+            b: "Logged but ignored.",
+            p: null,
+            r: [],
+          },
+        ],
+        f: [],
+        q: [],
+        n: [],
+        d: 1,
+        b: null,
+      }),
+      steps: [{ id: "step_1" }],
+      toolResults: [
+        {
+          toolName: "create_pull_request",
+          args: {},
+          result: { success: true, prUrl: "not-a-url", prNumber: 1, branchName: "x" },
+        },
+      ],
+    });
+
+    const result = await runTeamTurn(buildRequest());
+    const toolResultMessage = result.messages.find((message) => message.kind === "tool_result");
+    expect(toolResultMessage?.metadata?.toolStructuredResult).toBeUndefined();
+  });
 });
 
 describe("/team-turn route", () => {

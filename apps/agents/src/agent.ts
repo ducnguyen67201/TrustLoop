@@ -13,6 +13,8 @@ import {
   type AnalyzeRequest,
   type AnalyzeResponse,
   type SessionDigest,
+  TOOL_STRUCTURED_RESULT_KIND,
+  TOOL_STRUCTURED_RESULT_METADATA_KEY,
   type ToneConfig,
   agentProviderConfigSchema,
   agentTeamDialogueMessageDraftSchema,
@@ -21,6 +23,7 @@ import {
   agentTeamTargetSchema,
   compressedAgentTeamTurnOutputSchema,
   compressedAnalysisOutputSchema,
+  createDraftPullRequestResultSchema,
   reconstructAgentTeamTurnOutput,
   reconstructAnalysisOutput,
 } from "@shared/types";
@@ -310,26 +313,66 @@ ${sessionDigest}`;
 function buildToolTraceMessages(
   toolCalls: ReturnType<typeof extractToolCalls>
 ): AgentTeamDialogueMessageDraft[] {
-  return toolCalls.flatMap((toolCall) => [
-    {
-      toRoleSlug: AGENT_TEAM_TARGET.broadcast,
-      kind: AGENT_TEAM_MESSAGE_KIND.toolCall,
-      subject: `${toolCall.tool} input`,
-      content: JSON.stringify(toolCall.input),
-      refs: [],
-      toolName: toolCall.tool,
-      metadata: { durationMs: toolCall.durationMs },
-    },
-    {
-      toRoleSlug: AGENT_TEAM_TARGET.broadcast,
-      kind: AGENT_TEAM_MESSAGE_KIND.toolResult,
-      subject: `${toolCall.tool} result`,
-      content: toolCall.output,
-      refs: [],
-      toolName: toolCall.tool,
-      metadata: { durationMs: toolCall.durationMs },
-    },
-  ]);
+  return toolCalls.flatMap((toolCall) => {
+    const resultMetadata: Record<string, unknown> = { durationMs: toolCall.durationMs };
+    const structured = extractToolStructuredResult(toolCall.tool, toolCall.output);
+    if (structured) {
+      resultMetadata[TOOL_STRUCTURED_RESULT_METADATA_KEY] = structured;
+    }
+    return [
+      {
+        toRoleSlug: AGENT_TEAM_TARGET.broadcast,
+        kind: AGENT_TEAM_MESSAGE_KIND.toolCall,
+        subject: `${toolCall.tool} input`,
+        content: JSON.stringify(toolCall.input),
+        refs: [],
+        toolName: toolCall.tool,
+        metadata: { durationMs: toolCall.durationMs },
+      },
+      {
+        toRoleSlug: AGENT_TEAM_TARGET.broadcast,
+        kind: AGENT_TEAM_MESSAGE_KIND.toolResult,
+        subject: `${toolCall.tool} result`,
+        content: toolCall.output,
+        refs: [],
+        toolName: toolCall.tool,
+        metadata: resultMetadata,
+      },
+    ];
+  });
+}
+
+// Tool returns are stringified by extractToolCalls so the dialogue's
+// `content` field stays a plain string (matches the prior wire format).
+// For tools whose typed payload downstream consumers depend on, we also
+// validate the parsed result against a Zod schema and stash it under a
+// known metadata key. Consumers use `readToolStructuredResult` to read
+// the typed payload back. Returns null when:
+//   - the tool isn't on the structured-result allowlist
+//   - the output isn't valid JSON
+//   - the parsed JSON doesn't match the tool's expected schema
+// In any of those cases we silently fall back to the string-only path.
+function extractToolStructuredResult(
+  toolName: string,
+  output: string
+): Record<string, unknown> | null {
+  if (toolName !== TOOL_STRUCTURED_RESULT_KIND.createPullRequest) {
+    return null;
+  }
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(output);
+  } catch {
+    return null;
+  }
+  const validated = createDraftPullRequestResultSchema.safeParse(parsedJson);
+  if (!validated.success) {
+    return null;
+  }
+  return {
+    kind: TOOL_STRUCTURED_RESULT_KIND.createPullRequest,
+    result: validated.data,
+  };
 }
 
 function formatDialogueMessages(
