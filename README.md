@@ -7,7 +7,7 @@ TrustLoop is an AI-native customer ops workspace with a type-safe monorepo found
 - `web` service: Next.js 16 UI + HTTP transport (`/api/rest/*`, `/api/trpc/*`)
 - `queue` service: single Temporal worker process consuming:
   - `TASK_QUEUES.SUPPORT` (support/inbox workflows)
-  - `TASK_QUEUES.CODEX` (codex indexing + fix-PR workflows)
+  - `TASK_QUEUES.CODEX` (codex indexing workflows: repository sync, embedding refresh)
   - Names defined in `packages/types/src/workflow.schema.ts`
 
 ### Monorepo boundaries

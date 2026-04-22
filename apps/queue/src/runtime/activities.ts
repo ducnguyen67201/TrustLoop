@@ -1,4 +1,3 @@
-export { runFixPrPipeline } from "@/domains/codex/fix-pr.activity";
 export { runPurgeDeletedRecords } from "@/domains/maintenance/purge.activity";
 export {
   markSyncRequestFailed,

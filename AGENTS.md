@@ -35,7 +35,7 @@ Use **2 Temporal task queues** (must stay separate). Names live in
 Dispatcher and worker import the same constant so they can never drift.
 
 - `TASK_QUEUES.SUPPORT` → support/inbox workflows
-- `TASK_QUEUES.CODEX` → codex indexing/fix-PR workflows
+- `TASK_QUEUES.CODEX` → codex indexing workflows (repository sync, embedding refresh)
 
 Queue-level isolation is mandatory even if both are run in one worker runtime.
 

@@ -23,9 +23,5 @@ export async function dispatchWorkflow(
     return dispatcher.startRepositoryIndexWorkflow(parsed.payload);
   }
 
-  if (parsed.type === "send-draft-to-slack") {
-    return dispatcher.startSendDraftToSlackWorkflow(parsed.payload);
-  }
-
-  return dispatcher.startCodexWorkflow(parsed.payload);
+  return dispatcher.startSendDraftToSlackWorkflow(parsed.payload);
 }

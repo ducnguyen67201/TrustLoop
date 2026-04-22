@@ -9,7 +9,6 @@ export const workflowNames = {
   supportInbox: "supportInboxWorkflow",
   supportAnalysis: "supportAnalysisWorkflow",
   sendDraftToSlack: "sendDraftToSlackWorkflow",
-  fixPr: "fixPrWorkflow",
   repositoryIndex: "repositoryIndexWorkflow",
 } as const;
 
@@ -45,18 +44,6 @@ export const supportWorkflowResultSchema = z.object({
   pendingAttachments: z.array(pendingAttachmentSchema).default([]),
   status: workflowProcessingStatusSchema,
   processedAt: z.iso.datetime(),
-});
-
-export const codexWorkflowInputSchema = z.object({
-  analysisId: z.string().min(1),
-  repositoryId: z.string().min(1),
-  pullRequestNumber: z.number().int().positive(),
-});
-
-export const codexWorkflowResultSchema = z.object({
-  analysisId: z.string(),
-  status: workflowProcessingStatusSchema,
-  queuedAt: z.iso.datetime(),
 });
 
 export const repositoryIndexWorkflowInputSchema = z.object({
@@ -108,10 +95,6 @@ export const workflowDispatchSchema = z.discriminatedUnion("type", [
     payload: supportAnalysisWorkflowInputSchema,
   }),
   z.object({
-    type: z.literal("codex"),
-    payload: codexWorkflowInputSchema,
-  }),
-  z.object({
     type: z.literal("repository-index"),
     payload: repositoryIndexWorkflowInputSchema,
   }),
@@ -129,8 +112,6 @@ export type SupportWorkflowInput = z.infer<typeof supportWorkflowInputSchema>;
 export type SupportWorkflowResult = z.infer<typeof supportWorkflowResultSchema>;
 export type SupportAnalysisWorkflowInput = z.infer<typeof supportAnalysisWorkflowInputSchema>;
 export type SupportAnalysisWorkflowResult = z.infer<typeof supportAnalysisWorkflowResultSchema>;
-export type CodexWorkflowInput = z.infer<typeof codexWorkflowInputSchema>;
-export type CodexWorkflowResult = z.infer<typeof codexWorkflowResultSchema>;
 export type RepositoryIndexWorkflowInput = z.infer<typeof repositoryIndexWorkflowInputSchema>;
 export type RepositoryIndexWorkflowResult = z.infer<typeof repositoryIndexWorkflowResultSchema>;
 export type WorkflowDispatchRequest = z.infer<typeof workflowDispatchSchema>;

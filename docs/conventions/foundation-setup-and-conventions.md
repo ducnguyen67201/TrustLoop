@@ -17,7 +17,7 @@ For your current product shape (`web + queue + codex workflows`), use:
   - `worker` (single worker deployment)
 - **Keep 2 Temporal task queues** (names in `packages/types/src/workflow.schema.ts` as `TASK_QUEUES`):
   - `TASK_QUEUES.SUPPORT` (support/inbox workflows)
-  - `TASK_QUEUES.CODEX` (codex indexing + fix-PR workflows)
+  - `TASK_QUEUES.CODEX` (codex indexing workflows: repository sync, embedding refresh)
 
 Inside the single `worker` deployment, run both queue consumers (support + codex) so you keep queue-level isolation without managing separate worker services.
 
@@ -61,7 +61,7 @@ Current boundaries should be viewed in two layers:
 - `apps/worker`:
   - deployed worker runtime (boots support + codex workers)
 - `apps/queue`:
-  - workflow domain (support/inbox + codex indexing/fix-PR)
+  - workflow domain (support/inbox + codex indexing)
 - `packages/types`:
   - shared domain types + Zod schemas + Prisma-generated model types
 - `packages/rest`:
@@ -175,7 +175,6 @@ Avoid maintaining parallel, manually-written OpenAPI and TypeScript contracts fo
 - Use semantic IDs to enforce dedupe and restart semantics.
 - Examples:
   - `support-pipeline-{threadId}`
-  - `fix-pr-{analysisId}`
   - `codex-sync-{repositoryId}-{timestamp}`
 
 ### Retries and timeouts

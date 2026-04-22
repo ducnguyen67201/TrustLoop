@@ -1,6 +1,5 @@
 import { env } from "@shared/env";
 import {
-  type CodexWorkflowInput,
   type RepositoryIndexWorkflowInput,
   type SendDraftToSlackInput,
   type SupportAnalysisWorkflowInput,
@@ -21,7 +20,6 @@ export interface WorkflowDispatcher {
   startRepositoryIndexWorkflow(
     input: RepositoryIndexWorkflowInput
   ): Promise<WorkflowDispatchResponse>;
-  startCodexWorkflow(input: CodexWorkflowInput): Promise<WorkflowDispatchResponse>;
   startSendDraftToSlackWorkflow(input: SendDraftToSlackInput): Promise<WorkflowDispatchResponse>;
 }
 
@@ -87,21 +85,6 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
     const client = await getClient();
     const workflowId = `repository-index-${input.syncRequestId}`;
     const handle = await client.workflow.start(workflowNames.repositoryIndex, {
-      args: [input],
-      taskQueue: TASK_QUEUES.CODEX,
-      workflowId,
-    });
-
-    return workflowDispatchResponseSchema.parse({
-      workflowId,
-      runId: handle.firstExecutionRunId,
-      queue: TASK_QUEUES.CODEX,
-    });
-  },
-  async startCodexWorkflow(input) {
-    const client = await getClient();
-    const workflowId = `fix-pr-${input.analysisId}`;
-    const handle = await client.workflow.start(workflowNames.fixPr, {
       args: [input],
       taskQueue: TASK_QUEUES.CODEX,
       workflowId,
