@@ -467,6 +467,23 @@ Rules:
   (docs/concepts + docs/reference + scoped AGENTS.md files, zero committed
   forward-looking plans).
 
+### Docs-as-you-ship (Non-Negotiable)
+
+Every PR with substantive behavior changes must include a doc update in the same PR:
+
+- **Update** the relevant `docs/concepts/*.md` (architecture-level change) or
+  `docs/conventions/*.md` (stable contract change) when you change behavior the
+  doc describes. Stale concept docs are worse than no docs — agents trust them.
+- **Create** a new concept or convention doc when shipping a new subsystem,
+  developer workflow, or cross-cutting rule that didn't exist before.
+- **Update** `AGENTS.md` (and therefore `CLAUDE.md`) when the change affects
+  an operating rule agents should follow (conventions, boundaries, new required steps).
+- "No docs needed" is a valid answer for trivial fixes, internal refactors with
+  no external contract change, and dependency bumps — but the PR description
+  must say so explicitly. Silence is not acceptance.
+
+The docs-writing step is part of the feature, not a follow-up ticket.
+
 ## Skills + Doc Hygiene
 
 ### GTM operating sources of truth
