@@ -48,6 +48,7 @@ export const agentTeamRunWorkflowResultSchema = z.object({
 export const startAgentTeamRunInputSchema = z.object({
   conversationId: z.string().min(1),
   teamId: z.string().min(1).optional(),
+  analysisId: z.string().min(1).optional(),
 });
 
 export const getAgentTeamRunInputSchema = z.object({

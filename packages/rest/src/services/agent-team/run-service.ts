@@ -15,6 +15,7 @@ interface StartRunArgs {
   workspaceId: string;
   conversationId: string;
   teamId?: string;
+  analysisId?: string;
 }
 
 interface GetRunArgs {
@@ -67,6 +68,7 @@ export async function start(
       workspaceId: input.workspaceId,
       teamId: team.id,
       conversationId: conversation.id,
+      analysisId: parsed.analysisId ?? null,
       status: AGENT_TEAM_RUN_STATUS.queued,
       teamSnapshot: JSON.parse(JSON.stringify(teamSnapshot)),
     },
@@ -78,6 +80,7 @@ export async function start(
     runId: created.id,
     teamId: team.id,
     conversationId: conversation.id,
+    analysisId: parsed.analysisId,
     teamSnapshot,
     threadSnapshot: JSON.stringify(buildConversationSnapshot(conversation), null, 2),
   });
