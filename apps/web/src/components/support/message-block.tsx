@@ -291,7 +291,6 @@ interface MessageBlockProps {
   /**
    * Opens the reassign picker for this event. Only wired when the event is a
    * MESSAGE_RECEIVED (the server rejects reassign on other event types).
-   * See docs/plans/impl-plan-thread-merge-split-reassign.md §4.4 / §6.3.
    */
   onRequestReassign?: (eventId: string) => void;
   currentUserId?: string | null;

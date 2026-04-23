@@ -3,7 +3,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   codexSettingsResponseSchema,
-  codexWorkflowInputSchema,
   connectGithubInstallationRequestSchema,
   connectGithubInstallationResponseSchema,
   healthResponseSchema,
@@ -27,10 +26,6 @@ const workflowDispatchRequestSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("support"),
     payload: supportWorkflowInputSchema,
-  }),
-  z.object({
-    type: z.literal("codex"),
-    payload: codexWorkflowInputSchema,
   }),
   z.object({
     type: z.literal("repository-index"),
@@ -250,7 +245,6 @@ const document = {
       SupportWorkflowInput: z.toJSONSchema(supportWorkflowInputSchema),
       UpdateRepositorySelectionRequest: z.toJSONSchema(updateRepositorySelectionRequestSchema),
       UpdateRepositorySelectionResponse: z.toJSONSchema(updateRepositorySelectionResponseSchema),
-      CodexWorkflowInput: z.toJSONSchema(codexWorkflowInputSchema),
       WorkflowDispatchRequest: z.toJSONSchema(workflowDispatchRequestSchema),
       WorkflowDispatchResponse: z.toJSONSchema(workflowDispatchResponseSchema),
     },

@@ -1,4 +1,3 @@
-export { fixPrWorkflow } from "../domains/codex/fix-pr.workflow";
 export { purgeDeletedRecordsWorkflow } from "../domains/maintenance/purge.workflow";
 export { repositoryIndexWorkflow } from "../domains/codex/repository-index.workflow";
 export { sendDraftSweepWorkflow } from "../domains/support/send-draft-sweep.workflow";
