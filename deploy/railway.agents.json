@@ -8,6 +8,7 @@
       "packages/types/**",
       "packages/database/**",
       "packages/env/**",
+      "packages/prompting/**",
       "deploy/agents.Dockerfile",
       "deploy/railway.agents.json",
       ".dockerignore",
