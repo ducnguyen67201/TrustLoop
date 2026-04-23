@@ -1,4 +1,8 @@
 import { sessionDigestSchema } from "@shared/types/session-replay/session-digest.schema";
+import {
+  supportConversationEventSourceSchema,
+  supportConversationStatusSchema,
+} from "@shared/types/support/support-conversation.schema";
 import { z } from "zod";
 import { toneConfigSchema } from "./tone-config.schema";
 
@@ -188,13 +192,51 @@ export const supportDraftSchema = z.object({
   createdAt: z.string(),
 });
 
+// ── Thread Snapshot (structured payload to the agent) ───────────────
+
+// Recursive JSON-safe value. Matches Prisma.InputJsonValue structurally so a typed
+// ThreadSnapshot can be persisted to a Postgres JSON column without a defensive clone.
+const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ])
+);
+
+export const threadSnapshotEventSchema = z
+  .object({
+    type: z.string().min(1),
+    source: supportConversationEventSourceSchema,
+    summary: z.string().nullable(),
+    details: z.record(z.string(), jsonValueSchema).nullable(),
+    at: z.iso.datetime(),
+  })
+  .strict();
+
+export const threadSnapshotSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    channelId: z.string().min(1),
+    threadTs: z.string().min(1),
+    status: supportConversationStatusSchema,
+    customer: z.object({ email: z.string().nullable() }).strict(),
+    events: z.array(threadSnapshotEventSchema),
+  })
+  .strict();
+
+export type ThreadSnapshot = z.infer<typeof threadSnapshotSchema>;
+
 // ── Agent Service Contract ──────────────────────────────────────────
 // Shared between web (sends config), queue (passes through), agents (executes).
 
 export const analyzeRequestSchema = z.object({
   workspaceId: z.string().min(1),
   conversationId: z.string().min(1),
-  threadSnapshot: z.string().min(1),
+  threadSnapshot: threadSnapshotSchema,
   sessionDigest: sessionDigestSchema.optional(),
   config: z
     .object({

@@ -1,4 +1,4 @@
-import { prisma } from "@shared/database";
+import { type Prisma, prisma } from "@shared/database";
 import { env } from "@shared/env";
 import * as slackUser from "@shared/rest/services/support/adapters/slack/slack-user-service";
 import * as sessionCorrelation from "@shared/rest/services/support/session-correlation";
@@ -16,6 +16,9 @@ import {
   MAX_ANALYSIS_RETRIES,
   type SessionDigest,
   type SupportAnalysisWorkflowResult,
+  type SupportConversationEventSource,
+  type SupportConversationStatus,
+  type ThreadSnapshot,
   type ToneConfig,
   analyzeResponseSchema,
   restoreAnalysisContext,
@@ -33,7 +36,7 @@ interface ThreadSnapshotInput {
 
 interface ThreadSnapshotResult {
   analysisId: string;
-  threadSnapshot: string;
+  threadSnapshot: ThreadSnapshot;
   customerEmail: string | null;
   sessionDigest: SessionDigest | null;
 }
@@ -42,7 +45,7 @@ interface AnalysisAgentInput {
   workspaceId: string;
   conversationId: string;
   analysisId: string;
-  threadSnapshot: string;
+  threadSnapshot: ThreadSnapshot;
   sessionDigest?: SessionDigest | null;
 }
 
@@ -120,14 +123,14 @@ export async function buildThreadSnapshot(
       conversationId: input.conversationId,
       status: ANALYSIS_STATUS.gatheringContext,
       triggerType: input.triggerType ?? ANALYSIS_TRIGGER_TYPE.manual,
-      threadSnapshot: JSON.parse(JSON.stringify(snapshot)),
+      threadSnapshot: snapshot as Prisma.InputJsonValue,
       customerEmail,
     },
   });
 
   return {
     analysisId: analysis.id,
-    threadSnapshot: JSON.stringify(snapshot, null, 2),
+    threadSnapshot: snapshot,
     customerEmail,
     sessionDigest,
   };
@@ -311,16 +314,16 @@ function buildSnapshot(
     }>;
   },
   customerEmail: string | null
-) {
+): ThreadSnapshot {
   return {
     conversationId: conversation.id,
     channelId: conversation.channelId,
     threadTs: conversation.threadTs,
-    status: conversation.status,
+    status: conversation.status as SupportConversationStatus,
     customer: { email: customerEmail },
     events: conversation.events.map((e) => ({
       type: e.eventType,
-      source: e.eventSource,
+      source: e.eventSource as SupportConversationEventSource,
       summary: e.summary,
       details: e.detailsJson as Record<string, unknown> | null,
       at: e.createdAt.toISOString(),

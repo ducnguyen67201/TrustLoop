@@ -1,13 +1,16 @@
 {
   "name": "trustloop",
-  "version": "0.2.9.0",
+  "version": "0.2.10.0",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.6.2",
   "engines": {
     "node": ">=24.0.0"
   },
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "build": "turbo run build",
     "dev": "npm run db:check-drift && turbo run dev --parallel",

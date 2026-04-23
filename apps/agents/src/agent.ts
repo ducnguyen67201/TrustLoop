@@ -17,6 +17,7 @@ import {
   buildAnalysisPromptWithContext,
   buildSupportAgentSystemPrompt,
 } from "./prompts/support-analysis";
+import { renderThreadSnapshotPrompt } from "./prompts/thread-snapshot";
 import { resolveModel } from "./providers";
 import { createPullRequestTool } from "./tools/create-pr";
 import { searchCodeTool } from "./tools/search-code";
@@ -78,7 +79,7 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     toneConfig: request.config?.toneConfig,
     sessionDigest: request.sessionDigest,
   });
-  const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${request.threadSnapshot}`;
+  const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${renderThreadSnapshotPrompt(request.threadSnapshot)}`;
 
   const result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
 
