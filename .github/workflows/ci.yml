@@ -357,5 +357,8 @@ jobs:
           file: deploy/${{ matrix.service }}.Dockerfile
           push: false
           cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # GHA layer cache is an optimization only. GitHub occasionally returns
+          # transient 5xx HTML error pages from the cache service ("Unicorn"),
+          # and we don't want a successful image build to fail on cache export.
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }},ignore-error=true
           tags: trustloop-${{ matrix.service }}:ci
