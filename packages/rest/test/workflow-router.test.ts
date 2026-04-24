@@ -19,6 +19,11 @@ function createDispatcher(): WorkflowDispatcher {
       runId: "run_analysis_1",
       queue: "support-general",
     })),
+    startSupportSummaryWorkflow: vi.fn(async () => ({
+      workflowId: "support-summary-conv_1",
+      runId: "run_summary_1",
+      queue: "support-general",
+    })),
     startSendDraftToSlackWorkflow: vi.fn(async () => ({
       workflowId: "send-draft-draft_1",
       runId: "run_send_draft_1",
@@ -75,5 +80,21 @@ describe("dispatchWorkflow", () => {
 
     expect(result.workflowId).toContain("support-analysis");
     expect(dispatcher.startSupportAnalysisWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes support-summary payloads to summary dispatcher", async () => {
+    const dispatcher = createDispatcher();
+
+    const result = await dispatchWorkflow(dispatcher, {
+      type: "support-summary",
+      payload: {
+        workspaceId: "ws_1",
+        conversationId: "conv_1",
+        triggerReason: "INGRESS" as const,
+      },
+    });
+
+    expect(result.workflowId).toContain("support-summary");
+    expect(dispatcher.startSupportSummaryWorkflow).toHaveBeenCalledTimes(1);
   });
 });

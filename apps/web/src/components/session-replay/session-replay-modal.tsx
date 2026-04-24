@@ -13,11 +13,31 @@ interface SessionReplayModalProps {
   sessionId: string;
   events: SessionTimelineEvent[];
   failurePointId: string | null;
+  selectedEventId: string | null;
+  selectedEventTimestamp: string | null;
   chunks: ReplayChunkResponse[];
   totalChunks: number;
   isLoadingChunks: boolean;
   loadError: string | null;
   onRetryLoad: () => void;
+}
+
+interface ReplayMeta {
+  startTime: number;
+  endTime: number;
+  totalTime: number;
+}
+
+interface RrwebPlayerInstance {
+  $destroy?: () => void;
+  $set?: (props: { width: number; height: number }) => void;
+  addEventListener: (event: string, handler: (payload: unknown) => void) => void;
+  getMetaData: () => ReplayMeta;
+  goto: (timeOffset: number, play?: boolean) => void;
+  pause: () => void;
+  play: (timeOffset?: number) => void;
+  setSpeed?: (speed: number) => void;
+  triggerResize?: () => void;
 }
 
 /**
@@ -31,6 +51,8 @@ export function SessionReplayModal({
   sessionId,
   events,
   failurePointId,
+  selectedEventId,
+  selectedEventTimestamp,
   chunks,
   totalChunks,
   isLoadingChunks,
@@ -42,8 +64,15 @@ export function SessionReplayModal({
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const playerRef = useRef<unknown>(null);
+  const [activeEventId, setActiveEventId] = useState<string | null>(selectedEventId);
+  const [jumpHint, setJumpHint] = useState<string | null>(null);
+  const [replayMeta, setReplayMeta] = useState<ReplayMeta | null>(null);
+  const currentTimeRef = useRef(currentTime);
+  const isPlayingRef = useRef(isPlaying);
+  const replayEventTimestampsRef = useRef<number[]>([]);
+  const playerRef = useRef<RrwebPlayerInstance | null>(null);
+  currentTimeRef.current = currentTime;
+  isPlayingRef.current = isPlaying;
 
   // Close on Escape
   useEffect(() => {
@@ -51,6 +80,16 @@ export function SessionReplayModal({
       if (e.key === "Escape") onClose();
       if (e.key === " ") {
         e.preventDefault();
+        const player = playerRef.current;
+        if (!player) {
+          return;
+        }
+
+        if (isPlayingRef.current) {
+          player.pause();
+        } else {
+          player.play(currentTimeRef.current);
+        }
         setIsPlaying((prev) => !prev);
       }
     }
@@ -61,7 +100,7 @@ export function SessionReplayModal({
   }, [isOpen, onClose]);
 
   // Initialize rrweb player when chunks are loaded. playbackSpeed is intentionally
-  // omitted — a dedicated effect below propagates speed changes via setConfig so we
+  // omitted — a dedicated effect below propagates speed changes via setSpeed so we
   // don't tear down and rebuild the player every time the user changes speed.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
   useEffect(() => {
@@ -69,6 +108,7 @@ export function SessionReplayModal({
 
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
+    let player: RrwebPlayerInstance | null = null;
 
     async function initPlayer() {
       try {
@@ -88,13 +128,17 @@ export function SessionReplayModal({
         }
 
         if (allEvents.length === 0) return;
+        replayEventTimestampsRef.current = allEvents
+          .map((event) => extractReplayTimestamp(event))
+          .filter((timestamp): timestamp is number => timestamp !== null)
+          .sort((left, right) => left - right);
 
         const { width: origWidth, height: origHeight } = extractOriginalViewport(allEvents);
         const fit = fitInside(origWidth, origHeight, container.clientWidth, container.clientHeight);
 
         container.innerHTML = "";
 
-        const player = new rrwebPlayer({
+        player = new rrwebPlayer({
           target: container,
           props: {
             events: allEvents,
@@ -108,15 +152,23 @@ export function SessionReplayModal({
 
         playerRef.current = player;
 
+        player.addEventListener("ui-update-current-time", (payload) => {
+          if (typeof payload === "number") {
+            setCurrentTime(payload);
+          }
+        });
+        player.addEventListener("ui-update-player-state", (payload) => {
+          setIsPlaying(payload === "playing");
+        });
+
         const meta = player.getMetaData();
+        setReplayMeta(meta);
         setDuration(meta.totalTime);
         setCurrentTime(0);
+        setJumpHint(null);
 
         resizeObserver = new ResizeObserver(() => {
-          const p = playerRef.current as {
-            $set?: (props: { width: number; height: number }) => void;
-            triggerResize?: () => void;
-          } | null;
+          const p = playerRef.current;
           if (!p || !container) return;
           const next = fitInside(
             origWidth,
@@ -138,37 +190,75 @@ export function SessionReplayModal({
     return () => {
       cancelled = true;
       resizeObserver?.disconnect();
+      player?.$destroy?.();
+      playerRef.current = null;
+      replayEventTimestampsRef.current = [];
+      if (playerContainerRef.current) {
+        playerContainerRef.current.innerHTML = "";
+      }
+      setReplayMeta(null);
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(false);
     };
   }, [isOpen, chunks]);
 
   // Update speed without reinitializing the player
   useEffect(() => {
-    const player = playerRef.current;
-    if (
-      player &&
-      typeof (player as { setConfig: (c: { speed: number }) => void }).setConfig === "function"
-    ) {
-      (player as { setConfig: (c: { speed: number }) => void }).setConfig({ speed: playbackSpeed });
-    }
+    playerRef.current?.setSpeed?.(playbackSpeed);
   }, [playbackSpeed]);
 
-  const handleEventClick = useCallback((_eventId: string, timestamp: string) => {
-    setSelectedEventId(_eventId);
-    // Jump replay to this timestamp
-    const player = playerRef.current;
-    if (player && typeof (player as { goto: (t: number) => void }).goto === "function") {
-      const eventTime = new Date(timestamp).getTime();
-      (player as { goto: (t: number) => void }).goto(eventTime);
+  useEffect(() => {
+    setActiveEventId(selectedEventId);
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    if (!replayMeta) {
+      return;
     }
-  }, []);
+
+    const activeEvent = findActiveEventId(events, replayMeta.startTime + currentTime);
+    setActiveEventId(activeEvent ?? selectedEventId);
+  }, [currentTime, events, replayMeta, selectedEventId]);
+
+  const jumpToTimestamp = useCallback(
+    (timestamp: string | null, eventId?: string | null) => {
+      if (!timestamp || !replayMeta || !playerRef.current) {
+        return;
+      }
+
+      const targetTime = new Date(timestamp).getTime();
+      if (Number.isNaN(targetTime)) {
+        return;
+      }
+
+      const jump = resolveReplayJump(targetTime, replayMeta, replayEventTimestampsRef.current);
+      playerRef.current.goto(jump.offsetMs, isPlaying);
+      setCurrentTime(jump.offsetMs);
+      setActiveEventId(eventId ?? findActiveEventId(events, jump.absoluteTimeMs) ?? null);
+      setJumpHint(jump.hint);
+    },
+    [events, isPlaying, replayMeta]
+  );
+
+  useEffect(() => {
+    jumpToTimestamp(selectedEventTimestamp, selectedEventId);
+  }, [jumpToTimestamp, selectedEventId, selectedEventTimestamp]);
+
+  const handleEventClick = useCallback(
+    (eventId: string, timestamp: string) => {
+      jumpToTimestamp(timestamp, eventId);
+    },
+    [jumpToTimestamp]
+  );
 
   function togglePlayback() {
     const player = playerRef.current;
     if (!player) return;
     if (isPlaying) {
-      (player as { pause: () => void }).pause();
+      player.pause();
     } else {
-      (player as { play: () => void }).play();
+      player.play(currentTime);
     }
     setIsPlaying(!isPlaying);
   }
@@ -177,6 +267,25 @@ export function SessionReplayModal({
     const speeds = [1, 2, 4, 8];
     const nextIndex = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
     setPlaybackSpeed(speeds[nextIndex] ?? 1);
+  }
+
+  function seekRelative(deltaMs: number) {
+    if (!replayMeta || !playerRef.current) {
+      return;
+    }
+
+    const nextOffset = clamp(currentTime + deltaMs, 0, replayMeta.totalTime);
+    playerRef.current.goto(nextOffset, isPlaying);
+    setCurrentTime(nextOffset);
+  }
+
+  function jumpToFailure() {
+    const failureEvent = events.find((event) => event.id === failurePointId) ?? null;
+    if (!failureEvent) {
+      return;
+    }
+
+    jumpToTimestamp(failureEvent.timestamp, failureEvent.id);
   }
 
   function formatDuration(ms: number): string {
@@ -244,7 +353,7 @@ export function SessionReplayModal({
 
           {/* Playback controls */}
           {chunks.length > 0 && !isLoadingChunks && !loadError ? (
-            <div className="flex h-12 items-center gap-3 border-t px-4">
+            <div className="flex h-14 items-center gap-2 border-t px-4">
               <Button
                 variant="outline"
                 size="sm"
@@ -252,6 +361,12 @@ export function SessionReplayModal({
                 aria-label={isPlaying ? "Pause" : "Play"}
               >
                 {isPlaying ? "⏸" : "▶"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => seekRelative(-5_000)}>
+                -5s
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => seekRelative(5_000)}>
+                +5s
               </Button>
               <Button
                 variant="outline"
@@ -261,6 +376,14 @@ export function SessionReplayModal({
               >
                 {playbackSpeed}x
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={jumpToFailure}
+                disabled={!failurePointId}
+              >
+                Jump to failure
+              </Button>
               <div className="flex-1">
                 <Progress value={duration > 0 ? (currentTime / duration) * 100 : 0} />
               </div>
@@ -268,6 +391,9 @@ export function SessionReplayModal({
                 {formatDuration(currentTime)} / {formatDuration(duration)}
               </span>
             </div>
+          ) : null}
+          {jumpHint ? (
+            <div className="border-t px-4 py-2 text-xs text-muted-foreground">{jumpHint}</div>
           ) : null}
         </div>
 
@@ -281,7 +407,7 @@ export function SessionReplayModal({
             isLoading={false}
             failurePointId={failurePointId}
             onEventClick={handleEventClick}
-            selectedEventId={selectedEventId}
+            selectedEventId={activeEventId}
           />
         </div>
       </div>
@@ -335,4 +461,73 @@ function decodeBase64Chunk(base64: string): string {
     bytes[i] = binaryStr.charCodeAt(i);
   }
   return new TextDecoder().decode(bytes);
+}
+
+function extractReplayTimestamp(event: unknown): number | null {
+  const typed = event as { timestamp?: number };
+  return typeof typed.timestamp === "number" ? typed.timestamp : null;
+}
+
+function resolveReplayJump(
+  targetTime: number,
+  replayMeta: ReplayMeta,
+  replayTimestamps: number[]
+): { absoluteTimeMs: number; offsetMs: number; hint: string | null } {
+  if (replayTimestamps.length === 0) {
+    const offsetMs = clamp(targetTime - replayMeta.startTime, 0, replayMeta.totalTime);
+    return {
+      absoluteTimeMs: replayMeta.startTime + offsetMs,
+      offsetMs,
+      hint: null,
+    };
+  }
+
+  if (targetTime <= replayTimestamps[0]!) {
+    return {
+      absoluteTimeMs: replayTimestamps[0]!,
+      offsetMs: 0,
+      hint: "Jumped to the start of the replay because the event happened before replay coverage began.",
+    };
+  }
+
+  const lastReplayTimestamp = replayTimestamps.at(-1)!;
+  if (targetTime >= lastReplayTimestamp) {
+    return {
+      absoluteTimeMs: lastReplayTimestamp,
+      offsetMs: replayMeta.totalTime,
+      hint: "Jumped to the end of the replay because the event happened after replay coverage ended.",
+    };
+  }
+
+  let boundedTimestamp = replayTimestamps[0]!;
+  for (const replayTimestamp of replayTimestamps) {
+    if (replayTimestamp > targetTime) {
+      break;
+    }
+    boundedTimestamp = replayTimestamp;
+  }
+
+  return {
+    absoluteTimeMs: boundedTimestamp,
+    offsetMs: clamp(boundedTimestamp - replayMeta.startTime, 0, replayMeta.totalTime),
+    hint: null,
+  };
+}
+
+function findActiveEventId(events: SessionTimelineEvent[], absoluteTimeMs: number): string | null {
+  let activeEventId: string | null = null;
+
+  for (const event of events) {
+    const eventTime = new Date(event.timestamp).getTime();
+    if (Number.isNaN(eventTime) || eventTime > absoluteTimeMs) {
+      break;
+    }
+    activeEventId = event.id;
+  }
+
+  return activeEventId;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

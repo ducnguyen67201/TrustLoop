@@ -228,9 +228,12 @@ export function ConversationPropertiesSidebar({
       </div>
       <div className="px-5 pb-4">
         <SessionTab
+          workspaceId={workspaceId}
           isLoading={sessionReplay.isLoading}
           error={sessionReplay.error}
+          match={sessionReplay.match}
           session={sessionReplay.session}
+          sessionBrief={sessionReplay.sessionBrief}
           matchConfidence={sessionReplay.matchConfidence}
           events={sessionReplay.events}
           isLoadingEvents={sessionReplay.isLoadingEvents}
@@ -239,6 +242,9 @@ export function ConversationPropertiesSidebar({
           totalReplayChunks={sessionReplay.totalReplayChunks}
           isLoadingReplayChunks={sessionReplay.isLoadingReplayChunks}
           replayLoadError={sessionReplay.replayLoadError}
+          isAttachingSession={sessionReplay.isAttachingSession}
+          attachSessionError={sessionReplay.attachSessionError}
+          onAttachSession={sessionReplay.attachSession}
           onRetryReplayLoad={sessionReplay.retryReplayLoad}
           onLoadReplayChunks={sessionReplay.loadReplayChunks}
         />

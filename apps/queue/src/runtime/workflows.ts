@@ -5,3 +5,4 @@ export { sendDraftToSlackWorkflow } from "../domains/support/send-draft-to-slack
 export { analysisTriggerWorkflow } from "../domains/support/support-analysis-trigger.workflow";
 export { supportAnalysisWorkflow } from "../domains/support/support-analysis.workflow";
 export { supportInboxWorkflow } from "../domains/support/support.workflow";
+export { supportSummaryWorkflow } from "../domains/support/support-summary.workflow";

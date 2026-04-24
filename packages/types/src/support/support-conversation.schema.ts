@@ -41,6 +41,24 @@ export const supportConversationEventSourceValues = [
 
 export const supportConversationEventSourceSchema = z.enum(supportConversationEventSourceValues);
 
+export const SUPPORT_CUSTOMER_IDENTITY_SOURCE = {
+  adapterPayload: "ADAPTER_PAYLOAD",
+  slackProfile: "SLACK_PROFILE",
+  messagePayload: "MESSAGE_PAYLOAD",
+  messageRegex: "MESSAGE_REGEX",
+  manual: "MANUAL",
+} as const;
+
+export const supportCustomerIdentitySourceValues = [
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.adapterPayload,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.slackProfile,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.messagePayload,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.messageRegex,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE.manual,
+] as const;
+
+export const supportCustomerIdentitySourceSchema = z.enum(supportCustomerIdentitySourceValues);
+
 export const SUPPORT_GROUPING_CORRECTION_KIND = {
   merge: "MERGE",
   reassignEvent: "REASSIGN_EVENT",
@@ -81,6 +99,17 @@ export type SupportMergeConversationsRequest = z.infer<
 export type SupportReassignEventRequest = z.infer<typeof supportReassignEventRequestSchema>;
 export type SupportUndoCorrectionRequest = z.infer<typeof supportUndoCorrectionRequestSchema>;
 
+export const supportConversationLastMessageSchema = z.object({
+  preview: z.string(),
+  senderExternalUserId: z.string().nullable(),
+  senderDisplayName: z.string().nullable(),
+  senderRealName: z.string().nullable(),
+  senderAvatarUrl: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+export type SupportConversationLastMessage = z.infer<typeof supportConversationLastMessageSchema>;
+
 export const supportConversationSchema = z.object({
   id: z.string().min(1),
   workspaceId: z.string().min(1),
@@ -89,11 +118,28 @@ export const supportConversationSchema = z.object({
   thread: supportThreadReferenceSchema,
   status: supportConversationStatusSchema,
   assigneeUserId: z.string().min(1).nullable(),
+  customerExternalUserId: z.string().min(1).nullable(),
+  customerEmail: z.string().email().nullable(),
+  customerSlackUserId: z.string().min(1).nullable(),
+  customerIdentitySource: supportCustomerIdentitySourceSchema.nullable(),
+  customerIdentityUpdatedAt: z.iso.datetime().nullable(),
   lastCustomerMessageAt: z.iso.datetime().nullable(),
   customerWaitingSince: z.iso.datetime().nullable(),
   staleAt: z.iso.datetime().nullable(),
   retryCount: z.number().int().nonnegative(),
   lastActivityAt: z.iso.datetime(),
+  /**
+   * Preview of the most recent customer-authored message plus the sender's
+   * resolved profile, for inbox cards. Null when the conversation has no
+   * customer-authored events yet (rare — grouping correction edge case).
+   */
+  lastCustomerMessage: supportConversationLastMessageSchema.nullable(),
+  /**
+   * LLM-generated one-liner describing what the thread is about. Populated
+   * asynchronously by the summarization workflow. Null until the first
+   * summary lands — inbox cards fall back to `lastCustomerMessage.preview`.
+   */
+  threadSummary: z.string().min(1).nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -166,6 +212,7 @@ export const supportConversationTimelineSchema = z.object({
 
 export type SupportConversationStatus = z.infer<typeof supportConversationStatusSchema>;
 export type SupportConversationEventSource = z.infer<typeof supportConversationEventSourceSchema>;
+export type SupportCustomerIdentitySource = z.infer<typeof supportCustomerIdentitySourceSchema>;
 export type SupportConversation = z.infer<typeof supportConversationSchema>;
 export type SupportConversationListRequest = z.infer<typeof supportConversationListRequestSchema>;
 export type SupportConversationListResponse = z.infer<typeof supportConversationListResponseSchema>;

@@ -3,11 +3,14 @@ import { shouldDropIngressEvent } from "@/domains/support/ingress-drop-rules";
 import { prisma, softUpsert } from "@shared/database";
 import * as supportEvents from "@shared/rest/services/support/support-event-service";
 import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
+import { temporalWorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
   GROUPING_DEFAULTS,
   GROUPING_ELIGIBLE_STATUSES,
+  SUMMARY_TRIGGER_REASON,
   SUPPORT_CONVERSATION_EVENT_SOURCE,
   SUPPORT_CONVERSATION_STATUS,
+  SUPPORT_CUSTOMER_IDENTITY_SOURCE,
   SUPPORT_INGRESS_PROCESSING_STATE,
   SUPPORT_REALTIME_REASON,
   type SupportConversationEventSource,
@@ -50,6 +53,17 @@ function summarizeMessage(text: string | null): string {
   }
 
   return text.length <= 140 ? text : `${text.slice(0, 137)}...`;
+}
+
+const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+
+function extractMessageEmail(text: string | null): string | null {
+  if (!text) {
+    return null;
+  }
+
+  const match = text.match(EMAIL_REGEX);
+  return match?.[0]?.trim().toLowerCase() ?? null;
 }
 
 /**
@@ -264,6 +278,27 @@ export async function runSupportPipeline(
       resolvedThreadTs
     );
 
+    const regexEmail = isCustomer ? extractMessageEmail(normalized.text) : null;
+    const customerIdentitySource = isCustomer
+      ? regexEmail
+        ? SUPPORT_CUSTOMER_IDENTITY_SOURCE.messageRegex
+        : normalized.slackUserId
+          ? SUPPORT_CUSTOMER_IDENTITY_SOURCE.messagePayload
+          : null
+      : null;
+    const identityUpdate = isCustomer
+      ? {
+          ...(normalized.slackUserId ? { customerSlackUserId: normalized.slackUserId } : {}),
+          ...(regexEmail ? { customerEmail: regexEmail } : {}),
+          ...(customerIdentitySource
+            ? {
+                customerIdentitySource,
+                customerIdentityUpdatedAt: now,
+              }
+            : {}),
+        }
+      : {};
+
     // Ingress goes through the conversation FSM's `customerMessageReceived`
     // event. Per the FSM, that event lands UNREAD from any current state,
     // matching the pre-FSM behavior where a new customer message on a
@@ -277,6 +312,7 @@ export async function runSupportPipeline(
       teamId: normalized.teamId,
       channelId: normalized.channelId,
       threadTs: resolvedThreadTs,
+      ...identityUpdate,
       lastCustomerMessageAt: now,
       customerWaitingSince: now,
       lastActivityAt: now,
@@ -449,6 +485,27 @@ export async function runSupportPipeline(
     conversationId: txResult.conversation.id,
     reason: SUPPORT_REALTIME_REASON.ingressProcessed,
   });
+
+  // Kick off thread summarization for customer messages. Fire-and-forget:
+  // the workflow de-dupes on its own (one in-flight run per conversation via
+  // workflow ID) and decides internally whether the thread already has a
+  // summary. Wrapped in try/catch so a Temporal hiccup here can't tank the
+  // ingress transaction we just committed — a missing summary downgrades
+  // the card to its raw preview, which is the fallback we ship with.
+  if (
+    mapAuthorRoleToEventSource(normalized.authorRoleBucket) ===
+    SUPPORT_CONVERSATION_EVENT_SOURCE.customer
+  ) {
+    void temporalWorkflowDispatcher
+      .startSupportSummaryWorkflow({
+        workspaceId: input.workspaceId,
+        conversationId: txResult.conversation.id,
+        triggerReason: SUMMARY_TRIGGER_REASON.ingress,
+      })
+      .catch((error) => {
+        console.warn("[support-summary] dispatch failed, continuing:", error);
+      });
+  }
 
   return {
     ingressEventId: input.ingressEventId,

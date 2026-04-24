@@ -2,6 +2,13 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.10.0] - 2026-04-23
+
+### Changed
+- **Queue → agents `/analyze` payload is a structured object, not a pre-stringified JSON blob.** `threadSnapshot` now travels the wire as a typed `ThreadSnapshot` object instead of `JSON.stringify(snapshot, null, 2)`. Eliminates the double-encoded `\"` escape noise in logs, drops ~20-30% of pretty-print overhead from the HTTP body, and collapses the parse path from two `JSON.parse` calls to one. Clean break at the schema (`analyzeRequestSchema.threadSnapshot = threadSnapshotSchema`) — no compat union. Pre-deploy drain is the plan: pause queue workers, wait one `AGENT_TIMEOUT_MS` (5 min) for in-flight analyses to finish or fail, deploy, resume. Any workflow that still lands on the new agent with an old string payload fails cleanly via the existing `handleAnalysisFailure` path (DB row marked `FAILED`, user re-triggers).
+- **Prompt rendering moved to `apps/agents/src/prompts/thread-snapshot.ts`.** The queue activity no longer decides how the snapshot is shown to the LLM — the agent service owns its own prompt surface. Pretty-print preserved for parity; TOON migration deferred behind a token-saving + output parity eval.
+- **`ThreadSnapshot` Zod schema uses shared enums and rejects drift.** `status` and event `source` reuse `supportConversationStatusSchema` / `supportConversationEventSourceSchema`; `channelId` is non-nullable (matching Prisma); both objects are `.strict()` so unknown fields from future `buildSnapshot` additions fail validation instead of silently slipping through.
+
 ## [0.2.9.0] - 2026-04-21
 
 ### Added

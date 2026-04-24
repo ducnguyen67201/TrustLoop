@@ -28,6 +28,7 @@ export const env = createEnv({
     SLACK_REPLAY_WINDOW_SECONDS: process.env.SLACK_REPLAY_WINDOW_SECONDS,
     SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     AGENT_SERVICE_URL: process.env.AGENT_SERVICE_URL,
     GITHUB_APP_ID: process.env.GITHUB_APP_ID,
     GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,

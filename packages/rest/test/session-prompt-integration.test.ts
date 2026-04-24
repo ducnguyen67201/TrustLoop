@@ -1,5 +1,16 @@
-import type { SessionDigest } from "@shared/types";
+import type { SessionDigest, ThreadSnapshot } from "@shared/types";
 import { describe, expect, it } from "vitest";
+
+function buildMockThreadSnapshot(): ThreadSnapshot {
+  return {
+    conversationId: "conv-1",
+    channelId: "C0ABCDEF",
+    threadTs: "1776616233.348399",
+    status: "IN_PROGRESS",
+    customer: { email: null },
+    events: [],
+  };
+}
 
 /**
  * Tests for formatSessionDigestForPrompt behavior.
@@ -113,7 +124,7 @@ describe("SessionDigest prompt integration contract", () => {
     const result = analyzeRequestSchema.safeParse({
       workspaceId: "ws-1",
       conversationId: "conv-1",
-      threadSnapshot: "snapshot data",
+      threadSnapshot: buildMockThreadSnapshot(),
       sessionDigest: buildMockDigest(),
     });
 
@@ -126,7 +137,7 @@ describe("SessionDigest prompt integration contract", () => {
     const result = analyzeRequestSchema.safeParse({
       workspaceId: "ws-1",
       conversationId: "conv-1",
-      threadSnapshot: "snapshot data",
+      threadSnapshot: buildMockThreadSnapshot(),
     });
 
     expect(result.success).toBe(true);

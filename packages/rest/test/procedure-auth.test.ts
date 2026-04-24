@@ -113,6 +113,23 @@ describe("supportInboxRouter operator mutations — API-key actor rejection", ()
   });
 });
 
+describe("sessionReplayRouter operator reads — API-key actor rejection", () => {
+  it("getForConversation rejects an api-key-only actor before reading replay data", async () => {
+    const { sessionReplayRouter } = await import("@shared/rest/session-replay-router");
+
+    const caller = sessionReplayRouter.createCaller(
+      buildCtx({
+        apiKeyAuth: { keyId: "tlk_test_key_id", workspaceId: "ws_test" },
+        activeWorkspaceId: "ws_test",
+      })
+    );
+
+    await expect(caller.getForConversation({ conversationId: "c1" })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    } satisfies Partial<TRPCError>);
+  });
+});
+
 describe("appRouter surface", () => {
   // Regression test for the pre-existing critical bug: dispatchWorkflow was mounted
   // on publicProcedure in createAppRouter, letting any unauthenticated caller enqueue

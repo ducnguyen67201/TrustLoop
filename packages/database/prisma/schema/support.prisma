@@ -145,6 +145,11 @@ model SupportConversation {
   threadTs               String
   status                 SupportConversationStatus @default(UNREAD)
   assigneeUserId         String?
+  customerExternalUserId String?
+  customerEmail          String?
+  customerSlackUserId    String?
+  customerIdentitySource String?
+  customerIdentityUpdatedAt DateTime?
   lastCustomerMessageAt  DateTime?
   customerWaitingSince   DateTime?
   staleAt                DateTime?
@@ -156,6 +161,14 @@ model SupportConversation {
   /// for soft-deleted secondary rows post-merge. Breadcrumb only; Slack
   /// routing uses SupportConversationThreadAlias, not this column.
   mergedIntoConversationId String?
+  /// One-line, human-readable summary of what the thread is about. Populated
+  /// asynchronously by the summarization workflow on the first MESSAGE_RECEIVED
+  /// + CUSTOMER event. Null until then — the inbox card falls back to the raw
+  /// last-message preview. Regenerated when `threadSummarySourceEventId`
+  /// points at an event older than the latest customer message (V2).
+  threadSummary          String?
+  threadSummaryGeneratedAt DateTime?
+  threadSummarySourceEventId String?
   deletedAt              DateTime?
   workspace              Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   installation           SupportInstallation       @relation(fields: [installationId], references: [id], onDelete: Restrict)
@@ -170,6 +183,7 @@ model SupportConversation {
   ticketLinks            SupportTicketLink[]
   groupingAnchors        SupportGroupingAnchor[]
   threadAliases          SupportConversationThreadAlias[]
+  sessionMatches         SupportConversationSessionMatch[]
   analyses               SupportAnalysis[]
   drafts                 SupportDraft[]
   attachments            SupportMessageAttachment[]

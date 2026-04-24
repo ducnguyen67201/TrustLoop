@@ -128,21 +128,19 @@ export default function AiAnalysisSettingsPage() {
 
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label>AI provider</Label>
+          <Label>AI routing</Label>
           <p className="text-xs text-muted-foreground">
-            Which AI model analyzes your conversations. More providers coming soon.
+            OpenAI is the default analysis provider. If OpenRouter is configured, TrustLoop uses it
+            as the automatic fallback.
           </p>
           <Select value="openai" disabled>
             <SelectTrigger className="w-64">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="openai">OpenAI (GPT-4o)</SelectItem>
-              <SelectItem value="anthropic" disabled>
-                Anthropic (Claude) — coming soon
-              </SelectItem>
-              <SelectItem value="google" disabled>
-                Google (Gemini) — coming soon
+              <SelectItem value="openai">OpenAI primary (GPT-4o)</SelectItem>
+              <SelectItem value="openrouter" disabled>
+                OpenRouter fallback (automatic)
               </SelectItem>
             </SelectContent>
           </Select>

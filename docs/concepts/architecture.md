@@ -186,4 +186,3 @@ Update when you:
 - Switch the realtime transport (SSE → WebSocket, or pg_notify → a broker)
 - Change the storage backend (Postgres → anything)
 - Add or retire a major domain (would need a new concept doc too)
-

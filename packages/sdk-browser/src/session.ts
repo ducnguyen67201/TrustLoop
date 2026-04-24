@@ -17,6 +17,7 @@ function generateSessionId(): string {
 
 export interface SessionManager {
   getSessionId(): string;
+  rotate(reason?: string): void;
   trackActivity(): void;
   destroy(): void;
 }
@@ -30,16 +31,25 @@ export function createSessionManager(): SessionManager {
   function maybeRotate(): void {
     const now = Date.now();
     if (now - lastActivity > INACTIVITY_TIMEOUT_MS) {
-      sessionId = generateSessionId();
-      debugLog("Session rotated due to inactivity", sessionId);
+      rotate("due to inactivity");
     }
     lastActivity = now;
+  }
+
+  function rotate(reason = "manually"): void {
+    sessionId = generateSessionId();
+    lastActivity = Date.now();
+    debugLog(`Session rotated ${reason}`, sessionId);
   }
 
   return {
     getSessionId(): string {
       maybeRotate();
       return sessionId;
+    },
+
+    rotate(reason?: string): void {
+      rotate(reason);
     },
 
     trackActivity(): void {

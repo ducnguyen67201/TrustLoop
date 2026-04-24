@@ -20,6 +20,15 @@ function formatTimestamp(value: string | null): string {
   }).format(new Date(value));
 }
 
+function resolveSenderLabel(conversation: SupportConversation): string {
+  const sender = conversation.lastCustomerMessage;
+  return (
+    sender?.senderDisplayName ??
+    sender?.senderRealName ??
+    (sender?.senderExternalUserId ? `@${sender.senderExternalUserId}` : "Unknown sender")
+  );
+}
+
 interface SupportConversationCardProps {
   conversation: SupportConversation;
   isSelected: boolean;
@@ -86,7 +95,7 @@ export function SupportConversationCard({
       >
         <CardHeader className="gap-2">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-2">
+            <div className="flex items-start gap-2 min-w-0 flex-1">
               {isSelectMode ? (
                 <Checkbox
                   checked={isChecked}
@@ -96,9 +105,13 @@ export function SupportConversationCard({
                   className="mt-0.5"
                 />
               ) : null}
-              <div className="space-y-1">
-                <CardTitle>{conversation.thread.channelId}</CardTitle>
-                <p className="text-muted-foreground text-[11px]">{conversation.thread.threadTs}</p>
+              <div className="space-y-1 min-w-0 flex-1">
+                <CardTitle className="truncate">{resolveSenderLabel(conversation)}</CardTitle>
+                <p className="text-muted-foreground line-clamp-2 text-xs">
+                  {conversation.threadSummary ??
+                    conversation.lastCustomerMessage?.preview ??
+                    "No customer message yet."}
+                </p>
               </div>
             </div>
             <SupportStatusBadge status={conversation.status} />
@@ -107,6 +120,9 @@ export function SupportConversationCard({
 
         <CardContent className="space-y-2 text-xs">
           <div className="grid gap-1">
+            <p className="text-muted-foreground truncate font-mono text-[11px]">
+              #{conversation.thread.channelId}
+            </p>
             <p>
               <span className="text-muted-foreground">Assignee:</span>{" "}
               {conversation.assigneeUserId ?? "unassigned"}

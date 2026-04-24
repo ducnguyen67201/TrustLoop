@@ -5,62 +5,36 @@
  * so web, queue, and agents all share the same vocabulary.
  *
  * This file handles the Mastra-specific model resolution: turning a
- * provider name + model string into an actual Mastra model instance.
- * Only apps/agents imports @mastra/* packages.
+ * resolved LLM route target into an actual model instance.
+ * Only apps/agents imports the SDK adapter used by the agent runtime.
  *
  *   @shared/types (contract)         apps/agents (resolution)
  *   ┌───────────────────────┐        ┌──────────────────────────┐
- *   │ AgentProviderConfig   │───────▶│ resolveModel(config)     │
- *   │ { provider, model? }  │        │   → @mastra/openai       │
- *   │                       │        │   → @mastra/anthropic     │
- *   │ AGENT_PROVIDER_DEFAULTS│       │   → @mastra/google        │
- *   │ AGENT_PROVIDER        │        │   → Mastra model instance │
+ *   │ AgentProviderConfig   │───────▶│ resolveModel(target)     │
+ *   │ { provider, model? }  │        │   → @ai-sdk/openai       │
+ *   │ AGENT_PROVIDER_DEFAULTS│       │   → OpenAI-compatible    │
+ *   │ AGENT_PROVIDER        │        │      model instance      │
  *   └───────────────────────┘        └──────────────────────────┘
  */
 
 import { createOpenAI } from "@ai-sdk/openai";
 import {
-  AGENT_PROVIDER,
-  AGENT_PROVIDER_DEFAULTS,
-  type AgentProviderConfig,
-  type AgentProviderInfo,
-  MODEL_CONFIG,
-} from "@shared/types";
-
-const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  type LlmResolvedTarget,
+  isProviderConfigured,
+} from "@shared/rest/services/llm-manager-service";
+import { AGENT_PROVIDER_DEFAULTS, type AgentProviderInfo } from "@shared/types";
 
 /**
- * Resolve a Mastra model instance from the shared provider config.
- *
- * To add a new provider:
- * 1. Add it to AGENT_PROVIDER + AGENT_PROVIDER_DEFAULTS in @shared/types
- * 2. npm install @mastra/<provider> in apps/agents
- * 3. Add a case to the switch below
- * 4. Set available: true in AGENT_PROVIDER_DEFAULTS
+ * Resolve an OpenAI-compatible model instance from the central route target.
  */
-export function resolveModel(config: AgentProviderConfig): ReturnType<typeof openai> {
-  const defaults = AGENT_PROVIDER_DEFAULTS[config.provider];
-  const modelName = config.model ?? defaults?.model ?? MODEL_CONFIG.agent;
+export function resolveModel(target: LlmResolvedTarget) {
+  const openai = createOpenAI({
+    apiKey: target.apiKey,
+    ...(target.baseURL ? { baseURL: target.baseURL } : {}),
+    ...(target.headers ? { headers: target.headers } : {}),
+  });
 
-  switch (config.provider) {
-    case AGENT_PROVIDER.openai:
-      return openai(modelName);
-
-    // case AGENT_PROVIDER.anthropic: {
-    //   const { anthropic } = await import("@mastra/anthropic");
-    //   return anthropic(modelName);
-    // }
-
-    // case AGENT_PROVIDER.google: {
-    //   const { google } = await import("@mastra/google");
-    //   return google(modelName);
-    // }
-
-    default:
-      throw new Error(
-        `Provider "${config.provider}" is not yet wired up. Install @mastra/${config.provider} and add it to resolveModel().`
-      );
-  }
+  return openai(target.apiModel);
 }
 
 /**
@@ -69,8 +43,8 @@ export function resolveModel(config: AgentProviderConfig): ReturnType<typeof ope
  */
 export function listProviders(): AgentProviderInfo[] {
   return Object.entries(AGENT_PROVIDER_DEFAULTS).map(([provider, config]) => ({
-    provider: provider as AgentProviderConfig["provider"],
+    provider: provider as AgentProviderInfo["provider"],
     defaultModel: config.model,
-    available: config.available,
+    available: config.available && isProviderConfigured(provider as AgentProviderInfo["provider"]),
   }));
 }

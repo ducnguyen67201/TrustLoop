@@ -18,3 +18,11 @@ export {
   type CompressedSessionDigest,
   type ReconstructedSessionDigest,
 } from "./session-digest";
+
+export {
+  compressedSummaryOutputSchema,
+  reconstructSummaryOutput,
+  POSITIONAL_SUMMARY_FORMAT_INSTRUCTIONS,
+  type CompressedSummaryOutput,
+  type ReconstructedSummaryOutput,
+} from "./support-summary";

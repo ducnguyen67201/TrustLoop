@@ -112,6 +112,22 @@ Once `resolvedThreadTs` is known, the activity:
 - On notification: parse payload, fan out to all SSE streams subscribed to that `workspaceId`
 - SSE endpoint: `apps/web/src/server/http/support/support-stream.ts:14-113` (authenticated, workspace-member-gated, 25s keepalive)
 
+## Post-commit side effects
+
+Once the ingress transaction has committed and realtime has fanned out, two **fire-and-forget** Temporal dispatches fan out to downstream workflows. Both are wrapped so a Temporal hiccup here can't roll back the committed ingress row — worst case, the side effect retries or silently drops and the UI keeps rendering from the committed state.
+
+- **Analysis debounce signal** (`apps/queue/src/domains/support/support.workflow.ts:76,93`)
+  - Signals `newMessageSignal` on the long-lived `support-analysis-trigger` workflow per conversation (workflow ID `analysis-debounce-${conversationId}`)
+  - Each signal resets a 5-minute silence timer; when the timer expires, the trigger workflow dispatches the full analysis pipeline
+  - See [`ai-analysis-pipeline.md`](./ai-analysis-pipeline.md) for the downstream flow (tool-using agent, positional JSON, SSE stream)
+
+- **Thread summary dispatch** (`apps/queue/src/domains/support/support.activity.ts:461-474`)
+  - Only fires for customer-authored messages
+  - Dispatches `supportSummaryWorkflow` with workflow ID `support-summary-${conversationId}` — bursts collapse to one in-flight run; the activity early-returns if a summary already exists
+  - The workflow **sleeps ~60 seconds before calling the activity** so follow-up customer messages have time to land. Opening messages are often one-liners ("hey login broken") that don't capture the real ask — the sleep lets the summarizer see 3-5 messages on average. During the hold-off the card falls back to `lastCustomerMessage.preview` (the raw first message), so the UI is never empty
+  - `support-summary-service.ts` loads the latest customer messages, runs a single OpenAI completion, and persists the returned one-line label on `SupportConversation.threadSummary`
+  - V1 generates exactly once per conversation; regeneration (`shouldRegenerate` helper in `support-summary-service.ts`) is deliberately not wired — flip the trigger to cover later customer messages when product demands it
+
 ## Failure modes
 
 | Failure | Behavior |
@@ -131,6 +147,7 @@ Once `resolvedThreadTs` is known, the activity:
 - **The webhook handler returns 200 within Slack's 3-second timeout.** All downstream work (grouping, FSM, analysis) runs asynchronously via Temporal. Adding synchronous work to the handler breaks Slack's retry behavior.
 - **The thread-alias chain is bounded at 5 hops.** Chains beyond that are treated as data corruption and logged; they do not extend forever.
 - **The `pg_notify` payload stays small** (ids + reason only, never full event data). Postgres rejects payloads over 8KB.
+- **Post-commit side effects are fire-and-forget.** The analysis debounce signal and the thread-summary workflow dispatch must never roll back or re-open the ingress transaction. A missing summary or delayed analysis is a product degradation, not a correctness bug.
 
 ## Related concepts
 
@@ -147,3 +164,4 @@ If you change any of the following, update this file in the same PR:
 - The three-tier thread routing priority
 - The realtime fanout channel or payload shape
 - The Temporal workflow ID pattern
+- The set of post-commit side effects (adding or removing a fire-and-forget dispatch, changing which author roles trigger them)

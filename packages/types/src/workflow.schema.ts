@@ -3,11 +3,16 @@ import {
   analysisResultStatusSchema,
   analysisTriggerTypeSchema,
 } from "@shared/types/support/support-analysis.schema";
+import {
+  supportSummaryWorkflowInputSchema,
+  type supportSummaryWorkflowResultSchema,
+} from "@shared/types/support/support-summary.schema";
 import { z } from "zod";
 
 export const workflowNames = {
   supportInbox: "supportInboxWorkflow",
   supportAnalysis: "supportAnalysisWorkflow",
+  supportSummary: "supportSummaryWorkflow",
   sendDraftToSlack: "sendDraftToSlackWorkflow",
   repositoryIndex: "repositoryIndexWorkflow",
 } as const;
@@ -95,6 +100,10 @@ export const workflowDispatchSchema = z.discriminatedUnion("type", [
     payload: supportAnalysisWorkflowInputSchema,
   }),
   z.object({
+    type: z.literal("support-summary"),
+    payload: supportSummaryWorkflowInputSchema,
+  }),
+  z.object({
     type: z.literal("repository-index"),
     payload: repositoryIndexWorkflowInputSchema,
   }),
@@ -112,6 +121,8 @@ export type SupportWorkflowInput = z.infer<typeof supportWorkflowInputSchema>;
 export type SupportWorkflowResult = z.infer<typeof supportWorkflowResultSchema>;
 export type SupportAnalysisWorkflowInput = z.infer<typeof supportAnalysisWorkflowInputSchema>;
 export type SupportAnalysisWorkflowResult = z.infer<typeof supportAnalysisWorkflowResultSchema>;
+export type SupportSummaryWorkflowInput = z.infer<typeof supportSummaryWorkflowInputSchema>;
+export type SupportSummaryWorkflowResult = z.infer<typeof supportSummaryWorkflowResultSchema>;
 export type RepositoryIndexWorkflowInput = z.infer<typeof repositoryIndexWorkflowInputSchema>;
 export type RepositoryIndexWorkflowResult = z.infer<typeof repositoryIndexWorkflowResultSchema>;
 export type WorkflowDispatchRequest = z.infer<typeof workflowDispatchSchema>;

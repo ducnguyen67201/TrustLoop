@@ -169,4 +169,3 @@ For sourcing tasks, return the best concise artifact for the user's request:
 - every lead has a score
 - every DM is short and specific
 - tracker rows or structured output are ready to use
-

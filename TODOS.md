@@ -160,17 +160,17 @@ When you pick this up: the mechanical fix is to route the listed queries through
 
 ## Prompting
 
-### Promote `threadSnapshot` from pre-rendered string to typed prompt context
+### Migrate `renderThreadSnapshotPrompt` from JSON pretty-print to TOON
 
-**What:** Change the support-analysis request boundary so `threadSnapshot` is no longer flattened to a pretty-printed JSON string in queue before it reaches the agents service. Pass a typed object instead, and let the prompt renderer own the final JSON or TOON serialization choice.
+**What:** Swap `JSON.stringify(snapshot, null, 2)` in `apps/agents/src/prompts/thread-snapshot.ts` for the TOON serializer in `packages/prompting`. Gate with an output-parity eval against the current prompt surface.
 
-**Why:** The TOON prompt-foundation review found that the biggest structured input is still upstream-pre-rendered as a string, which limits how much leverage any serializer can have. Until this boundary is fixed, prompt rendering only owns part of the structured-input problem.
+**Why:** CLAUDE.md's "TOON in, Positional JSON out" rule. The structured boundary that 0.2.10.0 introduced is the prerequisite; now the renderer can actually exercise TOON's token savings.
 
-**Context:** Deferred during TOON prompt foundation work on 2026-04-19. The approved path keeps PR 1 local to `apps/agents` and avoids hiding a larger queue/types/agents contract rewrite inside the serializer refactor.
+**Context:** Deferred at plan approval on 2026-04-23 to keep the structured-payload PR narrow and measurable. Switching serializer + output shape at the same time would make LLM quality regressions impossible to attribute.
 
-**Effort:** M (human) / S-M (CC)
+**Effort:** S (human) / S (CC)
 **Priority:** P2
-**Depends on:** Local prompt renderer seam landing first.
+**Depends on:** Nothing — 0.2.10.0 already established `ThreadSnapshot` as the single input shape.
 
 ### Extract prompt renderer to a shared package after a second real consumer exists
 
@@ -363,6 +363,18 @@ When you pick this up: wrap the `tx.sessionRecord.create(...)` in a try/catch on
 **Depends on:** File attachment feature stable in production. Trigger: DB size growth from attachments becomes noticeable.
 
 ## Completed
+
+### Promote `threadSnapshot` from pre-rendered string to typed prompt context
+
+**What:** `threadSnapshot` now travels the queue → agents `/analyze` HTTP boundary as a structured `ThreadSnapshot` Zod object instead of a pre-rendered pretty-printed JSON string. The prompt renderer moved to `apps/agents/src/prompts/thread-snapshot.ts` (agent-local, not `packages/prompting`), following the `apps/agents/src/prompts/*` convention. The Prisma persist path casts at the library boundary via `as Prisma.InputJsonValue`, matching the pattern at `support-ingress-service.ts:175`.
+
+**Implementation:** `packages/types/src/support/support-analysis.schema.ts` — `threadSnapshotSchema` with shared enums (`supportConversationStatusSchema`, `supportConversationEventSourceSchema`), non-nullable `channelId`, `.strict()` on both objects, recursive JSON `details`. `analyzeRequestSchema.threadSnapshot = threadSnapshotSchema` — clean break, no compat union. `apps/queue/src/domains/support/support-analysis.activity.ts` — drops `JSON.stringify(snapshot, null, 2)` on the wire and the `JSON.parse(JSON.stringify(snapshot))` defensive clone on DB persist. `apps/agents/src/prompts/thread-snapshot.ts` + `apps/agents/src/agent.ts:81` — the renderer is a one-line `JSON.stringify(snapshot, null, 2)`. 13 new tests: 11 schema tests cover `.strict()` rejection, shared-enum gating, structured-payload acceptance, stringified-payload rejection, recursive JSON; 2 renderer tests cover JSON round-trip and key coverage. `packages/rest/test/session-prompt-integration.test.ts` fixtures updated to use object payloads.
+
+**Tests:** `@shared/types` 147 tests pass. `@trustloop/agents` 30 tests pass. `@apps/queue` 52 pass. `@shared/rest` 192 pass. Full monorepo type-check + biome lint clean.
+
+**Deploy note:** Pause queue workers for one `AGENT_TIMEOUT_MS` window (5 min) before the deploy so in-flight analyses drain cleanly. Any remaining in-flight workflow that replays onto the new agent with an old stringified payload fails via the existing `handleAnalysisFailure` path — DB analysis row marked `FAILED`, user can re-trigger.
+
+**Completed:** 2026-04-23 (v0.2.10.0). Both CEO dual voices flagged the original plan as oversized; user kept the full-refactor direction and folded in 4 of 5 Eng dual-voice findings (Prisma `InputJsonValue` cast, shared enums + `.strict()`, expanded test suite, renderer at `apps/agents/src/prompts/` not `packages/prompting`). Skipped the 5th (compat union) — at pre-product scale, in-flight workflow volume at deploy is 0-2 and `handleAnalysisFailure` catches the worst case cleanly; the union was CYA for a production-scale system.
 
 ### Lock operator mutations + remove unauthenticated `dispatchWorkflow` tRPC procedure
 
