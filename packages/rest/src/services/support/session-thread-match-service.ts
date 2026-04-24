@@ -570,6 +570,24 @@ async function upsertPrimarySessionMatch(input: {
     matchConfidence: SessionMatchConfidence;
   };
 }): Promise<SessionConversationMatch> {
+  try {
+    return await persistPrimarySessionMatch(input);
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return persistPrimarySessionMatch(input);
+    }
+    throw error;
+  }
+}
+
+async function persistPrimarySessionMatch(input: {
+  workspaceId: string;
+  conversationId: string;
+  candidate: Omit<SessionCandidate, "record" | "temporalDistanceMs"> & {
+    record: { id: string };
+    matchConfidence: SessionMatchConfidence;
+  };
+}): Promise<SessionConversationMatch> {
   return prisma.$transaction(async (tx) => {
     await tx.supportConversationSessionMatch.updateMany({
       where: {
@@ -985,11 +1003,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === "P2002";
+}
+
 function toInputJsonObject(value: Record<string, unknown>): Prisma.InputJsonObject {
   return value as Prisma.InputJsonObject;
 }
 
-function emptyConversationSessionContext(): ConversationSessionContext {
+export function emptyConversationSessionContext(): ConversationSessionContext {
   return {
     match: null,
     session: null,

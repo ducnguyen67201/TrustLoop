@@ -75,10 +75,7 @@ export async function buildThreadSnapshot(
     },
   });
 
-  const sessionContext = await sessionThreadMatch.getConversationSessionContext({
-    workspaceId: input.workspaceId,
-    conversationId: input.conversationId,
-  });
+  const sessionContext = await getBestEffortSessionContext(input);
   const customerEmail = resolveCustomerEmail(conversation, sessionContext);
   const snapshot = buildSnapshot(conversation, customerEmail);
   const sessionDigest: SessionDigest | null = sessionContext.shouldAttachToAnalysis
@@ -102,6 +99,18 @@ export async function buildThreadSnapshot(
     customerEmail,
     sessionDigest,
   };
+}
+
+async function getBestEffortSessionContext(input: {
+  workspaceId: string;
+  conversationId: string;
+}): Promise<sessionThreadMatch.ConversationSessionContext> {
+  try {
+    return await sessionThreadMatch.getConversationSessionContext(input);
+  } catch (error) {
+    console.warn("[analysis] Session matching failed, continuing without digest:", error);
+    return sessionThreadMatch.emptyConversationSessionContext();
+  }
 }
 
 export async function runAnalysisAgent(

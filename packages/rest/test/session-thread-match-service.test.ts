@@ -252,4 +252,72 @@ describe("session thread matching", () => {
     expect(mockSupportConversationFindFirst).not.toHaveBeenCalled();
     expect(mockSessionRecordFindMany).not.toHaveBeenCalled();
   });
+
+  it("retries when a concurrent caller creates the same match first", async () => {
+    mockSupportConversationFindFirst.mockResolvedValue({
+      id: "conv-race",
+      workspaceId: "ws-1",
+      customerExternalUserId: "user-123",
+      customerEmail: null,
+      customerSlackUserId: null,
+      customerIdentitySource: null,
+      lastCustomerMessageAt: new Date("2026-04-18T10:05:00.000Z"),
+      createdAt: new Date("2026-04-18T10:00:00.000Z"),
+      lastActivityAt: new Date("2026-04-18T10:05:00.000Z"),
+      installation: { metadata: null },
+      events: [
+        {
+          eventType: "MESSAGE_RECEIVED",
+          eventSource: "CUSTOMER",
+          summary: "Billing issue",
+          detailsJson: { customerUserId: "user-123" },
+          createdAt: new Date("2026-04-18T10:00:00.000Z"),
+        },
+      ],
+    });
+    mockSessionRecordFindMany.mockResolvedValue([
+      {
+        id: "session-race",
+        workspaceId: "ws-1",
+        sessionId: "sess-race",
+        userId: "user-123",
+        userEmail: null,
+        userAgent: "Chrome",
+        release: "1.0.0",
+        startedAt: new Date("2026-04-18T09:58:00.000Z"),
+        lastEventAt: new Date("2026-04-18T10:03:00.000Z"),
+        eventCount: 12,
+        hasReplayData: true,
+      },
+    ]);
+    mockMatchFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: "match-race",
+      conversationId: "conv-race",
+      sessionRecordId: "session-race",
+    });
+    mockMatchCreate.mockRejectedValueOnce(
+      Object.assign(new Error("unique constraint violation"), { code: "P2002" })
+    );
+    mockMatchUpdate.mockResolvedValue({
+      conversationId: "conv-race",
+      sessionRecordId: "session-race",
+      matchSource: "user_id",
+      matchConfidence: "confirmed",
+      matchedIdentifierType: "user_id",
+      matchedIdentifierValue: "user-123",
+      score: 40_000_000,
+      evidenceJson: { matchedIdentifierValue: "user-123" },
+      isPrimary: true,
+    });
+
+    const result = await getConversationSessionContext({
+      workspaceId: "ws-1",
+      conversationId: "conv-race",
+    });
+
+    expect(result.session?.id).toBe("session-race");
+    expect(result.match?.matchSource).toBe("user_id");
+    expect(mockMatchCreate).toHaveBeenCalledTimes(1);
+    expect(mockMatchUpdate).toHaveBeenCalledTimes(1);
+  });
 });
