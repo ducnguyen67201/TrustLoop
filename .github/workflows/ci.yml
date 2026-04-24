@@ -18,11 +18,11 @@ jobs:
       validation_jobs: ${{ steps.set-scope.outputs.validation_jobs }}
       services: ${{ steps.set-scope.outputs.services }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
@@ -220,11 +220,11 @@ jobs:
       COREPACK_ENABLE_STRICT: "0"
       COREPACK_ENABLE_AUTO_PIN: "0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -274,11 +274,11 @@ jobs:
       COREPACK_ENABLE_AUTO_PIN: "0"
       SKIP_ENV_VALIDATION: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -346,7 +346,7 @@ jobs:
         service: ${{ fromJSON(needs.detect-changes.outputs.services) }}
     name: docker-build (${{ matrix.service }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: docker/setup-buildx-action@v3
 
