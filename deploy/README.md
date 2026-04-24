@@ -159,7 +159,7 @@ each one.
    when ready. Railway checks out that environment's branch, builds, and rolls out.
 
 This branch mapping must stay aligned with `.github/workflows/migrate.yml`:
-- push to `staging` => auto-apply staging DB migrations
-- push to `production` => auto-apply production DB migrations
+- push to `staging` => run CI on `staging`, then auto-apply staging DB migrations after CI succeeds
+- push to `production` => run CI on `production`, then auto-apply production DB migrations after CI succeeds
 
 Do this per-service per-environment. There is no "deploy everything" button.

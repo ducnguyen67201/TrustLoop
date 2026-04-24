@@ -4,16 +4,15 @@ name: Migrate DB
 # (DATABASE_URL, etc.) based on which config we point it at.
 #
 # Branch → GitHub Environment → Doppler config mapping:
-#   push to staging     →  github env `staging`     →  Doppler `stg`  →  staging Postgres
-#   push to production  →  github env `production`  →  Doppler `prd`  →  prod Postgres
-#   workflow_dispatch   →  user-selected           →  mapped → corresponding DB
+#   successful CI on staging     →  github env `staging`     →  Doppler `stg`  →  staging Postgres
+#   successful CI on production  →  github env `production`  →  Doppler `prd`  →  prod Postgres
+#   workflow_dispatch            →  user-selected           →  mapped → corresponding DB
 #
 # Release model:
 #   - Railway staging deploys must come from the `staging` branch.
 #   - Railway production deploys must come from the `production` branch.
-#   - If code is deployed to an environment from some other branch (for example
-#     deploying `main` into staging), this workflow will not auto-apply that
-#     environment's migrations for the deployed commit.
+#   - Migrations run only after CI succeeds on that environment branch, so
+#     deploy branches cannot bypass the normal validation gates.
 #
 # Prereq: each GitHub Environment (staging, production) must have a
 # DOPPLER_TOKEN secret set to a Doppler Service Token scoped to the
@@ -24,13 +23,10 @@ name: Migrate DB
 # flows into Doppler automatically.
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [staging, production]
-    paths:
-      - 'packages/database/prisma/migrations/**'
-      - 'packages/database/prisma/schema.prisma'
-      - 'packages/database/prisma/schema/**'
-      - '.github/workflows/migrate.yml'
   workflow_dispatch:
     inputs:
       config:
@@ -47,13 +43,14 @@ on:
         default: 'Apply pending migrations'
 
 concurrency:
-  # One migration per target config at a time. Same-config pushes queue
+  # One migration per target config at a time. Same-config runs queue
   # up behind in-flight runs instead of cancelling them.
-  group: migrate-${{ github.ref }}-${{ github.event.inputs.config || 'auto' }}
+  group: migrate-${{ github.event_name == 'workflow_dispatch' && inputs.config || github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
   migrate:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,15 +58,12 @@ jobs:
     # gate kicks in IF the repo has that environment configured with
     # required reviewers. Harmless if the env isn't configured (runs
     # without approval). Set this up in repo Settings → Environments.
-    environment: >-
-      ${{
-        (github.event_name == 'workflow_dispatch' && inputs.config == 'production') ||
-        (github.event_name == 'push' && github.ref == 'refs/heads/production')
-        && 'production' || 'staging'
-      }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.config || github.event.workflow_run.head_branch }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.config || github.event.workflow_run.head_sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -90,10 +84,8 @@ jobs:
           # config name which is shorter (stg|prd).
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             gh_env="${{ inputs.config }}"
-          elif [ "${{ github.ref }}" = "refs/heads/production" ]; then
-            gh_env="production"
           else
-            gh_env="staging"
+            gh_env="${{ github.event.workflow_run.head_branch }}"
           fi
 
           case "$gh_env" in
@@ -170,8 +162,14 @@ jobs:
             echo ""
             echo "- Doppler config: \`${{ steps.resolve.outputs.config }}\`"
             echo "- Trigger: ${{ github.event_name }}"
-            echo "- Ref:     ${{ github.ref }}"
-            echo "- Commit:  ${{ github.sha }}"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "- Ref:     refs/heads/${{ inputs.config }}"
+              echo "- Commit:  manual dispatch"
+            else
+              echo "- Ref:     refs/heads/${{ github.event.workflow_run.head_branch }}"
+              echo "- Commit:  ${{ github.event.workflow_run.head_sha }}"
+              echo "- CI run:  ${{ github.event.workflow_run.html_url }}"
+            fi
             echo "- Outcome: ${{ job.status }}"
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "- Reason:  ${{ inputs.reason }}"
