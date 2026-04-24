@@ -1,0 +1,114 @@
+name: Deploy staging
+
+# Staging promotions merge the CI-validated `main` commit into the `staging`
+# branch. The existing `CI` + `Migrate DB` workflows on `staging` then take
+# over from there.
+#
+# Required repo secret:
+#   - STAGING_PUSH_TOKEN  (PAT or GitHub App token with contents:write so the
+#                          push to `staging` can trigger downstream workflows)
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref from main to promote into staging"
+        required: true
+        default: "main"
+      reason:
+        description: "Why are you manually running this promotion?"
+        required: true
+        default: "Promote the latest main commit to staging"
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Verify staging promotion token
+        run: |
+          if [ -z "${{ secrets.STAGING_PUSH_TOKEN }}" ]; then
+            echo "::error::STAGING_PUSH_TOKEN secret is not set."
+            echo "::error::Use a PAT or GitHub App token, not GITHUB_TOKEN, so the push to staging triggers CI + migrate workflows."
+            exit 1
+          fi
+
+      - name: Resolve source ref
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            source_ref="${{ inputs.ref }}"
+          else
+            source_ref="${{ github.event.workflow_run.head_sha }}"
+          fi
+
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
+          echo "Source ref: $source_ref"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.resolve.outputs.source_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.STAGING_PUSH_TOKEN }}
+
+      - name: Merge validated ref into staging
+        id: promote
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          short_sha="${source_sha::7}"
+
+          git fetch origin main staging
+
+          if git merge-base --is-ancestor "$source_sha" origin/staging; then
+            echo "already_promoted=true" >> "$GITHUB_OUTPUT"
+            echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+            echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+            echo "Staging already contains $source_sha"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B staging origin/staging
+          git merge \
+            --no-ff \
+            --no-edit \
+            -m "[Deploy] Stage ${short_sha}" \
+            "$source_sha"
+
+          git push origin HEAD:staging
+
+          echo "already_promoted=false" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Staging promotion summary"
+            echo ""
+            echo "- Trigger: ${{ github.event_name }}"
+            echo "- Source ref: \`${{ steps.resolve.outputs.source_ref }}\`"
+            echo "- Source SHA: \`${{ steps.promote.outputs.source_sha || 'n/a' }}\`"
+            echo "- Promoted already: \`${{ steps.promote.outputs.already_promoted || 'false' }}\`"
+            echo "- Target branch: \`staging\`"
+            echo "- Outcome: ${{ job.status }}"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "- Reason: ${{ inputs.reason }}"
+            else
+              echo "- CI run: ${{ github.event.workflow_run.html_url }}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
