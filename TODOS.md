@@ -427,3 +427,4 @@ When you pick this up: the `AgentTeamRunEvent` table already supports JSONB payl
 **Tests:** 8 new unit tests in `apps/queue/test/should-drop-ingress-event.test.ts` cover SYSTEM / BOT-is-ours / BOT-is-other / legacy-null / customer / internal / edge cases.
 
 **Completed:** v0.1.2.0 (2026-04-12)
+
