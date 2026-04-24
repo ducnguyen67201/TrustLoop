@@ -151,15 +151,32 @@ For each of `web`, `queue`, `agents` in both `staging` and `production`:
 toggle is UI-only (per-service setting), so it must be set explicitly on
 each one.
 
-### Manual deploy workflow
+### Release workflow
 
-1. Merge PR to `staging` for a staging release, or merge PR to `production` for a production release.
-2. Railway notices the branch update but does not build.
-3. Click **Deploy** in the service's Deployments tab (or `railway up`)
-   when ready. Railway checks out that environment's branch, builds, and rolls out.
+**Staging**
 
-This branch mapping must stay aligned with `.github/workflows/migrate.yml`:
-- push to `staging` => run CI on `staging`, then auto-apply staging DB migrations after CI succeeds
-- push to `production` => run CI on `production`, then auto-apply production DB migrations after CI succeeds
+1. Merge PRs to `main`.
+2. GitHub Actions runs `CI` on `main`.
+3. On success, `.github/workflows/deploy-staging.yml` merges that validated
+   commit into the `staging` branch.
+4. The push to `staging` triggers `CI` on `staging`.
+5. After staging CI succeeds, `.github/workflows/migrate.yml` applies staging
+   DB migrations against Doppler config `stg`.
 
-Do this per-service per-environment. There is no "deploy everything" button.
+Required secrets:
+- Repo secret `STAGING_PUSH_TOKEN` for the branch-promotion workflow. This
+  must be a PAT or GitHub App token, because pushes made with `GITHUB_TOKEN`
+  do not trigger downstream `push` workflows.
+- GitHub Environment (`staging`) secret `DOPPLER_TOKEN` for staging DB access.
+
+**Production**
+
+1. Merge PRs to `production`.
+2. GitHub Actions runs `CI` on `production`.
+3. On success, `.github/workflows/migrate.yml` applies production DB migrations
+   against Doppler config `prd`.
+4. Deploy production services manually from Railway when ready.
+
+This branch mapping must stay aligned with the workflows:
+- push to `main` => run CI on `main`, then promote that commit to `staging`, then run CI + migrations on `staging`
+- push to `production` => run CI on `production`, then auto-apply production DB migrations
