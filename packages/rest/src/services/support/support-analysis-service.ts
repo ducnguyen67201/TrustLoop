@@ -1,5 +1,5 @@
 import { prisma } from "@shared/database";
-import { env } from "@shared/env";
+import * as llmManager from "@shared/rest/services/llm-manager-service";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
   ANALYSIS_STATUS,
@@ -11,6 +11,7 @@ import {
   type DismissDraftInput,
   type DraftStatus,
   InvalidDraftTransitionError,
+  LLM_USE_CASE,
   type TriggerAnalysisInput,
   ValidationError,
   restoreDraftContext,
@@ -68,10 +69,10 @@ export async function trigger(
   input: TriggerAnalysisInput & { workspaceId: string },
   dispatcher: WorkflowDispatcher
 ): Promise<TriggerAnalysisResult> {
-  // Capability check: fail early if OpenAI key is not configured
-  if (!env.OPENAI_API_KEY) {
+  // Capability check: fail early if no configured provider can serve this route.
+  if (!llmManager.hasRouteForUseCase(LLM_USE_CASE.supportAnalysis)) {
     throw new ValidationError(
-      "AI analysis is not configured. Set OPENAI_API_KEY in environment variables."
+      "AI analysis is not configured. Set OPENAI_API_KEY or OPENROUTER_API_KEY in environment variables."
     );
   }
 

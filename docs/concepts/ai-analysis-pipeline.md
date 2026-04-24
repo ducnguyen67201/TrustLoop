@@ -23,7 +23,7 @@ Two paths into the pipeline:
 - Receives `newMessageSignal` from the ingress activity on every new customer message
 - Each signal resets a 5-minute sleep timer
 - When the timer expires (silence), the workflow calls `dispatchAnalysis()` which spawns the main analysis workflow
-- Exits if the conversation is archived or the workspace no longer has an OpenAI key
+- Exits if the conversation is archived or no LLM route is configured for analysis
 
 This pattern (one long-lived workflow per conversation, accumulating signals) is cheaper than kicking off a new analysis per message and lets operators actually finish a customer's incoming burst before the model sees it.
 
@@ -37,7 +37,7 @@ This pattern (one long-lived workflow per conversation, accumulating signals) is
 
 Both trigger paths share the same guards in `supportAnalysis.trigger`:
 
-- `OPENAI_API_KEY` env var must be present
+- At least one analysis route must be configured (`OPENAI_API_KEY` primary, `OPENROUTER_API_KEY` fallback)
 - Conversation exists and is in the caller's workspace (`support-analysis-service.ts:79-84`)
 - Workspace has at least one indexed repository (`:87-94`) — no code context, no analysis
 - **Dedupe:** if an analysis for this conversation is already in `GATHERING_CONTEXT` or `ANALYZING`, return `{ alreadyInProgress: true }` without spawning a new workflow (`:96-109`)
@@ -99,8 +99,8 @@ Both trigger paths share the same guards in `supportAnalysis.trigger`:
   sessionDigest?: SessionDigest, // browser session context (if correlated)
   config?: {
     maxSteps?: number,
-    provider?: "openai" | "anthropic",
-    model?: string,              // e.g. "gpt-4o" or "claude-sonnet-4-20250514"
+    provider?: "openai" | "openrouter",
+    model?: string,              // e.g. "gpt-4o"
     toneConfig?: ToneConfig      // workspace response guidelines
   }
 }
@@ -114,10 +114,11 @@ Both trigger paths share the same guards in `supportAnalysis.trigger`:
 ### Reasoning loop
 
 - `apps/agents/src/agent.ts:64-108`
-- Built on the OpenAI Agents SDK (migrating to Mastra — see `apps/agents/AGENTS.md` if it exists)
+- Built on Mastra's agent runtime with an OpenAI-compatible model adapter
+- Provider/model selection comes from the centralized LLM manager, not from feature-local config
 - Tools exposed to the model: `searchCode` (codex hybrid search), `createPullRequest` (placeholder — not production)
 - Max steps: configurable, default 8
-- Retry policy: model-side (OpenAI's retry), not Temporal's — the activity wraps the full loop
+- Retry policy: centralized route execution tries the primary target first and then the configured fallback before surfacing failure back to the Temporal activity
 
 ## Prompt architecture
 
@@ -204,7 +205,7 @@ The inbox UI polls an SSE endpoint to see analysis progress in near-realtime:
 
 | Failure | Behavior |
 |---------|----------|
-| OpenAI API down | Temporal activity fails, retries (2x), then throws into workflow — analysis stays ANALYZING, alert fires |
+| Primary LLM provider down | The agents service retries on the configured fallback route (OpenRouter today). If every configured provider fails, the activity retries (2x), then throws into workflow — analysis stays ANALYZING, alert fires |
 | Agent returns non-JSON / invalid positional | Zod validate throws, activity retries; if still bad, workflow fails, analysis → FAILED |
 | Conversation archived mid-flight | Activity checks on entry; if archived, returns early, analysis → CANCELLED |
 | Operator marked conversation DONE mid-analysis | `analysisEscalated` event throws from FSM, caught in service layer, analysis still persists (status unchanged) |
@@ -218,7 +219,7 @@ The inbox UI polls an SSE endpoint to see analysis progress in near-realtime:
 
 ## Invariants
 
-- **The analysis workflow gates on three preconditions: `OPENAI_API_KEY` present, workspace has ≥1 indexed repository, no existing analysis is in-progress for this conversation.** Any trigger that bypasses these gates is a bug.
+- **The analysis workflow gates on three preconditions: at least one configured analysis route, workspace has ≥1 indexed repository, no existing analysis is in-progress for this conversation.** Any trigger that bypasses these gates is a bug.
 - **The agent receives `SessionDigest` (summary), not raw rrweb chunks.** Raw rrweb is stored but does not reach the prompt. Changing this is a prompt-shape migration, not a flag flip.
 - **All LLM structured output uses the positional JSON format** in `packages/types/src/positional-format/support-analysis.ts`. The compressed shape is validated by Zod and reconstructed immediately after parse — it never leaks past the agent-call boundary.
 - **The 3-activity workflow breakdown (buildThreadSnapshot → markAnalyzing → runAnalysisAgent) is stable.** Changing the activity list or their order requires a Temporal workflow version bump; in-flight workflows continue on the old version.
@@ -231,6 +232,7 @@ The inbox UI polls an SSE endpoint to see analysis progress in near-realtime:
 - `ai-draft-generation.md` — what happens to the draft after persist
 - `session-replay-capture.md` — how SessionDigest is built
 - `codex-search.md` — what the `searchCode` tool does
+- `llm-routing-and-provider-fallback.md` — how provider/model selection and fallback routing work across apps
 
 ## Keep this doc honest
 

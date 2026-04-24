@@ -1,15 +1,16 @@
 import { Agent } from "@mastra/core/agent";
+import * as llmManager from "@shared/rest/services/llm-manager-service";
 import {
-  type AgentProviderConfig,
   type AnalyzeRequest,
   type AnalyzeResponse,
+  LLM_USE_CASE,
   type SessionDigest,
   type ToneConfig,
   compressedAnalysisOutputSchema,
   reconstructAnalysisOutput,
 } from "@shared/types";
 
-import { getDefaultModel, resolveProviderConfig } from "./agent-config";
+import { resolveProviderConfig } from "./agent-config";
 import {
   SUPPORT_AGENT_SYSTEM_PROMPT,
   buildAnalysisPromptWithContext,
@@ -25,10 +26,9 @@ const DEFAULT_MAX_STEPS = 8;
 // ── Agent Factory ───────────────────────────────────────────────────
 //
 // Agents are created per-request with the caller's chosen provider/model.
-// Tools and system prompt stay the same regardless of provider.
-// The web app passes { provider: "openai", model: "gpt-4o" } or
-// { provider: "anthropic", model: "claude-sonnet-4-20250514" } and the
-// pipeline builds the right agent.
+// Tools and system prompt stay the same regardless of provider. The shared
+// LLM manager resolves the OpenAI-primary route and retries on the
+// configured fallback when the first provider fails.
 //
 //   Web (user picks provider)
 //       → Queue (passes provider in analyze request)
@@ -36,7 +36,7 @@ const DEFAULT_MAX_STEPS = 8;
 //               → Same tools, same prompt, different brain
 
 function createSupportAgent(
-  providerConfig: AgentProviderConfig,
+  target: llmManager.LlmResolvedTarget,
   options?: { toneConfig?: ToneConfig; sessionDigest?: SessionDigest }
 ) {
   let instructions: string;
@@ -52,7 +52,7 @@ function createSupportAgent(
     id: "trustloop-support-agent",
     name: "TrustLoop AI Support Agent",
     instructions,
-    model: resolveModel(providerConfig),
+    model: resolveModel(target),
     tools: {
       searchCode: searchCodeTool,
       createPullRequest: createPullRequestTool,
@@ -64,22 +64,24 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
   const startTime = Date.now();
   const maxSteps = request.config?.maxSteps ?? DEFAULT_MAX_STEPS;
   const providerConfig = resolveProviderConfig(request.config);
-  const modelName = providerConfig.model ?? getDefaultModel(providerConfig.provider);
+  const route = llmManager.requireRoute(LLM_USE_CASE.supportAnalysis, providerConfig);
 
   console.log("[agents] Starting analysis", {
     conversationId: request.conversationId,
-    provider: providerConfig.provider,
-    model: modelName,
+    provider: route.targets[0].provider,
+    model: route.targets[0].model,
     maxSteps,
   });
 
-  const agent = createSupportAgent(providerConfig, {
-    toneConfig: request.config?.toneConfig,
-    sessionDigest: request.sessionDigest,
-  });
   const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${renderThreadSnapshotPrompt(request.threadSnapshot)}`;
+  const { result, target } = await llmManager.executeWithFallback(route, async (candidate) => {
+    const agent = createSupportAgent(candidate, {
+      toneConfig: request.config?.toneConfig,
+      sessionDigest: request.sessionDigest,
+    });
 
-  const result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
+    return agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
+  });
 
   const output = parseAgentOutput(result.text);
   const toolCalls = extractToolCalls(result);
@@ -98,8 +100,8 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     draft: output.draft,
     toolCalls,
     meta: {
-      provider: providerConfig.provider,
-      model: modelName,
+      provider: target.provider,
+      model: target.model,
       totalDurationMs: Date.now() - startTime,
       turnCount: result.steps?.length ?? 0,
     },

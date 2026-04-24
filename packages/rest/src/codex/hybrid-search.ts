@@ -1,8 +1,7 @@
 import { prisma } from "@shared/database";
-import { env } from "@shared/env";
 import * as embeddings from "@shared/rest/services/codex/embedding";
-import { MODEL_CONFIG } from "@shared/types";
-import OpenAI from "openai";
+import * as llmManager from "@shared/rest/services/llm-manager-service";
+import { LLM_USE_CASE } from "@shared/types";
 
 const RRF_K = 60;
 const VECTOR_CANDIDATE_LIMIT = 50;
@@ -76,7 +75,7 @@ export async function vectorSearch(
     limit
   );
 
-  return rows.map((r) => ({ ...r, score: r.vector_score }));
+  return rows.map((row: (typeof rows)[number]) => ({ ...row, score: row.vector_score }));
 }
 
 export async function keywordSearch(
@@ -121,7 +120,7 @@ export async function keywordSearch(
     limit
   );
 
-  return rows.map((r) => ({ ...r, score: r.keyword_score }));
+  return rows.map((row: (typeof rows)[number]) => ({ ...row, score: row.keyword_score }));
 }
 
 function computePathBonus(query: string, chunk: ScoredChunk): number {
@@ -188,7 +187,12 @@ export async function rerankWithLlm(
 ): Promise<RerankedChunk[]> {
   const top = candidates.slice(0, RERANK_CANDIDATE_LIMIT);
 
-  if (!env.OPENAI_API_KEY || top.length === 0) {
+  if (top.length === 0) {
+    return top.map((c) => ({ ...c, rerankerScore: null, rerankerReason: null }));
+  }
+
+  const route = llmManager.resolveRoute(LLM_USE_CASE.codexRerank);
+  if (!route) {
     return top.map((c) => ({ ...c, rerankerScore: null, rerankerReason: null }));
   }
 
@@ -204,23 +208,28 @@ Rate the relevance of each code snippet on a scale of 0-10. Return ONLY a JSON a
 ${snippets.join("\n\n")}`;
 
   try {
-    const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const { result: content } = await llmManager.executeWithFallback(route, async (target) => {
+      const client = llmManager.createOpenAiCompatibleClient(target);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await client.chat.completions.create(
-      {
-        model: MODEL_CONFIG.fast,
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0,
-      },
-      { signal: controller.signal }
-    );
+      try {
+        const response = await client.chat.completions.create(
+          {
+            model: target.apiModel,
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+            temperature: 0,
+          },
+          { signal: controller.signal }
+        );
 
-    clearTimeout(timer);
+        return response.choices[0]?.message?.content ?? null;
+      } finally {
+        clearTimeout(timer);
+      }
+    });
 
-    const content = response.choices[0]?.message?.content;
     if (!content) {
       return top.map((c) => ({ ...c, rerankerScore: null, rerankerReason: null }));
     }

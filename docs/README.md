@@ -27,6 +27,7 @@ That's it. No `plans/`, no `domains/`, no `specs/`. If you need a forward-lookin
 | [concepts/thread-grouping.md](concepts/thread-grouping.md) | How Slack messages collapse into `SupportConversation` records. Thread-alias lookup, grouping anchor, merge/reassign/undo. |
 | [concepts/support-conversation-fsm.md](concepts/support-conversation-fsm.md) | The conversation state machine: states, events, transitions, guards. |
 | [concepts/ai-analysis-pipeline.md](concepts/ai-analysis-pipeline.md) | Analysis trigger (debounce + manual), Temporal workflow, agent service call, positional JSON output, SSE progress stream. |
+| [concepts/llm-routing-and-provider-fallback.md](concepts/llm-routing-and-provider-fallback.md) | Shared LLM routing contract, provider/model selection, OpenAI primary + OpenRouter fallback, and app boundaries. |
 | [concepts/ai-draft-generation.md](concepts/ai-draft-generation.md) | Draft lifecycle, state machine, `slackClientMsgId` idempotent delivery, reconciliation, dismiss/retry flows. |
 | [concepts/session-replay-capture.md](concepts/session-replay-capture.md) | Browser SDK → ingest → storage → SessionDigest correlation into analysis. |
 | [concepts/auth-and-workspaces.md](concepts/auth-and-workspaces.md) | Google OAuth, workspace auto-join, membership roles, the three auth surfaces (`tli_` / `tlk_` / operator session). |
