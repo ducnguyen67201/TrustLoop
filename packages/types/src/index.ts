@@ -4,6 +4,7 @@ export * from "@shared/types/agent-team/index";
 export * from "@shared/types/codex/index";
 export * from "@shared/types/errors";
 export * from "@shared/types/fsm";
+export * from "@shared/types/llm/index";
 export * from "@shared/types/prisma-generated/index";
 export * from "@shared/types/status/index";
 export * from "@shared/types/support/index";

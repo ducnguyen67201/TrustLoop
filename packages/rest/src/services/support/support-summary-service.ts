@@ -1,6 +1,8 @@
 import { prisma } from "@shared/database";
-import { env } from "@shared/env";
+import * as llmManager from "@shared/rest/services/llm-manager-service";
 import {
+  LLM_USE_CASE,
+  MODEL_CONFIG,
   POSITIONAL_SUMMARY_FORMAT_INSTRUCTIONS,
   type SupportSummaryMessage,
   type SupportSummaryWorkflowInput,
@@ -10,7 +12,6 @@ import {
   reconstructSummaryOutput,
   supportSummaryWorkflowResultSchema,
 } from "@shared/types";
-import OpenAI from "openai";
 
 // ---------------------------------------------------------------------------
 // supportSummary service
@@ -132,27 +133,27 @@ export async function loadGenerationRequest(
 }
 
 export async function generateSummary(messages: SupportSummaryMessage[]): Promise<string> {
-  if (!env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured.");
-  }
+  const route = llmManager.requireRoute(LLM_USE_CASE.supportSummary);
+  const { result: raw } = await llmManager.executeWithFallback(route, async (target) => {
+    const client = llmManager.createOpenAiCompatibleClient(target);
+    const response = await client.chat.completions.create(
+      {
+        model: target.apiModel,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: buildPrompt(messages) },
+        ],
+        temperature: 0,
+      },
+      { signal: AbortSignal.timeout(SUMMARY_TIMEOUT_MS) }
+    );
 
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const response = await client.chat.completions.create(
-    {
-      model: "gpt-4.1-mini",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildPrompt(messages) },
-      ],
-      temperature: 0,
-    },
-    { signal: AbortSignal.timeout(SUMMARY_TIMEOUT_MS) }
-  );
+    return response.choices[0]?.message?.content ?? null;
+  });
 
-  const raw = response.choices[0]?.message?.content;
   if (!raw) {
-    throw new Error("Summarizer produced no output");
+    throw new Error(`Summarizer produced no output for ${MODEL_CONFIG.summary}`);
   }
 
   let parsed: unknown;

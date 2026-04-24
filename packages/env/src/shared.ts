@@ -51,6 +51,7 @@ export const serverSchemas = {
 
   // AI Analysis (Agent Service)
   OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENROUTER_API_KEY: z.string().min(1).optional(),
   AGENT_SERVICE_URL: z.url().optional(),
 
   // Codex / GitHub App

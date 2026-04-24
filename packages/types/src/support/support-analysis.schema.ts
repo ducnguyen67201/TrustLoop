@@ -4,6 +4,7 @@ import {
   supportConversationStatusSchema,
 } from "@shared/types/support/support-conversation.schema";
 import { z } from "zod";
+import { agentProviderSchema } from "./agent-provider.schema";
 import { toneConfigSchema } from "./tone-config.schema";
 
 export const ANALYSIS_STATUS = {
@@ -241,7 +242,7 @@ export const analyzeRequestSchema = z.object({
   config: z
     .object({
       maxSteps: z.number().int().positive().optional(),
-      provider: z.string().optional(),
+      provider: agentProviderSchema.optional(),
       model: z.string().optional(),
       toneConfig: toneConfigSchema.optional(),
     })
@@ -260,7 +261,7 @@ export const analyzeResponseSchema = z.object({
   draft: draftResultSchema.nullable(),
   toolCalls: z.array(toolCallRecordSchema),
   meta: z.object({
-    provider: z.string(),
+    provider: agentProviderSchema,
     model: z.string(),
     totalDurationMs: z.number(),
     turnCount: z.number(),

@@ -15,6 +15,9 @@ export const MODEL_CONFIG = {
   /** Primary agent model for reasoning, analysis, and drafting. */
   agent: "gpt-4o",
 
+  /** Cheap summary model for inbox-card labels and short structured output. */
+  summary: "gpt-4.1-mini",
+
   /** Fast/cheap model for reranking search results, classification, etc. */
   fast: "gpt-4o-mini",
 

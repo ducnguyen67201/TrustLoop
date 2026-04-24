@@ -1,7 +1,6 @@
 import { prisma } from "@shared/database";
-import { env } from "@shared/env";
-import { MODEL_CONFIG } from "@shared/types";
-import OpenAI from "openai";
+import * as llmManager from "@shared/rest/services/llm-manager-service";
+import { LLM_USE_CASE, MODEL_CONFIG } from "@shared/types";
 
 // ---------------------------------------------------------------------------
 // embeddings service
@@ -22,28 +21,18 @@ export const MODEL = MODEL_CONFIG.embedding;
 export const DIMENSIONS = MODEL_CONFIG.embeddingDimensions;
 const MAX_BATCH_SIZE = 100;
 
-let openaiClient: OpenAI | null = null;
-
-function getOpenAIClient(): OpenAI {
-  if (!openaiClient) {
-    if (!env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is not configured.");
-    }
-    openaiClient = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  }
-  return openaiClient;
-}
-
 export async function generate(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
-  const client = getOpenAIClient();
+  const route = llmManager.requireRoute(LLM_USE_CASE.codexEmbedding);
+  const [target] = route.targets;
+  const client = llmManager.createOpenAiCompatibleClient(target);
   const results: number[][] = [];
 
   for (let i = 0; i < texts.length; i += MAX_BATCH_SIZE) {
     const batch = texts.slice(i, i + MAX_BATCH_SIZE);
     const response = await client.embeddings.create({
-      model: MODEL,
+      model: target.apiModel,
       input: batch,
       dimensions: DIMENSIONS,
     });
