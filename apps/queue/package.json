@@ -10,6 +10,7 @@
     "./domains/*": "./src/domains/*"
   },
   "scripts": {
+    "predev": "npm exec -- tsx ../../packages/database/scripts/check-drift.ts",
     "dev": "tsx watch src/main.ts",
     "ping:temporal": "tsx scripts/ping-temporal.ts",
     "sample:temporal": "tsx scripts/start-sample-workflow.ts",

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "npm exec -- tsx ../../packages/database/scripts/check-drift.ts",
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",

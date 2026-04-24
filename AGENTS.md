@@ -122,10 +122,12 @@ npm run dev:web
 npm run dev:queue
 ```
 
-Dev commands (`npm run dev`, `npm run dev:web`, `npm run dev:queue`, `npm run dev:agents`,
-and their `doppler:dev*` variants) gate on `npm run db:check-drift` — they fail
-fast with a clear remediation message if your local DB schema is out of sync
-with committed migrations. See `docs/conventions/dev-drift-check.md`.
+Dev commands (`npm run dev`, `npm run dev:web`, `npm run dev:queue`,
+`npm run dev:agents`, their `doppler:dev*` variants, and direct workspace
+`npm --workspace ... run dev` for `web`/`queue`/`agents`) gate on
+`npm run db:check-drift` — they fail fast with a clear remediation message if
+your local DB schema is out of sync with committed migrations. See
+`docs/conventions/dev-drift-check.md`.
 
 ## Type Safety Rules (Non-Negotiable)
 

@@ -2,11 +2,12 @@
 
 ## What it does
 
-All root-level `npm run dev*` commands (and their `doppler:dev*` variants) run
-`prisma migrate status` before starting any dev server. If the local database
-is out of sync with committed migrations, the script prints a targeted
-remediation message and exits non-zero — so you see the problem at boot
-instead of hours later when a query fails at runtime.
+All `npm run dev*` entrypoints that boot database-backed runtimes run
+`prisma migrate status` before starting the dev server. That now includes both
+the root-level commands and the direct workspace commands for `web`, `queue`,
+and `agents`. If the local database is out of sync with committed migrations,
+the script prints a targeted remediation message and exits non-zero — so you
+see the problem at boot instead of hours later when a query fails at runtime.
 
 ## Where it lives
 
@@ -14,9 +15,11 @@ instead of hours later when a query fails at runtime.
   dependencies. Shells out to `npx prisma migrate status` inside
   `packages/database`.
 - Root script: `npm run db:check-drift` wires the file into the workspace.
-- Gated commands (root `package.json`): `dev`, `dev:web`, `dev:web:debug`,
-  `dev:queue`, `dev:agents`, and the four `doppler:dev*` mirrors. Each is
-  prefixed with `npm run db:check-drift &&`.
+- Workspace hooks: `apps/web`, `apps/queue`, and `apps/agents` each define a
+  `predev` script that runs the same check before `dev`.
+- Root commands (`dev`, `dev:web`, `dev:web:debug`, `dev:queue`, `dev:agents`,
+  and the `doppler:dev*` mirrors) inherit the guard by delegating to those
+  workspace `dev` scripts instead of prepending their own copy.
 
 ## Outcomes
 
@@ -46,24 +49,20 @@ the terminal output and follow the steps. The auth block points at
 
 ## Escape hatch
 
-If you need to start a dev server without running the check (e.g. debugging
-the check script itself, working offline with a known-inconsistent DB, or
-running a workspace's dev command in isolation), invoke the workspace script
-directly:
+There is no supported npm-script bypass anymore. Both the root commands and
+the direct workspace `dev` commands run the same preflight.
 
-```bash
-npm --workspace @trustloop/web run dev
-npm --workspace @apps/queue run dev
-npm --workspace @trustloop/agents run dev
-```
-
-This is an explicit opt-out, not a supported flow — your dev server may boot
-against a schema that doesn't match your code.
+If you are actively debugging the drift check itself, the remaining opt-out is
+an explicit manual one: invoke the underlying binary directly (for example
+`next dev`, `tsx watch src/main.ts`, or `tsx watch src/server.ts`) or use
+`npm --ignore-scripts`. That is intentionally sharp-edged — your runtime may
+boot against a schema that does not match the code.
 
 ## Keep this doc honest
 
 Update when you:
 - Add or remove a gated `dev*` or `doppler:dev*` script at the repo root
+- Add or remove a workspace `predev` hook for a database-backed runtime
 - Add or remove an auth/connection marker in `AUTH_MARKERS`
 - Change the remediation message text in the script
 - Change the database directory layout so `fileURLToPath(import.meta.url)`
