@@ -1,0 +1,6 @@
+interface:
+  display_name: "gtm-founder-outreach-message"
+  short_description: "Write warm, charming founder outreach messages and follow-ups in a sincere, non-salesy voice."
+  default_prompt: "Use gtm-founder-outreach-message for this task."
+policy:
+  allow_implicit_invocation: true
