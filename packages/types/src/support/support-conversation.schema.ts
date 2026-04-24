@@ -81,6 +81,17 @@ export type SupportMergeConversationsRequest = z.infer<
 export type SupportReassignEventRequest = z.infer<typeof supportReassignEventRequestSchema>;
 export type SupportUndoCorrectionRequest = z.infer<typeof supportUndoCorrectionRequestSchema>;
 
+export const supportConversationLastMessageSchema = z.object({
+  preview: z.string(),
+  senderExternalUserId: z.string().nullable(),
+  senderDisplayName: z.string().nullable(),
+  senderRealName: z.string().nullable(),
+  senderAvatarUrl: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+export type SupportConversationLastMessage = z.infer<typeof supportConversationLastMessageSchema>;
+
 export const supportConversationSchema = z.object({
   id: z.string().min(1),
   workspaceId: z.string().min(1),
@@ -94,6 +105,18 @@ export const supportConversationSchema = z.object({
   staleAt: z.iso.datetime().nullable(),
   retryCount: z.number().int().nonnegative(),
   lastActivityAt: z.iso.datetime(),
+  /**
+   * Preview of the most recent customer-authored message plus the sender's
+   * resolved profile, for inbox cards. Null when the conversation has no
+   * customer-authored events yet (rare — grouping correction edge case).
+   */
+  lastCustomerMessage: supportConversationLastMessageSchema.nullable(),
+  /**
+   * LLM-generated one-liner describing what the thread is about. Populated
+   * asynchronously by the summarization workflow. Null until the first
+   * summary lands — inbox cards fall back to `lastCustomerMessage.preview`.
+   */
+  threadSummary: z.string().min(1).nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });

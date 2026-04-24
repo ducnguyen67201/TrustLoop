@@ -3,9 +3,11 @@ import { shouldDropIngressEvent } from "@/domains/support/ingress-drop-rules";
 import { prisma, softUpsert } from "@shared/database";
 import * as supportEvents from "@shared/rest/services/support/support-event-service";
 import * as supportRealtime from "@shared/rest/services/support/support-realtime-service";
+import { temporalWorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
   GROUPING_DEFAULTS,
   GROUPING_ELIGIBLE_STATUSES,
+  SUMMARY_TRIGGER_REASON,
   SUPPORT_CONVERSATION_EVENT_SOURCE,
   SUPPORT_CONVERSATION_STATUS,
   SUPPORT_INGRESS_PROCESSING_STATE,
@@ -449,6 +451,27 @@ export async function runSupportPipeline(
     conversationId: txResult.conversation.id,
     reason: SUPPORT_REALTIME_REASON.ingressProcessed,
   });
+
+  // Kick off thread summarization for customer messages. Fire-and-forget:
+  // the workflow de-dupes on its own (one in-flight run per conversation via
+  // workflow ID) and decides internally whether the thread already has a
+  // summary. Wrapped in try/catch so a Temporal hiccup here can't tank the
+  // ingress transaction we just committed — a missing summary downgrades
+  // the card to its raw preview, which is the fallback we ship with.
+  if (
+    mapAuthorRoleToEventSource(normalized.authorRoleBucket) ===
+    SUPPORT_CONVERSATION_EVENT_SOURCE.customer
+  ) {
+    void temporalWorkflowDispatcher
+      .startSupportSummaryWorkflow({
+        workspaceId: input.workspaceId,
+        conversationId: txResult.conversation.id,
+        triggerReason: SUMMARY_TRIGGER_REASON.ingress,
+      })
+      .catch((error) => {
+        console.warn("[support-summary] dispatch failed, continuing:", error);
+      });
+  }
 
   return {
     ingressEventId: input.ingressEventId,

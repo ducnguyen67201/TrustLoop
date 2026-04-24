@@ -25,6 +25,7 @@ function createDispatcher(): WorkflowDispatcher {
   return {
     startSupportWorkflow: vi.fn(),
     startSupportAnalysisWorkflow: vi.fn(),
+    startSupportSummaryWorkflow: vi.fn(),
     startRepositoryIndexWorkflow: vi.fn(),
     startSendDraftToSlackWorkflow: vi.fn(),
     startAgentTeamRunWorkflow: vi.fn(async (payload) => ({

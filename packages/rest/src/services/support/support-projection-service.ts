@@ -41,7 +41,26 @@ export async function listConversations(
       { lastActivityAt: "desc" },
     ],
     take: input.limit,
+    // Pull the most recent customer-authored message so inbox cards can show
+    // "who sent it" and a preview instead of raw Slack channelId/threadTs.
+    include: {
+      events: {
+        where: {
+          eventType: "MESSAGE_RECEIVED",
+          eventSource: "CUSTOMER",
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          summary: true,
+          detailsJson: true,
+          createdAt: true,
+        },
+      },
+    },
   });
+
+  const profileLookup = await buildLastMessageProfileLookup(conversations);
 
   return supportConversationListResponseSchema.parse({
     conversations: conversations.map((conversation) => ({
@@ -61,12 +80,136 @@ export async function listConversations(
       staleAt: conversation.staleAt?.toISOString() ?? null,
       retryCount: conversation.retryCount,
       lastActivityAt: conversation.lastActivityAt.toISOString(),
+      lastCustomerMessage: buildLastCustomerMessage(
+        conversation.installationId,
+        conversation.events[0],
+        profileLookup
+      ),
+      threadSummary: conversation.threadSummary,
       createdAt: conversation.createdAt.toISOString(),
       updatedAt: conversation.updatedAt.toISOString(),
     })),
     nextCursor: null,
     delayedData: false,
   });
+}
+
+type LastMessageEvent = {
+  summary: string | null;
+  detailsJson: unknown;
+  createdAt: Date;
+};
+
+type ProfileSummary = {
+  displayName: string | null;
+  realName: string | null;
+  avatarUrl: string | null;
+};
+
+type CustomerProfileRecord = {
+  installationId: string;
+  externalUserId: string;
+  displayName: string | null;
+  realName: string | null;
+  avatarUrl: string | null;
+  isBot: boolean;
+  isExternal: boolean;
+};
+
+/**
+ * Fetch customer profiles referenced by the latest MESSAGE_RECEIVED event on
+ * each conversation in a single round trip. Keyed by `installationId:userId`
+ * because `externalUserId` is only unique within an installation.
+ */
+async function buildLastMessageProfileLookup(
+  conversations: Array<{ installationId: string; events: LastMessageEvent[] }>
+): Promise<Map<string, ProfileSummary>> {
+  const lookupKeys = new Set<string>();
+  const pairsByInstallation = new Map<string, Set<string>>();
+
+  for (const conversation of conversations) {
+    const event = conversation.events[0];
+    const slackUserId = extractSlackUserId(event?.detailsJson);
+    if (!slackUserId) continue;
+
+    lookupKeys.add(`${conversation.installationId}:${slackUserId}`);
+    const set = pairsByInstallation.get(conversation.installationId) ?? new Set<string>();
+    set.add(slackUserId);
+    pairsByInstallation.set(conversation.installationId, set);
+  }
+
+  if (lookupKeys.size === 0) {
+    return new Map();
+  }
+
+  const profiles = await loadCustomerProfilesByInstallation(pairsByInstallation);
+
+  const map = new Map<string, ProfileSummary>();
+  for (const profile of profiles) {
+    map.set(`${profile.installationId}:${profile.externalUserId}`, {
+      displayName: profile.displayName,
+      realName: profile.realName,
+      avatarUrl: profile.avatarUrl,
+    });
+  }
+  return map;
+}
+
+async function loadCustomerProfilesByInstallation(
+  pairsByInstallation: Map<string, Set<string>>
+): Promise<CustomerProfileRecord[]> {
+  if (pairsByInstallation.size === 0) {
+    return [];
+  }
+
+  return prisma.supportCustomerProfile.findMany({
+    where: {
+      OR: [...pairsByInstallation.entries()].map(([installationId, userIds]) => ({
+        installationId,
+        externalUserId: { in: [...userIds] },
+        deletedAt: null,
+      })),
+    },
+    select: {
+      installationId: true,
+      externalUserId: true,
+      displayName: true,
+      realName: true,
+      avatarUrl: true,
+      isBot: true,
+      isExternal: true,
+    },
+  });
+}
+
+function extractSlackUserId(detailsJson: unknown): string | null {
+  if (!detailsJson || typeof detailsJson !== "object") {
+    return null;
+  }
+  const slackUserId = (detailsJson as Record<string, unknown>).slackUserId;
+  return typeof slackUserId === "string" && slackUserId.length > 0 ? slackUserId : null;
+}
+
+function buildLastCustomerMessage(
+  installationId: string,
+  event: LastMessageEvent | undefined,
+  profileLookup: Map<string, ProfileSummary>
+) {
+  if (!event || !event.summary) {
+    return null;
+  }
+
+  const slackUserId = extractSlackUserId(event.detailsJson);
+  const profile = slackUserId ? profileLookup.get(`${installationId}:${slackUserId}`) : undefined;
+
+  return {
+    preview: event.summary,
+    senderExternalUserId: slackUserId,
+    senderDisplayName: profile?.displayName ?? null,
+    senderRealName: profile?.realName ?? null,
+    senderAvatarUrl: profile?.avatarUrl ?? null,
+    createdAt: event.createdAt.toISOString(),
+  };
 }
 
 /**
@@ -151,6 +294,10 @@ export async function getConversationTimeline(
       staleAt: conversation.staleAt?.toISOString() ?? null,
       retryCount: conversation.retryCount,
       lastActivityAt: conversation.lastActivityAt.toISOString(),
+      // Detail view renders the full timeline, so the card-level preview is
+      // not used here — but the shared schema requires the field.
+      lastCustomerMessage: null,
+      threadSummary: conversation.threadSummary,
       createdAt: conversation.createdAt.toISOString(),
       updatedAt: conversation.updatedAt.toISOString(),
     },
@@ -188,16 +335,11 @@ export async function getConversationTimeline(
       })),
       createdAt: event.createdAt.toISOString(),
     })),
-    customerProfiles: await buildCustomerProfileMap(
-      workspaceId,
-      conversation.installationId,
-      events
-    ),
+    customerProfiles: await buildCustomerProfileMap(conversation.installationId, events),
   });
 }
 
 async function buildCustomerProfileMap(
-  workspaceId: string,
   installationId: string,
   events: Array<{ detailsJson: unknown }>
 ): Promise<
@@ -227,23 +369,9 @@ async function buildCustomerProfileMap(
     return {};
   }
 
-  const profiles = await prisma.supportCustomerProfile.findMany({
-    where: {
-      installationId,
-      externalUserId: { in: [...userIds] },
-      deletedAt: null,
-    },
-    select: {
-      externalUserId: true,
-      displayName: true,
-      realName: true,
-      avatarUrl: true,
-      isBot: true,
-      isExternal: true,
-    },
-  });
+  const profiles = await loadCustomerProfilesByInstallation(new Map([[installationId, userIds]]));
 
-  const map: Record<string, (typeof profiles)[number]> = {};
+  const map: Record<string, CustomerProfileRecord> = {};
   for (const profile of profiles) {
     map[profile.externalUserId] = profile;
   }

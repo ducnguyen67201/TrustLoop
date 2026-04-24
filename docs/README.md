@@ -43,6 +43,7 @@ That's it. No `plans/`, no `domains/`, no `specs/`. If you need a forward-lookin
 | [conventions/spec-positional-json-format.md](conventions/spec-positional-json-format.md) | The compressed LLM output format: numeric enums, reconstruction, max 2-level nesting. Required for all structured LLM output. |
 | [conventions/spec-soft-delete-strategy.md](conventions/spec-soft-delete-strategy.md) | Prisma soft-delete extension, `findIncludingDeleted`, partial unique indexes, transaction rules. |
 | [conventions/spec-conversation-progress-insights.md](conventions/spec-conversation-progress-insights.md) | Conversation progress insights contract: shape, lifecycle, update rules. |
+| [conventions/dev-drift-check.md](conventions/dev-drift-check.md) | Fail-fast migration drift gate on dev boot. Three outcomes (clean / drift / auth) and escape hatch. |
 
 The `spec-*` files under `conventions/` are stable contracts (schemas, formats, auth patterns) — not forward-looking specs. They describe what the system guarantees, not what we plan to build.
 

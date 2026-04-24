@@ -1,7 +1,5 @@
 import { Agent } from "@mastra/core/agent";
 import {
-  AGENT_PROVIDER,
-  AGENT_PROVIDER_DEFAULTS,
   AGENT_TEAM_MESSAGE_KIND,
   AGENT_TEAM_TARGET,
   type AgentProviderConfig,
@@ -28,11 +26,13 @@ import {
   reconstructAnalysisOutput,
 } from "@shared/types";
 
+import { getDefaultModel, resolveProviderConfig } from "./agent-config";
 import {
   SUPPORT_AGENT_SYSTEM_PROMPT,
   buildAnalysisPromptWithContext,
   buildSupportAgentSystemPrompt,
 } from "./prompts/support-analysis";
+import { renderThreadSnapshotPrompt } from "./prompts/thread-snapshot";
 import { resolveModel } from "./providers";
 import { getRoleMaxSteps, getRoleSystemPrompt, getRoleToolIds } from "./roles/role-registry";
 import { createPullRequestTool } from "./tools/create-pr";
@@ -99,7 +99,7 @@ function createAgentForRole(role: AgentTeamRole, providerConfig: AgentProviderCo
 export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeResponse> {
   const startTime = Date.now();
   const maxSteps = request.config?.maxSteps ?? DEFAULT_MAX_STEPS;
-  const providerConfig = resolveProviderConfig(request);
+  const providerConfig = resolveProviderConfig(request.config);
   const modelName = providerConfig.model ?? getDefaultModel(providerConfig.provider);
 
   console.log("[agents] Starting analysis", {
@@ -113,7 +113,7 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     toneConfig: request.config?.toneConfig,
     sessionDigest: request.sessionDigest,
   });
-  const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${request.threadSnapshot}`;
+  const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${renderThreadSnapshotPrompt(request.threadSnapshot)}`;
 
   const result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
 
@@ -173,14 +173,6 @@ export async function runTeamTurn(
 }
 
 // ── Private Helpers ─────────────────────────────────────────────────
-
-function resolveProviderConfig(request: AnalyzeRequest): AgentProviderConfig {
-  return agentProviderConfigSchema.parse({
-    provider: request.config?.provider ?? AGENT_PROVIDER.openai,
-    model: request.config?.model,
-  });
-}
-
 function parseAgentOutput(rawOutput: string | undefined) {
   if (!rawOutput) {
     throw new Error("Agent produced no output after completing the loop");
@@ -241,7 +233,7 @@ interface RawToolResult {
 }
 
 function extractToolCalls(result: unknown) {
-  const raw = (result as unknown as { toolResults?: RawToolResult[] }).toolResults ?? [];
+  const raw = (result as { toolResults?: RawToolResult[] }).toolResults ?? [];
   return raw.map((tc) => ({
     tool: tc.toolName ?? tc.name ?? "unknown",
     input: (tc.args ?? tc.input ?? {}) as Record<string, unknown>,
@@ -249,10 +241,6 @@ function extractToolCalls(result: unknown) {
       typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result ?? tc.output ?? ""),
     durationMs: 0,
   }));
-}
-
-function getDefaultModel(provider: string): string {
-  return AGENT_PROVIDER_DEFAULTS[provider]?.model ?? "gpt-4o";
 }
 
 function pickToolsForRole(role: AgentTeamRole) {

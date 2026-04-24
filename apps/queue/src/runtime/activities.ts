@@ -39,3 +39,4 @@ export {
   sendDraftActivity,
 } from "@/domains/support/send-draft-to-slack.activity";
 export { runSupportPipeline } from "@/domains/support/support.activity";
+export { generateConversationSummary } from "@/domains/support/support-summary.activity";
