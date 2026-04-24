@@ -166,6 +166,12 @@ Prompt-side structured context should use TOON when it improves token efficiency
 - Fall back to JSON for deeply nested, irregular, or readability-sensitive payloads.
 - When format choice is dynamic, make the decision in the prompt renderer layer — not in feature code or output parsers.
 
+### LLM Routing (Non-Negotiable)
+
+- All runtime LLM selection must go through the centralized manager in `packages/rest/src/services/llm-manager-service.ts`.
+- Do not instantiate provider clients ad hoc in workflows, activities, routers, or services just to pick a model/provider inline.
+- New LLM use-cases must register a shared route in `packages/types/src/llm/llm-routing.schema.ts` so primary/fallback policy lives in one place.
+
 ### Contract source of truth order
 
 1. Zod schema

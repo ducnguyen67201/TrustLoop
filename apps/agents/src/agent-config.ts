@@ -1,9 +1,4 @@
-import {
-  AGENT_PROVIDER,
-  AGENT_PROVIDER_DEFAULTS,
-  type AgentProviderConfig,
-  agentProviderConfigSchema,
-} from "@shared/types";
+import { AGENT_PROVIDER, type AgentProviderConfig, agentProviderConfigSchema } from "@shared/types";
 
 export function resolveProviderConfig(config?: {
   provider?: unknown;
@@ -13,8 +8,4 @@ export function resolveProviderConfig(config?: {
     provider: config?.provider ?? AGENT_PROVIDER.openai,
     model: config?.model,
   });
-}
-
-export function getDefaultModel(provider: string): string {
-  return AGENT_PROVIDER_DEFAULTS[provider]?.model ?? "gpt-4o";
 }

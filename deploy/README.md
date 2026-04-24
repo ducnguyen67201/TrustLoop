@@ -103,6 +103,7 @@ services in one environment; differs between staging and production.
 - `SESSION_SECRET`, `API_KEY_PEPPER`, `INTERNAL_SERVICE_KEY`
 - `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`
 - `OPENAI_API_KEY`
+- `OPENROUTER_API_KEY` (optional fallback route for chat/agent workloads)
 - `AGENT_ARCHIVE_MODE` (`keep` in stg, `unsafe-stdout-only` in prd only once stdout sink is verified)
 
 **Tier 2 — service-scoped (Railway → Variables on each service)**
