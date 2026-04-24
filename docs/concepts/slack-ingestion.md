@@ -124,6 +124,7 @@ Once the ingress transaction has committed and realtime has fanned out, two **fi
 - **Thread summary dispatch** (`apps/queue/src/domains/support/support.activity.ts:461-474`)
   - Only fires for customer-authored messages
   - Dispatches `supportSummaryWorkflow` with workflow ID `support-summary-${conversationId}` — bursts collapse to one in-flight run; the activity early-returns if a summary already exists
+  - The workflow **sleeps ~60 seconds before calling the activity** so follow-up customer messages have time to land. Opening messages are often one-liners ("hey login broken") that don't capture the real ask — the sleep lets the summarizer see 3-5 messages on average. During the hold-off the card falls back to `lastCustomerMessage.preview` (the raw first message), so the UI is never empty
   - Inline `openai` SDK call in the activity (no agents-service hop, no Mastra loop — it's a single `chat.completions.create()`). Output is a one-line human-readable label cached on `SupportConversation.threadSummary` and rendered on inbox cards in place of the raw last-message preview
   - V1 generates exactly once per conversation; regeneration (`shouldRegenerate` helper in `support-summary-service.ts`) is deliberately not wired — flip the trigger to cover later customer messages when product demands it
 
