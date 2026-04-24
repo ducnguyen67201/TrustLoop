@@ -99,8 +99,8 @@ Both trigger paths share the same guards in `supportAnalysis.trigger`:
   sessionDigest?: SessionDigest, // browser session context (if correlated)
   config?: {
     maxSteps?: number,
-    provider?: "openai" | "anthropic",
-    model?: string,              // e.g. "gpt-4o" or "claude-sonnet-4-20250514"
+    provider?: "openai" | "openrouter",
+    model?: string,              // e.g. "gpt-4o"
     toneConfig?: ToneConfig      // workspace response guidelines
   }
 }
@@ -114,10 +114,11 @@ Both trigger paths share the same guards in `supportAnalysis.trigger`:
 ### Reasoning loop
 
 - `apps/agents/src/agent.ts:64-108`
-- Built on the OpenAI Agents SDK (migrating to Mastra — see `apps/agents/AGENTS.md` if it exists)
+- Built on Mastra's agent runtime with an OpenAI-compatible model adapter
+- Provider/model selection comes from the centralized LLM manager, not from feature-local config
 - Tools exposed to the model: `searchCode` (codex hybrid search), `createPullRequest` (placeholder — not production)
 - Max steps: configurable, default 8
-- Retry policy: model-side (OpenAI's retry), not Temporal's — the activity wraps the full loop
+- Retry policy: centralized route execution tries the primary target first and then the configured fallback before surfacing failure back to the Temporal activity
 
 ## Prompt architecture
 
@@ -231,6 +232,7 @@ The inbox UI polls an SSE endpoint to see analysis progress in near-realtime:
 - `ai-draft-generation.md` — what happens to the draft after persist
 - `session-replay-capture.md` — how SessionDigest is built
 - `codex-search.md` — what the `searchCode` tool does
+- `llm-routing-and-provider-fallback.md` — how provider/model selection and fallback routing work across apps
 
 ## Keep this doc honest
 
