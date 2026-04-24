@@ -42,7 +42,7 @@ export async function agentTeamRunWorkflow(
             runId: input.runId,
             status: AGENT_TEAM_RUN_STATUS.waiting,
             messageCount: progress.messageCount,
-            completedRoleSlugs: progress.completedRoleSlugs,
+            completedRoleKeys: progress.completedRoleKeys,
           };
         }
 
@@ -51,19 +51,20 @@ export async function agentTeamRunWorkflow(
           runId: input.runId,
           status: AGENT_TEAM_RUN_STATUS.completed,
           messageCount: progress.messageCount,
-          completedRoleSlugs: progress.completedRoleSlugs,
+          completedRoleKeys: progress.completedRoleKeys,
         };
       }
 
-      const role = findRole(input, nextInbox.roleSlug);
+      const role = findRole(input, nextInbox.roleKey);
       const context = await turnActivities.loadTurnContext({
         runId: input.runId,
-        roleSlug: nextInbox.roleSlug,
+        roleKey: nextInbox.roleKey,
       });
       const result = await turnActivities.runTeamTurnActivity({
         workspaceId: input.workspaceId,
         conversationId: input.conversationId,
         runId: input.runId,
+        teamRoles: input.teamSnapshot.roles,
         role,
         requestSummary: input.threadSnapshot,
         inbox: context.inbox,
@@ -76,6 +77,7 @@ export async function agentTeamRunWorkflow(
       progress = await turnActivities.persistRoleTurnResult({
         runId: input.runId,
         role,
+        teamRoles: input.teamSnapshot.roles,
         result,
       });
 
@@ -89,7 +91,7 @@ export async function agentTeamRunWorkflow(
       runId: input.runId,
       status: AGENT_TEAM_RUN_STATUS.failed,
       messageCount: progress.messageCount,
-      completedRoleSlugs: progress.completedRoleSlugs,
+      completedRoleKeys: progress.completedRoleKeys,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -99,18 +101,18 @@ export async function agentTeamRunWorkflow(
       runId: input.runId,
       status: AGENT_TEAM_RUN_STATUS.failed,
       messageCount: progress.messageCount,
-      completedRoleSlugs: progress.completedRoleSlugs,
+      completedRoleKeys: progress.completedRoleKeys,
     };
   }
 }
 
 function findRole(
   input: AgentTeamRunWorkflowInput,
-  roleSlug: AgentTeamRunWorkflowResult["completedRoleSlugs"][number]
+  roleKey: AgentTeamRunWorkflowResult["completedRoleKeys"][number]
 ) {
-  const role = input.teamSnapshot.roles.find((candidate) => candidate.slug === roleSlug);
+  const role = input.teamSnapshot.roles.find((candidate) => candidate.roleKey === roleKey);
   if (!role) {
-    throw new Error(`Agent team workflow could not find role ${roleSlug} in the team snapshot`);
+    throw new Error(`Agent team workflow could not find role ${roleKey} in the team snapshot`);
   }
 
   return role;

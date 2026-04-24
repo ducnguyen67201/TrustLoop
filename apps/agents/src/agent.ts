@@ -89,7 +89,7 @@ function createSupportAgent(
 
 function createAgentForRole(role: AgentTeamRole, target: llmManager.LlmResolvedTarget) {
   return new Agent({
-    id: `trustloop-agent-team-${role.slug}`,
+    id: `trustloop-agent-team-${role.roleKey}`,
     name: role.label,
     instructions: getRoleSystemPrompt(role),
     model: resolveModel(target),
@@ -211,7 +211,7 @@ function parseTeamTurnOutput(rawOutput: string | undefined) {
   return {
     messages: reconstructed.messages.map((message) =>
       agentTeamDialogueMessageDraftSchema.parse({
-        toRoleSlug: agentTeamTargetSchema.parse(message.toRoleSlug),
+        toRoleKey: agentTeamTargetSchema.parse(message.toRoleKey),
         kind: message.kind,
         subject: message.subject,
         content: message.content,
@@ -221,7 +221,7 @@ function parseTeamTurnOutput(rawOutput: string | undefined) {
     ),
     proposedFacts: reconstructed.proposedFacts.map((fact) => agentTeamFactDraftSchema.parse(fact)),
     resolvedQuestionIds: reconstructed.resolvedQuestionIds,
-    nextSuggestedRoles: reconstructed.nextSuggestedRoles,
+    nextSuggestedRoleKeys: reconstructed.nextSuggestedRoleKeys,
     done: reconstructed.done,
     blockedReason: reconstructed.blockedReason,
   };
@@ -262,7 +262,7 @@ function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
       : request.acceptedFacts
           .map(
             (fact, index) =>
-              `${index + 1}. (${fact.confidence.toFixed(2)}) ${fact.statement} [acceptedBy=${fact.acceptedBy.join(",") || "none"}]`
+              `${index + 1}. (${fact.confidence.toFixed(2)}) ${fact.statement} [acceptedBy=${fact.acceptedByRoleKeys.join(",") || "none"}]`
           )
           .join("\n");
   const openQuestions =
@@ -271,9 +271,15 @@ function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
       : request.openQuestions
           .map(
             (question, index) =>
-              `${index + 1}. [${question.id}] askedBy=${question.askedByRoleSlug} question=${question.question}`
+              `${index + 1}. [${question.id}] askedBy=${question.askedByRoleKey} question=${question.question}`
           )
           .join("\n");
+  const availableTeamRoles = request.teamRoles
+    .map(
+      (role, index) =>
+        `${index + 1}. key=${role.roleKey} label=${role.label} type=${role.slug}${role.roleKey === request.role.roleKey ? " (current role)" : ""}`
+    )
+    .join("\n");
   const sessionDigest = request.sessionDigest
     ? JSON.stringify(request.sessionDigest, null, 2)
     : "None";
@@ -281,7 +287,11 @@ function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
   return `WORKSPACE_ID: ${request.workspaceId}
 RUN_ID: ${request.runId}
 CONVERSATION_ID: ${request.conversationId ?? "standalone"}
-ROLE: ${request.role.slug}
+ROLE_KEY: ${request.role.roleKey}
+ROLE_TYPE: ${request.role.slug}
+
+## Available Team Roles
+${availableTeamRoles}
 
 ## Request Summary
 ${request.requestSummary}
@@ -313,7 +323,7 @@ function buildToolTraceMessages(
     }
     return [
       {
-        toRoleSlug: AGENT_TEAM_TARGET.broadcast,
+        toRoleKey: AGENT_TEAM_TARGET.broadcast,
         kind: AGENT_TEAM_MESSAGE_KIND.toolCall,
         subject: `${toolCall.tool} input`,
         content: JSON.stringify(toolCall.input),
@@ -322,7 +332,7 @@ function buildToolTraceMessages(
         metadata: { durationMs: toolCall.durationMs },
       },
       {
-        toRoleSlug: AGENT_TEAM_TARGET.broadcast,
+        toRoleKey: AGENT_TEAM_TARGET.broadcast,
         kind: AGENT_TEAM_MESSAGE_KIND.toolResult,
         subject: `${toolCall.tool} result`,
         content: toolCall.output,
@@ -378,7 +388,7 @@ function formatDialogueMessages(
   return messages
     .map(
       (message, index) =>
-        `${index + 1}. [${message.fromRoleLabel} -> ${message.toRoleSlug} :: ${message.kind}] ${message.subject}\n${message.content}`
+        `${index + 1}. [${message.fromRoleLabel} (${message.fromRoleKey}) -> ${message.toRoleKey} :: ${message.kind}] ${message.subject}\n${message.content}`
     )
     .join("\n\n");
 }

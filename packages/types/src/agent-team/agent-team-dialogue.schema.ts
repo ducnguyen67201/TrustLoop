@@ -1,11 +1,7 @@
 import { sessionDigestSchema } from "@shared/types/session-replay/session-digest.schema";
 import { z } from "zod";
 
-import {
-  AGENT_TEAM_ROLE_SLUG,
-  agentTeamRoleSchema,
-  agentTeamRoleSlugSchema,
-} from "./agent-team-core.schema";
+import { agentTeamRoleSchema } from "./agent-team-core.schema";
 
 export const AGENT_TEAM_MESSAGE_KIND = {
   question: "question",
@@ -44,33 +40,20 @@ export const agentTeamMessageKindSchema = z.enum(agentTeamMessageKindValues);
 export const AGENT_TEAM_TARGET = {
   broadcast: "broadcast",
   orchestrator: "orchestrator",
-  architect: AGENT_TEAM_ROLE_SLUG.architect,
-  reviewer: AGENT_TEAM_ROLE_SLUG.reviewer,
-  codeReader: AGENT_TEAM_ROLE_SLUG.codeReader,
-  prCreator: AGENT_TEAM_ROLE_SLUG.prCreator,
-  rcaAnalyst: AGENT_TEAM_ROLE_SLUG.rcaAnalyst,
 } as const;
 
 export const agentTeamTargetValues = [
   AGENT_TEAM_TARGET.broadcast,
   AGENT_TEAM_TARGET.orchestrator,
-  AGENT_TEAM_TARGET.architect,
-  AGENT_TEAM_TARGET.reviewer,
-  AGENT_TEAM_TARGET.codeReader,
-  AGENT_TEAM_TARGET.prCreator,
-  AGENT_TEAM_TARGET.rcaAnalyst,
 ] as const;
 
-export const agentTeamTargetSchema = z.enum(agentTeamTargetValues);
+export const agentTeamTargetSchema = z.string().min(1);
 
 export const AGENT_TEAM_MESSAGE_SENDER = {
   system: "system",
 } as const;
 
-export const agentTeamMessageSenderSchema = z.union([
-  agentTeamRoleSlugSchema,
-  z.literal(AGENT_TEAM_MESSAGE_SENDER.system),
-]);
+export const agentTeamMessageSenderSchema = z.string().min(1);
 
 export const AGENT_TEAM_ROLE_INBOX_STATE = {
   idle: "idle",
@@ -121,7 +104,7 @@ export const agentTeamOpenQuestionStatusSchema = z.enum(agentTeamOpenQuestionSta
 const jsonRecordSchema = z.record(z.string(), z.unknown());
 
 export const agentTeamDialogueMessageDraftSchema = z.object({
-  toRoleSlug: agentTeamTargetSchema,
+  toRoleKey: agentTeamTargetSchema,
   kind: agentTeamMessageKindSchema,
   subject: z.string().trim().min(1).max(160),
   content: z.string().min(1),
@@ -131,47 +114,98 @@ export const agentTeamDialogueMessageDraftSchema = z.object({
   metadata: jsonRecordSchema.nullable().optional(),
 });
 
-export const agentTeamDialogueMessageSchema = z.object({
-  id: z.string().min(1),
-  runId: z.string().min(1),
-  threadId: z.string().min(1),
-  fromRoleSlug: agentTeamMessageSenderSchema,
-  fromRoleLabel: z.string().min(1),
-  toRoleSlug: agentTeamTargetSchema,
-  kind: agentTeamMessageKindSchema,
-  subject: z.string().min(1),
-  content: z.string(),
-  parentMessageId: z.string().min(1).nullable(),
-  refs: z.array(z.string().min(1)).default([]),
-  toolName: z.string().min(1).nullable(),
-  metadata: jsonRecordSchema.nullable(),
-  createdAt: z.iso.datetime(),
-});
+export const agentTeamDialogueMessageSchema = z.preprocess(
+  (value) => {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
 
-export const agentTeamRoleInboxSchema = z.object({
-  id: z.string().min(1),
-  runId: z.string().min(1),
-  roleSlug: agentTeamRoleSlugSchema,
-  state: agentTeamRoleInboxStateSchema,
-  lastReadMessageId: z.string().min(1).nullable(),
-  wakeReason: z.string().nullable(),
-  unreadCount: z.number().int().nonnegative(),
-  lastWokenAt: z.iso.datetime().nullable(),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
-});
+    const candidate = value as {
+      fromRoleKey?: unknown;
+      fromRoleSlug?: unknown;
+      toRoleKey?: unknown;
+      toRoleSlug?: unknown;
+    };
 
-export const agentTeamFactSchema = z.object({
-  id: z.string().min(1),
-  runId: z.string().min(1),
-  statement: z.string().min(1),
-  confidence: z.number().min(0).max(1),
-  sourceMessageIds: z.array(z.string().min(1)).default([]),
-  acceptedBy: z.array(agentTeamRoleSlugSchema).default([]),
-  status: agentTeamFactStatusSchema,
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
-});
+    return {
+      ...candidate,
+      fromRoleKey:
+        typeof candidate.fromRoleKey === "string" ? candidate.fromRoleKey : candidate.fromRoleSlug,
+      toRoleKey:
+        typeof candidate.toRoleKey === "string" ? candidate.toRoleKey : candidate.toRoleSlug,
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    runId: z.string().min(1),
+    threadId: z.string().min(1),
+    fromRoleKey: agentTeamMessageSenderSchema,
+    fromRoleSlug: z.string().min(1),
+    fromRoleLabel: z.string().min(1),
+    toRoleKey: agentTeamTargetSchema,
+    kind: agentTeamMessageKindSchema,
+    subject: z.string().min(1),
+    content: z.string(),
+    parentMessageId: z.string().min(1).nullable(),
+    refs: z.array(z.string().min(1)).default([]),
+    toolName: z.string().min(1).nullable(),
+    metadata: jsonRecordSchema.nullable(),
+    createdAt: z.iso.datetime(),
+  })
+);
+
+export const agentTeamRoleInboxSchema = z.preprocess(
+  (value) => {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+
+    const candidate = value as { roleKey?: unknown; roleSlug?: unknown };
+    return {
+      ...candidate,
+      roleKey: typeof candidate.roleKey === "string" ? candidate.roleKey : candidate.roleSlug,
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    runId: z.string().min(1),
+    roleKey: z.string().min(1),
+    state: agentTeamRoleInboxStateSchema,
+    lastReadMessageId: z.string().min(1).nullable(),
+    wakeReason: z.string().nullable(),
+    unreadCount: z.number().int().nonnegative(),
+    lastWokenAt: z.iso.datetime().nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+);
+
+export const agentTeamFactSchema = z.preprocess(
+  (value) => {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+
+    const candidate = value as { acceptedByRoleKeys?: unknown; acceptedBy?: unknown };
+    return {
+      ...candidate,
+      acceptedByRoleKeys: Array.isArray(candidate.acceptedByRoleKeys)
+        ? candidate.acceptedByRoleKeys
+        : candidate.acceptedBy,
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    runId: z.string().min(1),
+    statement: z.string().min(1),
+    confidence: z.number().min(0).max(1),
+    sourceMessageIds: z.array(z.string().min(1)).default([]),
+    acceptedByRoleKeys: z.array(z.string().min(1)).default([]),
+    status: agentTeamFactStatusSchema,
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+);
 
 export const agentTeamFactDraftSchema = z.object({
   statement: z.string().trim().min(1).max(1000),
@@ -179,23 +213,55 @@ export const agentTeamFactDraftSchema = z.object({
   sourceMessageIds: z.array(z.string().min(1)).default([]),
 });
 
-export const agentTeamOpenQuestionSchema = z.object({
-  id: z.string().min(1),
-  runId: z.string().min(1),
-  askedByRoleSlug: agentTeamRoleSlugSchema,
-  ownerRoleSlug: agentTeamRoleSlugSchema,
-  question: z.string().min(1),
-  blockingRoles: z.array(agentTeamRoleSlugSchema).default([]),
-  status: agentTeamOpenQuestionStatusSchema,
-  sourceMessageId: z.string().min(1),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
-});
+export const agentTeamOpenQuestionSchema = z.preprocess(
+  (value) => {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+
+    const candidate = value as {
+      askedByRoleKey?: unknown;
+      askedByRoleSlug?: unknown;
+      ownerRoleKey?: unknown;
+      ownerRoleSlug?: unknown;
+      blockingRoleKeys?: unknown;
+      blockingRoles?: unknown;
+    };
+
+    return {
+      ...candidate,
+      askedByRoleKey:
+        typeof candidate.askedByRoleKey === "string"
+          ? candidate.askedByRoleKey
+          : candidate.askedByRoleSlug,
+      ownerRoleKey:
+        typeof candidate.ownerRoleKey === "string"
+          ? candidate.ownerRoleKey
+          : candidate.ownerRoleSlug,
+      blockingRoleKeys: Array.isArray(candidate.blockingRoleKeys)
+        ? candidate.blockingRoleKeys
+        : candidate.blockingRoles,
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    runId: z.string().min(1),
+    askedByRoleKey: z.string().min(1),
+    ownerRoleKey: z.string().min(1),
+    question: z.string().min(1),
+    blockingRoleKeys: z.array(z.string().min(1)).default([]),
+    status: agentTeamOpenQuestionStatusSchema,
+    sourceMessageId: z.string().min(1),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+);
 
 export const agentTeamRoleTurnInputSchema = z.object({
   workspaceId: z.string().min(1),
   conversationId: z.string().min(1).optional(),
   runId: z.string().min(1),
+  teamRoles: z.array(agentTeamRoleSchema).min(1),
   role: agentTeamRoleSchema,
   requestSummary: z.string().min(1),
   inbox: z.array(agentTeamDialogueMessageSchema).default([]),
@@ -216,15 +282,13 @@ export const agentTeamRoleTurnOutputSchema = z.object({
   messages: z.array(agentTeamDialogueMessageDraftSchema).default([]),
   proposedFacts: z.array(agentTeamFactDraftSchema).default([]),
   resolvedQuestionIds: z.array(z.string().min(1)).default([]),
-  nextSuggestedRoles: z.array(agentTeamRoleSlugSchema).default([]),
+  nextSuggestedRoleKeys: z.array(z.string().min(1)).default([]),
   done: z.boolean().default(false),
   blockedReason: z.string().nullable().optional(),
   meta: agentTeamTurnMetaSchema,
 });
 
-export function isRoleTarget(
-  target: z.infer<typeof agentTeamTargetSchema>
-): target is z.infer<typeof agentTeamRoleSlugSchema> {
+export function isRoleTarget(target: z.infer<typeof agentTeamTargetSchema>): boolean {
   return target !== AGENT_TEAM_TARGET.broadcast && target !== AGENT_TEAM_TARGET.orchestrator;
 }
 

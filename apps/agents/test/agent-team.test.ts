@@ -37,13 +37,11 @@ const { runTeamTurn } = await import("../src/agent");
 const { app } = await import("../src/server");
 
 function buildRequest(): AgentTeamRoleTurnInput {
-  return {
-    workspaceId: "ws_1",
-    conversationId: "conv_1",
-    runId: "run_1",
-    role: {
+  const teamRoles = [
+    {
       id: "role_1",
       teamId: "team_1",
+      roleKey: "architect",
       slug: "architect",
       label: "Architect",
       provider: "openai",
@@ -51,6 +49,36 @@ function buildRequest(): AgentTeamRoleTurnInput {
       maxSteps: 6,
       sortOrder: 0,
     },
+    {
+      id: "role_2",
+      teamId: "team_1",
+      roleKey: "rca_analyst",
+      slug: "rca_analyst",
+      label: "RCA Analyst",
+      provider: "openai",
+      toolIds: ["searchCode"],
+      maxSteps: 6,
+      sortOrder: 1,
+    },
+    {
+      id: "role_3",
+      teamId: "team_1",
+      roleKey: "pr_creator",
+      slug: "pr_creator",
+      label: "PR Creator",
+      provider: "openai",
+      toolIds: ["createPullRequest"],
+      maxSteps: 6,
+      sortOrder: 2,
+    },
+  ] as const;
+
+  return {
+    workspaceId: "ws_1",
+    conversationId: "conv_1",
+    runId: "run_1",
+    role: teamRoles[0],
+    teamRoles: [...teamRoles],
     requestSummary: "Customer says replies thread incorrectly in Slack.",
     inbox: [],
     acceptedFacts: [],
@@ -110,7 +138,7 @@ describe("runTeamTurn", () => {
       "tool_result",
       "question",
     ]);
-    expect(result.messages[2]?.toRoleSlug).toBe("rca_analyst");
+    expect(result.messages[2]?.toRoleKey).toBe("rca_analyst");
     expect(result.proposedFacts[0]?.statement).toContain("Slack reply threading");
     expect(result.meta.turnCount).toBe(2);
   });
@@ -235,6 +263,6 @@ describe("/team-turn route", () => {
     const body = await response.json();
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0]?.kind).toBe("approval");
-    expect(body.nextSuggestedRoles).toEqual(["pr_creator"]);
+    expect(body.nextSuggestedRoleKeys).toEqual(["pr_creator"]);
   });
 });

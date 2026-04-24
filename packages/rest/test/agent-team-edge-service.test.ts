@@ -45,6 +45,7 @@ function createTeam(overrides?: Partial<AgentTeam>): AgentTeam {
       {
         id: "role_architect",
         teamId: "team_1",
+        roleKey: "architect",
         slug: "architect",
         label: "Architect",
         description: null,
@@ -59,6 +60,7 @@ function createTeam(overrides?: Partial<AgentTeam>): AgentTeam {
       {
         id: "role_reviewer",
         teamId: "team_1",
+        roleKey: "reviewer",
         slug: "reviewer",
         label: "Reviewer",
         description: null,

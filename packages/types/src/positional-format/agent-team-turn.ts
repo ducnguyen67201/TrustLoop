@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { agentTeamRoleSlugSchema } from "../agent-team/agent-team-core.schema";
-
 export const AGENT_TEAM_MESSAGE_KIND_CODES = {
   question: 0,
   answer: 1,
@@ -42,7 +40,7 @@ export const compressedAgentTeamTurnOutputSchema = z.object({
   m: z.array(compressedAgentTeamTurnMessageSchema).default([]),
   f: z.array(compressedAgentTeamTurnFactSchema).default([]),
   q: z.array(z.string().min(1)).default([]),
-  n: z.array(agentTeamRoleSlugSchema).default([]),
+  n: z.array(z.string().min(1)).default([]),
   d: z.union([z.literal(0), z.literal(1)]),
   b: z.string().nullable(),
 });
@@ -63,7 +61,7 @@ export type ReconstructedAgentTeamTurnOutput = {
       | "approval"
       | "blocked"
       | "status";
-    toRoleSlug: string;
+    toRoleKey: string;
     subject: string;
     content: string;
     parentMessageId: string | null;
@@ -75,7 +73,7 @@ export type ReconstructedAgentTeamTurnOutput = {
     sourceMessageIds: string[];
   }>;
   resolvedQuestionIds: string[];
-  nextSuggestedRoles: string[];
+  nextSuggestedRoleKeys: string[];
   done: boolean;
   blockedReason: string | null;
 };
@@ -86,7 +84,7 @@ export function reconstructAgentTeamTurnOutput(
   return {
     messages: compressed.m.map((message) => ({
       kind: mapKindCodeToKind(message.k),
-      toRoleSlug: message.t,
+      toRoleKey: message.t,
       subject: message.s,
       content: message.b,
       parentMessageId: message.p ?? null,
@@ -98,7 +96,7 @@ export function reconstructAgentTeamTurnOutput(
       sourceMessageIds: fact.r,
     })),
     resolvedQuestionIds: compressed.q,
-    nextSuggestedRoles: compressed.n,
+    nextSuggestedRoleKeys: compressed.n,
     done: compressed.d === 1,
     blockedReason: compressed.b,
   };
@@ -140,13 +138,13 @@ Return ONLY compressed JSON using this format:
   m = messages array
   f = proposed facts array
   q = resolved question ids
-  n = next suggested role slugs
+  n = next suggested role keys
   d = done flag (1=yes, 0=no)
   b = blocked reason or null
 
 Each message object:
   k = message kind code
-  t = target role slug or "broadcast" or "orchestrator"
+  t = target role key or "broadcast" or "orchestrator"
   s = short subject
   b = message body
   p = parent message id or null
@@ -165,8 +163,7 @@ Message kind codes:
   9=blocked
   10=status
 
-Allowed role slugs:
-  architect, reviewer, code_reader, pr_creator, rca_analyst
+Allowed role keys are listed in the prompt input under Available Team Roles.
 
 Example with messages, facts, and follow-up:
 {"m":[{"k":0,"t":"rca_analyst","s":"Prod confirmation","b":"Do Sentry traces show the Slack reply threading failure in production?","p":null,"r":[]},{"k":4,"t":"broadcast","s":"Likely fault line","b":"The strongest hypothesis is a null path in the reply resolver before parent-thread lookup.","p":null,"r":["msg_architect_1"]}],"f":[{"s":"The report centers on Slack reply threading, not message delivery.","c":0.88,"r":["msg_architect_1"]}],"q":[],"n":["rca_analyst"],"d":0,"b":null}

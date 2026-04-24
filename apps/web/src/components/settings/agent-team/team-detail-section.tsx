@@ -51,14 +51,22 @@ export function TeamDetailSection({
   const addRoleRef = useRef<HTMLButtonElement>(null);
   const [isAssembling, setIsAssembling] = useState(false);
 
-  const existingSlugs = useMemo(() => {
-    if (!team) return new Set<AgentTeamRoleSlug>();
-    return new Set(team.roles.map((r) => r.slug));
+  const existingSlugCounts = useMemo(() => {
+    const counts = new Map<AgentTeamRoleSlug, number>();
+    if (!team) {
+      return counts;
+    }
+
+    for (const role of team.roles) {
+      counts.set(role.slug, (counts.get(role.slug) ?? 0) + 1);
+    }
+
+    return counts;
   }, [team]);
 
   const missingSlugs = useMemo(
-    () => ALL_ROLE_SLUGS.filter((slug) => !existingSlugs.has(slug)),
-    [existingSlugs]
+    () => ALL_ROLE_SLUGS.filter((slug) => !existingSlugCounts.has(slug)),
+    [existingSlugCounts]
   );
 
   const addSingleRole = useCallback(
@@ -154,8 +162,8 @@ export function TeamDetailSection({
               </CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {missingSlugs.length > 0
-                  ? `${missingSlugs.length} role${missingSlugs.length === 1 ? "" : "s"} available · drag between role ports to connect`
-                  : "All default roles added · drag between role ports to connect"}
+                  ? `${missingSlugs.length} default role type${missingSlugs.length === 1 ? "" : "s"} still missing · you can also add duplicate specialists`
+                  : "Full default roster assembled · you can still add duplicate specialists and customize labels"}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -173,35 +181,34 @@ export function TeamDetailSection({
               <AddEdgeDialog team={team} onAddEdge={onAddEdge} />
             </div>
           </CardHeader>
-          {missingSlugs.length > 0 ? (
-            <CardContent className="flex flex-wrap gap-2 pb-4">
-              {missingSlugs.map((slug) => {
-                const visual = getRoleVisual(slug);
-                const Icon = visual.icon;
-                const accent = `color-mix(in oklch, ${visual.color} 14%, transparent)`;
-                return (
-                  <button
-                    key={slug}
-                    type="button"
-                    className="group inline-flex items-center gap-2 border border-border bg-background px-3 py-1.5 text-sm transition-colors hover:border-foreground/40"
-                    onClick={() => void addSingleRole(slug)}
-                    title={visual.flavorText}
+          <CardContent className="flex flex-wrap gap-2 pb-4">
+            {ALL_ROLE_SLUGS.map((slug) => {
+              const visual = getRoleVisual(slug);
+              const Icon = visual.icon;
+              const accent = `color-mix(in oklch, ${visual.color} 14%, transparent)`;
+              const existingCount = existingSlugCounts.get(slug) ?? 0;
+              return (
+                <button
+                  key={slug}
+                  type="button"
+                  className="group inline-flex items-center gap-2 border border-border bg-background px-3 py-1.5 text-sm transition-colors hover:border-foreground/40"
+                  onClick={() => void addSingleRole(slug)}
+                  title={visual.flavorText}
+                >
+                  <span
+                    className="flex size-5 items-center justify-center"
+                    style={{ backgroundColor: accent, color: visual.color }}
                   >
-                    <span
-                      className="flex size-5 items-center justify-center"
-                      style={{ backgroundColor: accent, color: visual.color }}
-                    >
-                      <Icon className="size-3" />
-                    </span>
-                    <span className="font-medium">{ROLE_LABELS[slug]}</span>
-                    <span className="text-xs text-muted-foreground group-hover:text-foreground">
-                      + Add
-                    </span>
-                  </button>
-                );
-              })}
-            </CardContent>
-          ) : null}
+                    <Icon className="size-3" />
+                  </span>
+                  <span className="font-medium">{ROLE_LABELS[slug]}</span>
+                  <span className="text-xs text-muted-foreground group-hover:text-foreground">
+                    {existingCount === 0 ? "+ Add" : `+ Add another (${existingCount})`}
+                  </span>
+                </button>
+              );
+            })}
+          </CardContent>
         </Card>
       ) : null}
 

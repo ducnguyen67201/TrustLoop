@@ -102,6 +102,7 @@ describe("dispatchWorkflow", () => {
             {
               id: "role_1",
               teamId: "team_1",
+              roleKey: "architect",
               slug: "architect",
               label: "Architect",
               provider: "openai",

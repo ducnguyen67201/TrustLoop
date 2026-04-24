@@ -192,6 +192,7 @@ function mapTeam(team: {
   roles: Array<{
     id: string;
     teamId: string;
+    roleKey: string;
     slug: string;
     label: string;
     description: string | null;

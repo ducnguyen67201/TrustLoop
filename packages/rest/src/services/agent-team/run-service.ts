@@ -208,9 +208,10 @@ function mapRun(run: {
     id: string;
     runId: string;
     threadId: string;
+    fromRoleKey: string;
     fromRoleSlug: string;
     fromRoleLabel: string;
-    toRoleSlug: string;
+    toRoleKey: string;
     kind: string;
     subject: string;
     content: string;
@@ -223,7 +224,7 @@ function mapRun(run: {
   roleInboxes: Array<{
     id: string;
     runId: string;
-    roleSlug: string;
+    roleKey: string;
     state: string;
     lastReadMessageId: string | null;
     wakeReason: string | null;
@@ -238,7 +239,7 @@ function mapRun(run: {
     statement: string;
     confidence: number;
     sourceMessageIds: unknown;
-    acceptedBy: unknown;
+    acceptedByRoleKeys: unknown;
     status: string;
     createdAt: Date;
     updatedAt: Date;
@@ -246,10 +247,10 @@ function mapRun(run: {
   openQuestions: Array<{
     id: string;
     runId: string;
-    askedByRoleSlug: string;
-    ownerRoleSlug: string;
+    askedByRoleKey: string;
+    ownerRoleKey: string;
     question: string;
-    blockingRoles: unknown;
+    blockingRoleKeys: unknown;
     status: string;
     sourceMessageId: string;
     createdAt: Date;
@@ -274,9 +275,10 @@ function mapRun(run: {
       id: message.id,
       runId: message.runId,
       threadId: message.threadId,
+      fromRoleKey: message.fromRoleKey,
       fromRoleSlug: message.fromRoleSlug,
       fromRoleLabel: message.fromRoleLabel,
-      toRoleSlug: message.toRoleSlug,
+      toRoleKey: message.toRoleKey,
       kind: message.kind,
       subject: message.subject,
       content: message.content,
@@ -291,7 +293,7 @@ function mapRun(run: {
     roleInboxes: run.roleInboxes.map((inbox) => ({
       id: inbox.id,
       runId: inbox.runId,
-      roleSlug: inbox.roleSlug,
+      roleKey: inbox.roleKey,
       state: inbox.state,
       lastReadMessageId: inbox.lastReadMessageId,
       wakeReason: inbox.wakeReason,
@@ -308,8 +310,8 @@ function mapRun(run: {
       sourceMessageIds: Array.isArray(fact.sourceMessageIds)
         ? fact.sourceMessageIds.filter((value): value is string => typeof value === "string")
         : [],
-      acceptedBy: Array.isArray(fact.acceptedBy)
-        ? fact.acceptedBy.filter((value): value is string => typeof value === "string")
+      acceptedByRoleKeys: Array.isArray(fact.acceptedByRoleKeys)
+        ? fact.acceptedByRoleKeys.filter((value): value is string => typeof value === "string")
         : [],
       status: fact.status,
       createdAt: fact.createdAt.toISOString(),
@@ -318,11 +320,11 @@ function mapRun(run: {
     openQuestions: run.openQuestions.map((question) => ({
       id: question.id,
       runId: question.runId,
-      askedByRoleSlug: question.askedByRoleSlug,
-      ownerRoleSlug: question.ownerRoleSlug,
+      askedByRoleKey: question.askedByRoleKey,
+      ownerRoleKey: question.ownerRoleKey,
       question: question.question,
-      blockingRoles: Array.isArray(question.blockingRoles)
-        ? question.blockingRoles.filter((value): value is string => typeof value === "string")
+      blockingRoleKeys: Array.isArray(question.blockingRoleKeys)
+        ? question.blockingRoleKeys.filter((value): value is string => typeof value === "string")
         : [],
       status: question.status,
       sourceMessageId: question.sourceMessageId,

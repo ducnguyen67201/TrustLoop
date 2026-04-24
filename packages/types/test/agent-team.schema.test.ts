@@ -44,6 +44,7 @@ describe("agent team schemas", () => {
           {
             id: "role_1",
             teamId: "team_1",
+            roleKey: "architect",
             slug: "architect",
             label: "Architect",
             provider: "openai",
@@ -63,7 +64,7 @@ describe("agent team schemas", () => {
     const response = agentTeamRoleTurnOutputSchema.parse({
       messages: [
         {
-          toRoleSlug: "rca_analyst",
+          toRoleKey: "rca_analyst",
           kind: "question",
           subject: "Prod confirmation",
           content: "Do Sentry traces confirm this path in production?",
@@ -78,7 +79,7 @@ describe("agent team schemas", () => {
         },
       ],
       resolvedQuestionIds: [],
-      nextSuggestedRoles: ["rca_analyst"],
+      nextSuggestedRoleKeys: ["rca_analyst"],
       done: false,
       blockedReason: null,
       meta: {
@@ -90,7 +91,7 @@ describe("agent team schemas", () => {
     });
 
     expect(response.messages).toHaveLength(1);
-    expect(response.messages[0]?.toRoleSlug).toBe("rca_analyst");
+    expect(response.messages[0]?.toRoleKey).toBe("rca_analyst");
   });
 });
 
@@ -123,7 +124,7 @@ describe("agent team positional format", () => {
     const result = reconstructAgentTeamTurnOutput(compressed);
 
     expect(result.messages[0]?.kind).toBe("request_evidence");
-    expect(result.messages[0]?.toRoleSlug).toBe("code_reader");
+    expect(result.messages[0]?.toRoleKey).toBe("code_reader");
     expect(result.proposedFacts[0]?.confidence).toBe(0.82);
   });
 

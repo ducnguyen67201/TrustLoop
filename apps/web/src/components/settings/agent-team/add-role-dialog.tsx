@@ -53,11 +53,10 @@ interface AddRoleDialogProps {
  * Adds a specialized role to the selected agent team.
  */
 export function AddRoleDialog({ teamId, onAddRole, triggerRef }: AddRoleDialogProps) {
+  const defaultRole = ROLE_OPTIONS[0];
   const [open, setOpen] = useState(false);
-  const [slug, setSlug] = useState<(typeof ROLE_OPTIONS)[number]["value"]>(
-    AGENT_TEAM_ROLE_SLUG.architect
-  );
-  const [label, setLabel] = useState("Architect");
+  const [slug, setSlug] = useState<(typeof ROLE_OPTIONS)[number]["value"]>(defaultRole.value);
+  const [label, setLabel] = useState<string>(defaultRole.label);
   const [description, setDescription] = useState("");
   const [model, setModel] = useState("");
   const [maxSteps, setMaxSteps] = useState("8");
@@ -81,6 +80,7 @@ export function AddRoleDialog({ teamId, onAddRole, triggerRef }: AddRoleDialogPr
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     setIsSubmitting(true);
     setError(null);
 
@@ -100,7 +100,8 @@ export function AddRoleDialog({ teamId, onAddRole, triggerRef }: AddRoleDialogPr
       setModel("");
       setMaxSteps("8");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to add role");
+      const message = submitError instanceof Error ? submitError.message : "";
+      setError(message || "Failed to add role");
     } finally {
       setIsSubmitting(false);
     }
@@ -117,7 +118,9 @@ export function AddRoleDialog({ teamId, onAddRole, triggerRef }: AddRoleDialogPr
         <DialogHeader>
           <DialogTitle>Add role</DialogTitle>
           <DialogDescription>
-            Each role is one agent instance with its own prompt and tool subset.
+            Choose a role type for the behavior preset, then use the label to name this agent
+            however you want. The system will generate a separate internal routing key
+            automatically.
           </DialogDescription>
         </DialogHeader>
 
@@ -136,6 +139,10 @@ export function AddRoleDialog({ teamId, onAddRole, triggerRef }: AddRoleDialogPr
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-sm text-muted-foreground">
+              Role type controls the agent behavior preset. Label is the display name shown in the
+              team graph and run timeline.
+            </p>
           </div>
 
           <div className="space-y-2">

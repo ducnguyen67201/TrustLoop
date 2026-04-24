@@ -42,7 +42,7 @@ export const agentTeamEventKindValues = [
 
 export const agentTeamEventKindSchema = z.enum(agentTeamEventKindValues);
 
-// The actor is who emitted the event: a role slug, "system" for orchestrator
+// The actor is who emitted the event: a role key, "system" for orchestrator
 // bookkeeping, or "orchestrator" for workflow-level transitions.
 export const AGENT_TEAM_EVENT_ACTOR_SYSTEM = {
   system: "system",
@@ -69,19 +69,41 @@ const runTerminalPayload = z.object({
 });
 
 const roleStatePayload = z.object({
-  roleSlug: z.string().min(1),
+  roleKey: z.string().min(1),
   wakeReason: z.string().nullable().optional(),
-  blockingRoles: z.array(z.string()).optional(),
+  blockingRoleKeys: z.array(z.string()).optional(),
 });
 
-const messageSentPayload = z.object({
-  messageId: z.string().min(1),
-  fromRoleSlug: z.string().min(1),
-  toRoleSlug: agentTeamTargetSchema,
-  kind: agentTeamMessageKindSchema,
-  subject: z.string(),
-  contentPreview: z.string().max(280),
-});
+const messageSentPayload = z.preprocess(
+  (value) => {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+
+    const candidate = value as {
+      fromRoleKey?: unknown;
+      fromRoleSlug?: unknown;
+      toRoleKey?: unknown;
+      toRoleSlug?: unknown;
+    };
+
+    return {
+      ...candidate,
+      fromRoleKey:
+        typeof candidate.fromRoleKey === "string" ? candidate.fromRoleKey : candidate.fromRoleSlug,
+      toRoleKey:
+        typeof candidate.toRoleKey === "string" ? candidate.toRoleKey : candidate.toRoleSlug,
+    };
+  },
+  z.object({
+    messageId: z.string().min(1),
+    fromRoleKey: z.string().min(1),
+    toRoleKey: agentTeamTargetSchema,
+    kind: agentTeamMessageKindSchema,
+    subject: z.string(),
+    contentPreview: z.string().max(280),
+  })
+);
 
 const factProposedPayload = z.object({
   factId: z.string().min(1),
@@ -89,11 +111,27 @@ const factProposedPayload = z.object({
   confidence: z.number().min(0).max(1),
 });
 
-const questionOpenedPayload = z.object({
-  questionId: z.string().min(1),
-  question: z.string(),
-  ownerRoleSlug: z.string().min(1),
-});
+const questionOpenedPayload = z.preprocess(
+  (value) => {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+
+    const candidate = value as { ownerRoleKey?: unknown; ownerRoleSlug?: unknown };
+    return {
+      ...candidate,
+      ownerRoleKey:
+        typeof candidate.ownerRoleKey === "string"
+          ? candidate.ownerRoleKey
+          : candidate.ownerRoleSlug,
+    };
+  },
+  z.object({
+    questionId: z.string().min(1),
+    question: z.string(),
+    ownerRoleKey: z.string().min(1),
+  })
+);
 
 const toolCalledPayload = z.object({
   toolName: z.string().min(1),
@@ -296,7 +334,7 @@ export type AgentTeamRunEventDraft = z.infer<typeof agentTeamRunEventDraftSchema
 // Per-role rollup cached on AgentTeamRun.summary at terminal state. Also used
 // by the UI summary card and the nightly metrics workflow.
 export const agentTeamRunRoleRollupSchema = z.object({
-  roleSlug: z.string().min(1),
+  roleKey: z.string().min(1),
   turns: z.number().int().nonnegative(),
   toolCalls: z.number().int().nonnegative(),
   tokensIn: z.number().int().nonnegative(),

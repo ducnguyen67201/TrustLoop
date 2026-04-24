@@ -187,7 +187,7 @@ export async function computeRunRollup(
     if (row.actor === "system" || row.actor === "orchestrator") continue;
 
     const existing = perActor.get(row.actor) ?? {
-      roleSlug: row.actor,
+      roleKey: row.actor,
       turns: 0,
       toolCalls: 0,
       tokensIn: 0,
@@ -221,7 +221,7 @@ export async function computeRunRollup(
     toolCallCount,
     tokensInTotal,
     tokensOutTotal,
-    perRole: Array.from(perActor.values()).sort((a, b) => a.roleSlug.localeCompare(b.roleSlug)),
+    perRole: Array.from(perActor.values()).sort((a, b) => a.roleKey.localeCompare(b.roleKey)),
     computedAt: new Date(),
   };
 }
@@ -244,7 +244,7 @@ export function serializeRunRollup(rollup: AgentTeamRunRollup): Prisma.InputJson
     tokensInTotal: rollup.tokensInTotal,
     tokensOutTotal: rollup.tokensOutTotal,
     perRole: rollup.perRole.map((role) => ({
-      roleSlug: role.roleSlug,
+      roleKey: role.roleKey,
       turns: role.turns,
       toolCalls: role.toolCalls,
       tokensIn: role.tokensIn,

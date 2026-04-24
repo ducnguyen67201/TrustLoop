@@ -74,7 +74,8 @@ export function AgentTeamRunView({
   const durationMs = startMs && lastMs ? Math.max(0, lastMs - startMs) : 0;
 
   const perRole = useMemo(() => computePerRoleRollup(messages), [messages]);
-  const activeRoleSlug = isStreaming ? findActiveRoleSlug(run.roleInboxes ?? []) : null;
+  const roleLabels = useMemo(() => buildRoleLabelMap(run), [run]);
+  const activeRoleKey = isStreaming ? findActiveRoleKey(run.roleInboxes ?? []) : null;
   const rawTranscript = useMemo(() => buildRawTranscript(messages), [messages]);
 
   return (
@@ -125,11 +126,11 @@ export function AgentTeamRunView({
         {perRole.length > 0 ? (
           <div className="grid grid-cols-[auto_auto_auto_auto_auto] gap-x-3 gap-y-0.5 text-xs">
             {perRole.map((row) => {
-              const isActive = row.roleSlug === activeRoleSlug;
+              const isActive = row.roleKey === activeRoleKey;
               return (
-                <div className="contents" key={row.roleSlug}>
+                <div className="contents" key={row.roleKey}>
                   <span className={isActive ? "font-semibold text-primary" : "font-medium"}>
-                    {isActive ? "▸" : " "} {row.roleSlug}
+                    {isActive ? "▸" : " "} {formatRoleRef(roleLabels, row.roleKey)}
                   </span>
                   <span className="text-muted-foreground">{row.turns} turns</span>
                   <span className="text-muted-foreground">{row.toolCalls} tools</span>
@@ -167,7 +168,8 @@ export function AgentTeamRunView({
                     message={message}
                     startMs={startMs}
                     showAbs={showAbs}
-                    isActive={message.fromRoleSlug === activeRoleSlug}
+                    isActive={message.fromRoleKey === activeRoleKey}
+                    roleLabels={roleLabels}
                   />
                 ))
               )}
@@ -245,11 +247,13 @@ function MessageRow({
   startMs,
   showAbs,
   isActive,
+  roleLabels,
 }: {
   message: AgentTeamDialogueMessage;
   startMs: number | null;
   showAbs: boolean;
   isActive: boolean;
+  roleLabels: Map<string, string>;
 }) {
   const isTool =
     message.kind === AGENT_TEAM_MESSAGE_KIND.toolCall ||
@@ -290,8 +294,10 @@ function MessageRow({
       </span>
       <div className="min-w-0">
         <div className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">[{message.fromRoleSlug}</span>
-          <span> → {message.toRoleSlug}</span>
+          <span className="font-semibold text-foreground">
+            [{formatRoleRef(roleLabels, message.fromRoleKey)}
+          </span>
+          <span> → {formatTargetRef(roleLabels, message.toRoleKey)}</span>
           <span className="font-semibold text-foreground">] </span>
           <span>({message.kind.replaceAll("_", " ")}):</span>
           <span className="ml-1 text-muted-foreground/70">{message.subject}</span>
@@ -343,7 +349,7 @@ function FactRow({ fact }: { fact: AgentTeamFact }) {
       </div>
       <p className="mt-2">{fact.statement}</p>
       <p className="mt-2 text-xs text-muted-foreground">
-        Accepted by: {fact.acceptedBy.join(", ") || "nobody yet"}
+        Accepted by: {fact.acceptedByRoleKeys.join(", ") || "nobody yet"}
       </p>
     </div>
   );
@@ -358,12 +364,12 @@ function QuestionRow({ question }: { question: AgentTeamOpenQuestion }) {
       <div className="flex items-center justify-between gap-2">
         <Badge variant="outline">{question.status}</Badge>
         <span className="text-[11px] text-muted-foreground">
-          {question.askedByRoleSlug} → {question.ownerRoleSlug}
+          {question.askedByRoleKey} → {question.ownerRoleKey}
         </span>
       </div>
       <p className="mt-2">{question.question}</p>
       <p className="mt-2 text-xs text-muted-foreground">
-        Blocking: {question.blockingRoles.join(", ") || "none"}
+        Blocking: {question.blockingRoleKeys.join(", ") || "none"}
       </p>
     </div>
   );
@@ -373,7 +379,7 @@ function InboxRow({ inbox }: { inbox: AgentTeamRoleInbox }) {
   return (
     <div className="rounded-md border border-border/50 p-3 text-sm" data-testid="agent-team-inbox">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{inbox.roleSlug}</span>
+        <span className="font-medium">{inbox.roleKey}</span>
         <Badge variant="outline" className={statusClassName(inbox.state)}>
           {inbox.state}
         </Badge>
@@ -404,7 +410,7 @@ function EmptyState({
 }
 
 interface PerRoleRollup {
-  roleSlug: string;
+  roleKey: string;
   turns: number;
   toolCalls: number;
   wallMs: number;
@@ -423,7 +429,7 @@ function computePerRoleRollup(messages: AgentTeamDialogueMessage[]): PerRoleRoll
   >();
   for (const m of messages) {
     const t = new Date(m.createdAt).getTime();
-    const row = byRole.get(m.fromRoleSlug) ?? { turns: 0, toolCalls: 0, last: t, first: t };
+    const row = byRole.get(m.fromRoleKey) ?? { turns: 0, toolCalls: 0, last: t, first: t };
     if (
       m.kind === AGENT_TEAM_MESSAGE_KIND.toolCall ||
       m.kind === AGENT_TEAM_MESSAGE_KIND.toolResult
@@ -434,10 +440,10 @@ function computePerRoleRollup(messages: AgentTeamDialogueMessage[]): PerRoleRoll
     }
     row.last = Math.max(row.last, t);
     row.first = Math.min(row.first, t);
-    byRole.set(m.fromRoleSlug, row);
+    byRole.set(m.fromRoleKey, row);
   }
-  return Array.from(byRole.entries()).map(([roleSlug, row]) => ({
-    roleSlug,
+  return Array.from(byRole.entries()).map(([roleKey, row]) => ({
+    roleKey,
     turns: row.turns,
     toolCalls: row.toolCalls,
     wallMs: Math.max(0, row.last - row.first),
@@ -445,8 +451,8 @@ function computePerRoleRollup(messages: AgentTeamDialogueMessage[]): PerRoleRoll
   }));
 }
 
-function findActiveRoleSlug(inboxes: AgentTeamRoleInbox[]): string | null {
-  return inboxes.find((i) => i.state === "running")?.roleSlug ?? null;
+function findActiveRoleKey(inboxes: AgentTeamRoleInbox[]): string | null {
+  return inboxes.find((i) => i.state === "running")?.roleKey ?? null;
 }
 
 function buildRawTranscript(messages: AgentTeamDialogueMessage[]): string {
@@ -455,8 +461,25 @@ function buildRawTranscript(messages: AgentTeamDialogueMessage[]): string {
       (m) =>
         m.kind !== AGENT_TEAM_MESSAGE_KIND.toolCall && m.kind !== AGENT_TEAM_MESSAGE_KIND.toolResult
     )
-    .map((m) => `(${m.fromRoleSlug}) → (${m.toRoleSlug}) [${m.kind}]  ${m.subject}\n${m.content}`)
+    .map((m) => `(${m.fromRoleKey}) → (${m.toRoleKey}) [${m.kind}]  ${m.subject}\n${m.content}`)
     .join("\n\n");
+}
+
+function buildRoleLabelMap(run: AgentTeamRunSummary): Map<string, string> {
+  return new Map(run.teamSnapshot.roles.map((role) => [role.roleKey, role.label]));
+}
+
+function formatRoleRef(roleLabels: Map<string, string>, roleKey: string): string {
+  const label = roleLabels.get(roleKey);
+  return label ? `${label} (${roleKey})` : roleKey;
+}
+
+function formatTargetRef(roleLabels: Map<string, string>, target: string): string {
+  if (target === "broadcast" || target === "orchestrator") {
+    return target;
+  }
+
+  return formatRoleRef(roleLabels, target);
 }
 
 function formatDuration(ms: number): string {

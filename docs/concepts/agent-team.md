@@ -10,7 +10,7 @@ title: "Agent Team (Addressed Dialogue)"
 
 # Agent Team (Addressed Dialogue)
 
-A second AI pipeline that sits alongside the single-agent analysis flow. Instead of one model producing a draft, a **team of specialist roles** (architect, reviewer, code-reader, rca-analyst, pr-creator) collaborate via **addressed dialogue** — each role has its own inbox and sends directed messages (`@reviewer can you approve this?`) rather than sharing a single chat log. The whole conversation is event-sourced: projections feed the UI, the raw log feeds metrics and retention.
+A second AI pipeline that sits alongside the single-agent analysis flow. Instead of one model producing a draft, a **team of specialist role instances** collaborate via **addressed dialogue** — each role instance has a behavior preset (`slug`, such as `architect` or `reviewer`) plus a unique runtime identity (`roleKey`, such as `architect` or `architect_2`). Each role instance has its own inbox and sends directed messages rather than sharing a single chat log. The whole conversation is event-sourced: projections feed the UI, the raw log feeds metrics and retention.
 
 Where the analysis pipeline answers _"what is this ticket about, and what should we reply?"_, the agent team answers _"multiple people need to look at this — let them work it out."_
 
@@ -61,7 +61,8 @@ On success: inserts `AgentTeamRun` (status = `queued`) with a **`teamSnapshot` J
 ┌─────────────────────────────────────────────────────────────┐
 │ initializeRunState                                          │
 │   • seed AgentTeamRoleInbox rows from teamSnapshot          │
-│   • queue the initial role (architect, else first by order) │
+│   • queue the initial role (first architect roleKey, else    │
+│     first by order)                                          │
 │   • emit run_started event                                  │
 └─────────────────────────────────────────────────────────────┘
                      │
@@ -72,7 +73,7 @@ On success: inserts `AgentTeamRun` (status = `queued`) with a **`teamSnapshot` J
 │  1. claimNextQueuedInbox(runId)                             │
 │       ↳ transactional: first queued inbox → running         │
 │       ↳ null → fall out of loop                             │
-│  2. loadTurnContext(runId, roleSlug)                        │
+│  2. loadTurnContext(runId, roleKey)                         │
 │       ↳ inbox, accepted facts, open questions, recent thread│
 │  3. runTeamTurnActivity(...)                                │
 │       ↳ HTTP POST apps/agents /team-turn                    │
@@ -101,6 +102,7 @@ Caps live in `apps/queue/src/domains/agent-team/agent-team-run-routing.ts:14-16`
 ```ts
 {
   workspaceId, conversationId, runId,
+  teamRoles: AgentTeamRole[],        // full routed roster for this run snapshot
   role: AgentTeamRole,             // from teamSnapshot
   requestSummary: string,           // JSON thread snapshot
   inbox: AgentTeamDialogueMessage[],     // messages addressed to this role
@@ -133,8 +135,11 @@ Caps live in `apps/queue/src/domains/agent-team/agent-team-run-routing.ts:14-16`
 {
   messages: AgentTeamDialogueMessageDraft[],   // addressed dialogue
   proposedFacts: { statement, confidence, sources }[],
-  resolvedQuestions: { questionId, resolution }[],
-  nextSuggestedRoles: AgentTeamRoleSlug[],     // hints for routing
+  resolvedQuestionIds: string[],
+  nextSuggestedRoleKeys: string[],             // hints for routing specific role instances
+  done: boolean,
+  blockedReason?: string | null,
+  meta: { provider, model, totalDurationMs, turnCount }
 }
 ```
 
@@ -150,7 +155,7 @@ This is the core novelty. Five roles, five inboxes, typed messages with explicit
 
 ```ts
 {
-  fromRoleSlug, toRoleSlug,           // role slug | "broadcast" | "orchestrator"
+  fromRoleKey, fromRoleSlug, toRoleKey, // roleKey routes runtime delivery; slug preserves preset type
   kind,                               // see table below
   subject, content,
   parentMessageId?, refs?, toolName?, metadata?
@@ -163,8 +168,8 @@ This is the core novelty. Five roles, five inboxes, typed messages with explicit
 |---|---|
 | `question` / `requestEvidence` | Opens a blocking `AgentTeamOpenQuestion`, wakes target |
 | `answer` / `evidence` / `hypothesis` / `challenge` / `decision` / `proposal` | Active dialogue, wakes target |
-| `blocked` | Opens an open-question and **always wakes architect** (the un-blocker) |
-| `approval` | From reviewer only — **always wakes pr-creator** |
+| `blocked` | Opens an open-question and **wakes every architect roleKey** (the un-blockers) |
+| `approval` | From reviewer only — **wakes every pr-creator roleKey** |
 | `toolCall` / `toolResult` / `status` | Passive; logged but does **not** wake |
 
 ### Inbox state machine
@@ -178,10 +183,10 @@ This is the core novelty. Five roles, five inboxes, typed messages with explicit
   - Role-addressed + active kind → wake that target's inbox
   - `blocked` → also wake architect
   - `approval` → also wake pr-creator
-- Merge in `nextSuggestedRoles` from the agent's output
+- Merge in `nextSuggestedRoleKeys` from the agent's output
 - **Hard gate:** pr-creator is removed unless `hasReviewerApproval === true` somewhere in the run history. This is the single hardcoded approval check. There is no pending signing/human-in-the-loop primitive yet.
 
-- `assertValidMessageRouting()` (routing.ts:65) enforces `canRouteTo(sender, target)` from `packages/types/src/agent-team/agent-team-routing-policy.ts`. Invalid targets throw, which aborts `persistRoleTurnResult` and causes a Temporal retry of the turn.
+- `assertValidMessageRouting()` enforces `canRouteTo(sender.slug, target.slug)` from `packages/types/src/agent-team/agent-team-routing-policy.ts`. Delivery happens by `roleKey`, but the allow/deny policy still operates on preset role types. Invalid targets throw, which aborts `persistRoleTurnResult` and causes a Temporal retry of the turn.
 
 ### Run terminal states
 
@@ -230,7 +235,7 @@ The event log and its projections share atomicity by construction. A parity test
 - Graph view: `apps/web/src/components/settings/agent-team/team-graph-view.tsx`
 - Admins can create teams, add/edit roles, wire edges (visual handoff graph), set the workspace default
 - All mutations gated by `workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)` (`agent-team-router.ts:31-59`)
-- Role identities are keyed by `slug`, and `slug` must match `AGENT_TEAM_ROLE_SLUG` so the role registry in `apps/agents` can find its prompt and default tools. Adding a new role requires: (1) new slug in `AGENT_TEAM_ROLE_SLUG`, (2) new prompt file under `apps/agents/src/roles/`, (3) registry entry, (4) routing policy update (`canRouteTo`).
+- Role instances are keyed by `roleKey`, while `slug` remains the preset type used to resolve prompts, default tools, and routing-policy rules. The settings UI auto-generates a unique `roleKey` per team (`architect`, `architect_2`, etc.). Adding a new role type still requires: (1) new slug in `AGENT_TEAM_ROLE_SLUG`, (2) new prompt file under `apps/agents/src/roles/`, (3) registry entry, (4) routing policy update (`canRouteTo`).
 
 ## Schedules
 
@@ -265,14 +270,14 @@ Metrics run **3 hours before** archive by design — archive refuses to drop any
 | Table | Role |
 |---|---|
 | `AgentTeam` | Team blueprint (name, `isDefault`) |
-| `AgentTeamRole` | Role config (slug, model, toolIds, maxSteps, systemPromptOverride) |
+| `AgentTeamRole` | Role config (`roleKey` runtime identity + `slug` preset type, model, toolIds, maxSteps, systemPromptOverride) |
 | `AgentTeamEdge` | Handoff graph for the builder UI (not enforced at runtime — routing uses policy) |
 | `AgentTeamRun` | Execution instance + `teamSnapshot` for reproducibility |
 | `AgentTeamRunEvent` | **Partitioned** append-only log (source of truth) |
-| `AgentTeamMessage` | Projected addressed dialogue, indexed `(runId, toRoleSlug, createdAt)` |
-| `AgentTeamRoleInbox` | Projected inbox state per role (unique on `(runId, roleSlug)`) |
+| `AgentTeamMessage` | Projected addressed dialogue, indexed `(runId, toRoleKey, createdAt)` while preserving sender `fromRoleSlug` for preset-type semantics |
+| `AgentTeamRoleInbox` | Projected inbox state per role instance (unique on `(runId, roleKey)`) |
 | `AgentTeamFact` | Proposed/accepted/rejected shared facts |
-| `AgentTeamOpenQuestion` | Blocking questions, `blockingRoles[]`, owner |
+| `AgentTeamOpenQuestion` | Blocking questions, `blockingRoleKeys[]`, owner |
 | `WorkspaceAgentMetrics` | Daily per-workspace rollup, unique on `(workspaceId, day)` |
 
 ## Failure modes
@@ -300,6 +305,7 @@ Metrics run **3 hours before** archive by design — archive refuses to drop any
 
 - **The event log is the source of truth.** Every projection (`AgentTeamMessage`, `AgentTeamFact`, `AgentTeamOpenQuestion`, `AgentTeamRoleInbox`) is written in the same `$transaction` as the events that produced it. The parity test enforces this for messages — extend it when adding new projections.
 - **Runs carry `teamSnapshot`.** Historical runs are reproducible even if the team is edited or deleted later. Never re-resolve a role from the live team at execution time.
+- **`roleKey` is the runtime address; `slug` is the behavior preset.** Duplicating a role type is safe because delivery, inboxes, and open-question ownership run on `roleKey`, while prompt lookup and routing-policy checks still use `slug`.
 - **Partitioned events table is managed by migration, not Prisma.** `db:push` on `AgentTeamRunEvent` recreates it without partitions — use `db:migrate`.
 - **Archive drops are double-gated** on `AGENT_ARCHIVE_MODE` AND rollup-watermark completeness. Loosening either is a data-loss risk.
 - **`TASK_QUEUES.CODEX` is where the run workflow lives.** Not SUPPORT. The queue worker registers both sets of workflows/activities.

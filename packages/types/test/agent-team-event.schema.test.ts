@@ -2,7 +2,6 @@ import {
   AGENT_TEAM_EVENT_ACTOR_SYSTEM,
   AGENT_TEAM_EVENT_KIND,
   AGENT_TEAM_MESSAGE_KIND,
-  AGENT_TEAM_TARGET,
   agentTeamEventKindSchema,
   agentTeamRunEventDraftSchema,
   agentTeamRunEventSchema,
@@ -47,12 +46,12 @@ describe("agentTeamRunEventDraftSchema", () => {
       runId: "run_1",
       workspaceId: "ws_1",
       actor: "architect",
-      target: AGENT_TEAM_TARGET.reviewer,
+      target: "reviewer",
       messageKind: AGENT_TEAM_MESSAGE_KIND.hypothesis,
       payload: {
         messageId: "msg_1",
-        fromRoleSlug: "architect",
-        toRoleSlug: AGENT_TEAM_TARGET.reviewer,
+        fromRoleKey: "architect",
+        toRoleKey: "reviewer",
         kind: AGENT_TEAM_MESSAGE_KIND.hypothesis,
         subject: "root cause",
         contentPreview: "Null deref at checkout.ts:47",
@@ -83,8 +82,8 @@ describe("agentTeamRunEventDraftSchema", () => {
       actor: "architect",
       payload: {
         messageId: "msg_1",
-        fromRoleSlug: "architect",
-        toRoleSlug: AGENT_TEAM_TARGET.reviewer,
+        fromRoleKey: "architect",
+        toRoleKey: "reviewer",
         kind: AGENT_TEAM_MESSAGE_KIND.hypothesis,
         subject: "root cause",
         contentPreview: "...",
@@ -127,7 +126,7 @@ describe("agentTeamRunEventSchema (persisted row)", () => {
         latencyMs: 3200,
         tokensIn: 1200,
         tokensOut: 800,
-        payload: { roleSlug: "architect" },
+        payload: { roleKey: "architect" },
       },
       {
         ...baseRow,
@@ -169,7 +168,7 @@ describe("agentTeamRunRollupSchema", () => {
       tokensOutTotal: 9_100,
       perRole: [
         {
-          roleSlug: "architect",
+          roleKey: "architect",
           turns: 5,
           toolCalls: 0,
           tokensIn: 3_900,

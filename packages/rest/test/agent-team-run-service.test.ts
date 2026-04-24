@@ -247,6 +247,7 @@ describe("agentTeamRuns.getRun", () => {
           {
             id: "role_1",
             teamId: "team_1",
+            roleKey: "architect",
             slug: "architect",
             label: "Architect",
             provider: "openai",
@@ -263,9 +264,10 @@ describe("agentTeamRuns.getRun", () => {
           id: "msg_1",
           runId: "run_1",
           threadId: "thread_architect",
+          fromRoleKey: "architect",
           fromRoleSlug: "architect",
           fromRoleLabel: "Architect",
-          toRoleSlug: "broadcast",
+          toRoleKey: "broadcast",
           kind: "hypothesis",
           subject: "Likely fault line",
           content: "Looking at the reply resolver now.",
@@ -280,7 +282,7 @@ describe("agentTeamRuns.getRun", () => {
         {
           id: "inbox_1",
           runId: "run_1",
-          roleSlug: "architect",
+          roleKey: "architect",
           state: "running",
           lastReadMessageId: null,
           wakeReason: "initial-seed",
@@ -297,7 +299,7 @@ describe("agentTeamRuns.getRun", () => {
           statement: "The issue is isolated to reply threading.",
           confidence: 0.9,
           sourceMessageIds: ["msg_1"],
-          acceptedBy: ["architect"],
+          acceptedByRoleKeys: ["architect"],
           status: "accepted",
           createdAt,
           updatedAt: createdAt,
@@ -307,10 +309,10 @@ describe("agentTeamRuns.getRun", () => {
         {
           id: "question_1",
           runId: "run_1",
-          askedByRoleSlug: "architect",
-          ownerRoleSlug: "reviewer",
+          askedByRoleKey: "architect",
+          ownerRoleKey: "reviewer",
           question: "Can reviewer confirm missing regression tests?",
-          blockingRoles: ["reviewer"],
+          blockingRoleKeys: ["reviewer"],
           status: "open",
           sourceMessageId: "msg_1",
           createdAt,
@@ -326,9 +328,9 @@ describe("agentTeamRuns.getRun", () => {
 
     expect(result.status).toBe("running");
     expect(result.messages?.[0]?.content).toContain("reply resolver");
-    expect(result.roleInboxes?.[0]?.roleSlug).toBe("architect");
+    expect(result.roleInboxes?.[0]?.roleKey).toBe("architect");
     expect(result.facts?.[0]?.statement).toContain("reply threading");
-    expect(result.openQuestions?.[0]?.ownerRoleSlug).toBe("reviewer");
+    expect(result.openQuestions?.[0]?.ownerRoleKey).toBe("reviewer");
   });
 });
 

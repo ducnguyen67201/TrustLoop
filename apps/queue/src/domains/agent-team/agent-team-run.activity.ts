@@ -31,7 +31,6 @@ import {
   type AgentTeamOpenQuestion,
   type AgentTeamRole,
   type AgentTeamRoleInbox,
-  type AgentTeamRoleSlug,
   type AgentTeamRoleTurnInput,
   type AgentTeamRoleTurnOutput,
   type AgentTeamRunWorkflowInput,
@@ -39,14 +38,13 @@ import {
   agentTeamFactSchema,
   agentTeamOpenQuestionSchema,
   agentTeamRoleInboxSchema,
-  agentTeamRoleSlugSchema,
   agentTeamRoleTurnInputSchema,
   agentTeamRoleTurnOutputSchema,
 } from "@shared/types";
 import { heartbeat } from "@temporalio/activity";
 
 interface ClaimNextQueuedInboxResult {
-  roleSlug: AgentTeamRoleSlug;
+  roleKey: string;
 }
 
 interface TurnContextPayload {
@@ -59,12 +57,13 @@ interface TurnContextPayload {
 interface PersistRoleTurnResultInput {
   runId: string;
   role: AgentTeamRole;
+  teamRoles: AgentTeamRole[];
   result: AgentTeamRoleTurnOutput;
 }
 
 interface RunProgressSnapshot {
   messageCount: number;
-  completedRoleSlugs: AgentTeamRoleSlug[];
+  completedRoleKeys: string[];
   queuedInboxCount: number;
   blockedInboxCount: number;
   openQuestionCount: number;
@@ -114,12 +113,12 @@ export async function initializeRunState(
     await tx.agentTeamRoleInbox.createMany({
       data: input.teamSnapshot.roles.map((role) => ({
         runId: input.runId,
-        roleSlug: role.slug,
+        roleKey: role.roleKey,
         state:
-          role.slug === initialRole.slug
+          role.roleKey === initialRole.roleKey
             ? AGENT_TEAM_ROLE_INBOX_STATE.queued
             : AGENT_TEAM_ROLE_INBOX_STATE.idle,
-        wakeReason: role.slug === initialRole.slug ? "initial-seed" : null,
+        wakeReason: role.roleKey === initialRole.roleKey ? "initial-seed" : null,
         unreadCount: 0,
       })),
       skipDuplicates: true,
@@ -127,9 +126,9 @@ export async function initializeRunState(
 
     await tx.agentTeamRoleInbox.update({
       where: {
-        runId_roleSlug: {
+        runId_roleKey: {
           runId: input.runId,
-          roleSlug: initialRole.slug,
+          roleKey: initialRole.roleKey,
         },
       },
       data: {
@@ -154,7 +153,7 @@ export async function initializeRunState(
 
   logRecordedEvents([recordedEvent]);
 
-  return { roleSlug: initialRole.slug };
+  return { roleKey: initialRole.roleKey };
 }
 
 export async function claimNextQueuedInbox(
@@ -168,7 +167,7 @@ export async function claimNextQueuedInbox(
         runId,
         state: AGENT_TEAM_ROLE_INBOX_STATE.queued,
       },
-      orderBy: [{ updatedAt: "asc" }, { roleSlug: "asc" }],
+      orderBy: [{ updatedAt: "asc" }, { roleKey: "asc" }],
     });
 
     if (!nextInbox) {
@@ -188,14 +187,14 @@ export async function claimNextQueuedInbox(
 
     if (claimed.count === 1) {
       return {
-        roleSlug: agentTeamRoleSlugSchema.parse(nextInbox.roleSlug),
+        roleKey: nextInbox.roleKey,
       };
     }
   }
 }
 
 export async function loadTurnContext(
-  input: Pick<AgentTeamRoleTurnInput, "runId"> & { roleSlug: AgentTeamRoleSlug }
+  input: Pick<AgentTeamRoleTurnInput, "runId"> & { roleKey: string }
 ): Promise<TurnContextPayload> {
   heartbeat();
 
@@ -203,7 +202,7 @@ export async function loadTurnContext(
     prisma.agentTeamMessage.findMany({
       where: {
         runId: input.runId,
-        OR: [{ toRoleSlug: input.roleSlug }, { toRoleSlug: AGENT_TEAM_TARGET.broadcast }],
+        OR: [{ toRoleKey: input.roleKey }, { toRoleKey: AGENT_TEAM_TARGET.broadcast }],
       },
       orderBy: { createdAt: "asc" },
     }),
@@ -217,7 +216,7 @@ export async function loadTurnContext(
     prisma.agentTeamOpenQuestion.findMany({
       where: {
         runId: input.runId,
-        ownerRoleSlug: input.roleSlug,
+        ownerRoleKey: input.roleKey,
         status: AGENT_TEAM_OPEN_QUESTION_STATUS.open,
       },
       orderBy: { createdAt: "asc" },
@@ -267,9 +266,10 @@ export async function persistRoleTurnResult(
 ): Promise<RunProgressSnapshot> {
   heartbeat();
 
-  const normalizedMessages = normalizeTurnMessages(input.role, input.result);
+  const normalizedMessages = normalizeTurnMessages(input.role, input.result, input.teamRoles);
   assertValidMessageRouting({
-    senderRoleSlug: input.role.slug,
+    senderRole: input.role,
+    teamRoles: input.teamRoles,
     messages: normalizedMessages,
   });
 
@@ -299,10 +299,11 @@ export async function persistRoleTurnResult(
       const created = await tx.agentTeamMessage.create({
         data: {
           runId: input.runId,
-          threadId: message.parentMessageId ?? `thread:${input.role.slug}`,
+          threadId: message.parentMessageId ?? `thread:${input.role.roleKey}`,
+          fromRoleKey: input.role.roleKey,
           fromRoleSlug: input.role.slug,
           fromRoleLabel: input.role.label,
-          toRoleSlug: message.toRoleSlug,
+          toRoleKey: message.toRoleKey,
           kind: message.kind,
           subject: message.subject,
           content: message.content,
@@ -318,7 +319,7 @@ export async function persistRoleTurnResult(
         buildMessageSentDraft({
           runId: input.runId,
           workspaceId: run.workspaceId,
-          senderRoleSlug: input.role.slug,
+          senderRole: input.role,
           messageId: created.id,
           message,
         })
@@ -333,7 +334,7 @@ export async function persistRoleTurnResult(
           kind: AGENT_TEAM_EVENT_KIND.toolCalled,
           runId: input.runId,
           workspaceId: run.workspaceId,
-          actor: input.role.slug,
+          actor: input.role.roleKey,
           payload: {
             toolName: message.toolName,
             argsPreview: message.content.slice(0, 1024),
@@ -344,7 +345,7 @@ export async function persistRoleTurnResult(
           kind: AGENT_TEAM_EVENT_KIND.toolReturned,
           runId: input.runId,
           workspaceId: run.workspaceId,
-          actor: input.role.slug,
+          actor: input.role.roleKey,
           payload: {
             toolName: message.toolName,
             ok: message.kind === AGENT_TEAM_MESSAGE_KIND.toolResult,
@@ -361,7 +362,7 @@ export async function persistRoleTurnResult(
           statement: fact.statement,
           confidence: fact.confidence,
           sourceMessageIds: fact.sourceMessageIds,
-          acceptedBy: fact.confidence >= 0.75 ? [input.role.slug] : [],
+          acceptedByRoleKeys: fact.confidence >= 0.75 ? [input.role.roleKey] : [],
           status:
             fact.confidence >= 0.75
               ? AGENT_TEAM_FACT_STATUS.accepted
@@ -373,7 +374,7 @@ export async function persistRoleTurnResult(
         kind: AGENT_TEAM_EVENT_KIND.factProposed,
         runId: input.runId,
         workspaceId: run.workspaceId,
-        actor: input.role.slug,
+        actor: input.role.roleKey,
         payload: {
           factId: factRow.id,
           statement: fact.statement,
@@ -396,7 +397,7 @@ export async function persistRoleTurnResult(
 
     const openQuestionsToCreate = createdMessages
       .filter((message) => shouldCreateOpenQuestion(message.kind))
-      .map((message) => buildOpenQuestionRow(message, input.role.slug));
+      .map((message) => buildOpenQuestionRow(message, input.role.roleKey, input.teamRoles));
 
     if (openQuestionsToCreate.length > 0) {
       // Use createManyAndReturn so we have row ids for the matching events;
@@ -409,12 +410,12 @@ export async function persistRoleTurnResult(
           kind: AGENT_TEAM_EVENT_KIND.questionOpened,
           runId: input.runId,
           workspaceId: run.workspaceId,
-          actor: input.role.slug,
-          target: question.ownerRoleSlug,
+          actor: input.role.roleKey,
+          target: question.ownerRoleKey,
           payload: {
             questionId: question.id,
             question: question.question,
-            ownerRoleSlug: question.ownerRoleSlug,
+            ownerRoleKey: question.ownerRoleKey,
           },
         });
       }
@@ -422,24 +423,25 @@ export async function persistRoleTurnResult(
 
     const hasReviewerApproval = await reviewerApprovalExists(tx, input.runId, createdMessages);
     const queueTargets = collectQueuedTargets({
-      senderRoleSlug: input.role.slug,
+      senderRole: input.role,
+      teamRoles: input.teamRoles,
       messages: normalizedMessages,
-      nextSuggestedRoles: input.result.nextSuggestedRoles,
+      nextSuggestedRoleKeys: input.result.nextSuggestedRoleKeys,
       hasReviewerApproval,
     });
 
-    for (const roleSlug of queueTargets) {
-      const wakeReason = buildWakeReason(input.role.slug, normalizedMessages);
+    for (const roleKey of queueTargets) {
+      const wakeReason = buildWakeReason(input.role.roleKey, normalizedMessages);
       await tx.agentTeamRoleInbox.upsert({
         where: {
-          runId_roleSlug: {
+          runId_roleKey: {
             runId: input.runId,
-            roleSlug,
+            roleKey,
           },
         },
         create: {
           runId: input.runId,
-          roleSlug,
+          roleKey,
           state: AGENT_TEAM_ROLE_INBOX_STATE.queued,
           unreadCount: 1,
           wakeReason,
@@ -454,9 +456,9 @@ export async function persistRoleTurnResult(
         kind: AGENT_TEAM_EVENT_KIND.roleQueued,
         runId: input.runId,
         workspaceId: run.workspaceId,
-        actor: input.role.slug,
-        target: roleSlug,
-        payload: { roleSlug, wakeReason },
+        actor: input.role.roleKey,
+        target: roleKey,
+        payload: { roleKey, wakeReason },
       });
     }
 
@@ -470,9 +472,9 @@ export async function persistRoleTurnResult(
 
     await tx.agentTeamRoleInbox.update({
       where: {
-        runId_roleSlug: {
+        runId_roleKey: {
           runId: input.runId,
-          roleSlug: input.role.slug,
+          roleKey: input.role.roleKey,
         },
       },
       data: {
@@ -488,17 +490,17 @@ export async function persistRoleTurnResult(
         kind: AGENT_TEAM_EVENT_KIND.roleCompleted,
         runId: input.runId,
         workspaceId: run.workspaceId,
-        actor: input.role.slug,
-        payload: { roleSlug: input.role.slug },
+        actor: input.role.roleKey,
+        payload: { roleKey: input.role.roleKey },
       });
     } else if (selfState === AGENT_TEAM_ROLE_INBOX_STATE.blocked) {
       eventDrafts.push({
         kind: AGENT_TEAM_EVENT_KIND.roleBlocked,
         runId: input.runId,
         workspaceId: run.workspaceId,
-        actor: input.role.slug,
+        actor: input.role.roleKey,
         payload: {
-          roleSlug: input.role.slug,
+          roleKey: input.role.roleKey,
           wakeReason: input.result.blockedReason ?? null,
         },
       });
@@ -632,7 +634,7 @@ function computeDurationMs(startedAt: Date | null, completedAt: Date | null): nu
 export function buildMessageSentDraft(input: {
   runId: string;
   workspaceId: string;
-  senderRoleSlug: AgentTeamRoleSlug;
+  senderRole: AgentTeamRole;
   messageId: string;
   message: AgentTeamDialogueMessageDraft;
 }): AgentTeamRunEventDraft {
@@ -640,13 +642,13 @@ export function buildMessageSentDraft(input: {
     kind: AGENT_TEAM_EVENT_KIND.messageSent,
     runId: input.runId,
     workspaceId: input.workspaceId,
-    actor: input.senderRoleSlug,
-    target: input.message.toRoleSlug,
+    actor: input.senderRole.roleKey,
+    target: input.message.toRoleKey,
     messageKind: input.message.kind,
     payload: {
       messageId: input.messageId,
-      fromRoleSlug: input.senderRoleSlug,
-      toRoleSlug: input.message.toRoleSlug,
+      fromRoleKey: input.senderRole.roleKey,
+      toRoleKey: input.message.toRoleKey,
       kind: input.message.kind,
       subject: input.message.subject,
       contentPreview: input.message.content.slice(0, 280),
@@ -656,7 +658,8 @@ export function buildMessageSentDraft(input: {
 
 function normalizeTurnMessages(
   role: AgentTeamRole,
-  result: AgentTeamRoleTurnOutput
+  result: AgentTeamRoleTurnOutput,
+  teamRoles: AgentTeamRole[] = [role]
 ): AgentTeamDialogueMessageDraft[] {
   const messages = [...result.messages];
   const alreadyBlocked = messages.some(
@@ -665,10 +668,11 @@ function normalizeTurnMessages(
 
   if (result.blockedReason && !alreadyBlocked) {
     messages.push({
-      toRoleSlug:
+      toRoleKey:
         role.slug === AGENT_TEAM_ROLE_SLUG.architect
           ? AGENT_TEAM_TARGET.orchestrator
-          : AGENT_TEAM_ROLE_SLUG.architect,
+          : (resolvePrimaryRoleKey(teamRoles, AGENT_TEAM_ROLE_SLUG.architect) ??
+            AGENT_TEAM_TARGET.orchestrator),
       kind: AGENT_TEAM_MESSAGE_KIND.blocked,
       subject: `${role.label} blocked`,
       content: result.blockedReason,
@@ -681,20 +685,21 @@ function normalizeTurnMessages(
 
 function buildOpenQuestionRow(
   message: AgentTeamDialogueMessage,
-  askedByRoleSlug: AgentTeamRoleSlug
+  askedByRoleKey: string,
+  teamRoles: AgentTeamRole[]
 ) {
-  const ownerRoleSlug =
-    message.toRoleSlug === AGENT_TEAM_TARGET.orchestrator
-      ? AGENT_TEAM_ROLE_SLUG.architect
-      : agentTeamRoleSlugSchema.parse(message.toRoleSlug);
+  const ownerRoleKey =
+    message.toRoleKey === AGENT_TEAM_TARGET.orchestrator
+      ? (resolvePrimaryRoleKey(teamRoles, AGENT_TEAM_ROLE_SLUG.architect) ?? askedByRoleKey)
+      : message.toRoleKey;
 
   return {
     runId: message.runId,
-    askedByRoleSlug,
-    ownerRoleSlug,
+    askedByRoleKey,
+    ownerRoleKey,
     question: message.content,
-    blockingRoles:
-      message.kind === AGENT_TEAM_MESSAGE_KIND.blocked ? [askedByRoleSlug] : [ownerRoleSlug],
+    blockingRoleKeys:
+      message.kind === AGENT_TEAM_MESSAGE_KIND.blocked ? [askedByRoleKey] : [ownerRoleKey],
     status: AGENT_TEAM_OPEN_QUESTION_STATUS.open,
     sourceMessageId: message.id,
   };
@@ -745,7 +750,7 @@ async function getRunProgressSnapshot(
     agentTeamRoleInboxSchema.parse({
       id: row.id,
       runId: row.runId,
-      roleSlug: row.roleSlug,
+      roleKey: row.roleKey,
       state: row.state,
       lastReadMessageId: row.lastReadMessageId,
       wakeReason: row.wakeReason,
@@ -758,9 +763,9 @@ async function getRunProgressSnapshot(
 
   return {
     messageCount,
-    completedRoleSlugs: parsedInboxes
+    completedRoleKeys: parsedInboxes
       .filter((inbox) => inbox.state === AGENT_TEAM_ROLE_INBOX_STATE.done)
-      .map((inbox) => inbox.roleSlug),
+      .map((inbox) => inbox.roleKey),
     queuedInboxCount: parsedInboxes.filter(
       (inbox) => inbox.state === AGENT_TEAM_ROLE_INBOX_STATE.queued
     ).length,
@@ -771,25 +776,23 @@ async function getRunProgressSnapshot(
   };
 }
 
-function buildWakeReason(
-  senderRoleSlug: AgentTeamRoleSlug,
-  messages: AgentTeamDialogueMessageDraft[]
-): string {
+function buildWakeReason(senderRoleKey: string, messages: AgentTeamDialogueMessageDraft[]): string {
   const [firstMessage] = messages;
   if (!firstMessage) {
-    return `follow-up requested by ${senderRoleSlug}`;
+    return `follow-up requested by ${senderRoleKey}`;
   }
 
-  return `${senderRoleSlug}:${firstMessage.kind}:${firstMessage.subject}`;
+  return `${senderRoleKey}:${firstMessage.kind}:${firstMessage.subject}`;
 }
 
 function mapMessageRow(row: {
   id: string;
   runId: string;
   threadId: string;
+  fromRoleKey: string;
   fromRoleSlug: string;
   fromRoleLabel: string;
-  toRoleSlug: string;
+  toRoleKey: string;
   kind: string;
   subject: string;
   content: string;
@@ -803,9 +806,10 @@ function mapMessageRow(row: {
     id: row.id,
     runId: row.runId,
     threadId: row.threadId,
+    fromRoleKey: row.fromRoleKey,
     fromRoleSlug: row.fromRoleSlug,
     fromRoleLabel: row.fromRoleLabel,
-    toRoleSlug: row.toRoleSlug,
+    toRoleKey: row.toRoleKey,
     kind: row.kind,
     subject: row.subject,
     content: row.content,
@@ -823,7 +827,7 @@ function mapFactRow(row: {
   statement: string;
   confidence: number;
   sourceMessageIds: Prisma.JsonValue;
-  acceptedBy: Prisma.JsonValue;
+  acceptedByRoleKeys: Prisma.JsonValue;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -834,7 +838,7 @@ function mapFactRow(row: {
     statement: row.statement,
     confidence: row.confidence,
     sourceMessageIds: parseJsonStringArray(row.sourceMessageIds),
-    acceptedBy: parseJsonRoleSlugArray(row.acceptedBy),
+    acceptedByRoleKeys: parseJsonStringArray(row.acceptedByRoleKeys),
     status: row.status,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -844,10 +848,10 @@ function mapFactRow(row: {
 function mapOpenQuestionRow(row: {
   id: string;
   runId: string;
-  askedByRoleSlug: string;
-  ownerRoleSlug: string;
+  askedByRoleKey: string;
+  ownerRoleKey: string;
   question: string;
-  blockingRoles: Prisma.JsonValue;
+  blockingRoleKeys: Prisma.JsonValue;
   status: string;
   sourceMessageId: string;
   createdAt: Date;
@@ -856,10 +860,10 @@ function mapOpenQuestionRow(row: {
   return agentTeamOpenQuestionSchema.parse({
     id: row.id,
     runId: row.runId,
-    askedByRoleSlug: row.askedByRoleSlug,
-    ownerRoleSlug: row.ownerRoleSlug,
+    askedByRoleKey: row.askedByRoleKey,
+    ownerRoleKey: row.ownerRoleKey,
     question: row.question,
-    blockingRoles: parseJsonRoleSlugArray(row.blockingRoles),
+    blockingRoleKeys: parseJsonStringArray(row.blockingRoleKeys),
     status: row.status,
     sourceMessageId: row.sourceMessageId,
     createdAt: row.createdAt.toISOString(),
@@ -871,10 +875,6 @@ function parseJsonStringArray(value: Prisma.JsonValue | null): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
-}
-
-function parseJsonRoleSlugArray(value: Prisma.JsonValue | null): AgentTeamRoleSlug[] {
-  return parseJsonStringArray(value).map((item) => agentTeamRoleSlugSchema.parse(item));
 }
 
 function parseJsonRecord(value: Prisma.JsonValue | null): Record<string, unknown> | null {
@@ -893,6 +893,21 @@ function toNullableJsonValue(
   }
 
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function resolvePrimaryRoleKey(
+  teamRoles: AgentTeamRole[],
+  slug: AgentTeamRole["slug"]
+): string | null {
+  const match = [...teamRoles]
+    .filter((role) => role.slug === slug)
+    .sort((left, right) =>
+      left.sortOrder === right.sortOrder
+        ? left.roleKey.localeCompare(right.roleKey)
+        : left.sortOrder - right.sortOrder
+    )[0];
+
+  return match?.roleKey ?? null;
 }
 
 function resolveAgentServiceUrl(): string {

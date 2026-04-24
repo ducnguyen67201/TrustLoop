@@ -19,28 +19,38 @@ export async function add(workspaceId: string, input: AddAgentTeamRoleInput): Pr
   const parsed = addAgentTeamRoleInputSchema.parse(input);
   const team = await teams.get(workspaceId, parsed.teamId);
   const lastRole = team.roles.at(-1);
+  const nextRoleKey = buildUniqueRoleKey(team.roles, parsed.slug, parsed.roleKey);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.agentTeamRole.create({
-      data: {
-        teamId: parsed.teamId,
-        slug: parsed.slug,
-        label: parsed.label,
-        description: parsed.description?.trim() || null,
-        provider: parsed.provider,
-        model: parsed.model?.trim() || null,
-        toolIds: parsed.toolIds,
-        systemPromptOverride: parsed.systemPromptOverride?.trim() || null,
-        maxSteps: parsed.maxSteps,
-        sortOrder: (lastRole?.sortOrder ?? -1) + 1,
-      },
-    });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.agentTeamRole.create({
+        data: {
+          teamId: parsed.teamId,
+          roleKey: nextRoleKey,
+          slug: parsed.slug,
+          label: parsed.label,
+          description: parsed.description?.trim() || null,
+          provider: parsed.provider,
+          model: parsed.model?.trim() || null,
+          toolIds: parsed.toolIds,
+          systemPromptOverride: parsed.systemPromptOverride?.trim() || null,
+          maxSteps: parsed.maxSteps,
+          sortOrder: (lastRole?.sortOrder ?? -1) + 1,
+        },
+      });
 
-    await tx.agentTeam.update({
-      where: { id: parsed.teamId },
-      data: { updatedAt: new Date() },
+      await tx.agentTeam.update({
+        where: { id: parsed.teamId },
+        data: { updatedAt: new Date() },
+      });
     });
-  });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      throw new ValidationError("A role with that internal key already exists on the team.");
+    }
+
+    throw error;
+  }
 
   return teams.get(workspaceId, parsed.teamId);
 }
@@ -202,4 +212,33 @@ function mergeCanvasPosition(
       position,
     },
   };
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown };
+  return candidate.code === "P2002";
+}
+
+function buildUniqueRoleKey(
+  roles: AgentTeam["roles"],
+  slug: AddAgentTeamRoleInput["slug"],
+  requestedRoleKey?: string
+): string {
+  const existingKeys = new Set(roles.map((role) => role.roleKey));
+  const baseKey = requestedRoleKey?.trim() || slug;
+
+  if (!existingKeys.has(baseKey)) {
+    return baseKey;
+  }
+
+  let suffix = 2;
+  while (existingKeys.has(`${baseKey}_${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseKey}_${suffix}`;
 }

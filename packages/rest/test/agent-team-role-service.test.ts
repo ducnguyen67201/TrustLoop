@@ -1,4 +1,4 @@
-import { type AgentTeam, ConflictError } from "@shared/types";
+import { type AgentTeam, ConflictError, ValidationError } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockCreateRole = vi.fn();
@@ -50,6 +50,7 @@ function createTeam(overrides?: Partial<AgentTeam>): AgentTeam {
       {
         id: "role_architect",
         teamId: "team_1",
+        roleKey: "architect",
         slug: "architect",
         label: "Architect",
         description: null,
@@ -72,6 +73,7 @@ function createTeam(overrides?: Partial<AgentTeam>): AgentTeam {
       {
         id: "role_reviewer",
         teamId: "team_1",
+        roleKey: "reviewer",
         slug: "reviewer",
         label: "Reviewer",
         description: null,
@@ -207,5 +209,75 @@ describe("agentTeamRoles.updateLayout", () => {
     ).rejects.toBeInstanceOf(ConflictError);
 
     expect(mockUpdateRole).not.toHaveBeenCalled();
+  });
+});
+
+describe("agentTeamRoles.add", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateRole.mockResolvedValue(undefined);
+    mockUpdateTeam.mockResolvedValue(undefined);
+  });
+
+  it("allows duplicate role types and assigns a unique role key", async () => {
+    mockGetTeam.mockResolvedValueOnce(createTeam());
+    mockGetTeam.mockResolvedValueOnce(createTeam());
+
+    await roles.add("ws_1", {
+      teamId: "team_1",
+      slug: "architect",
+      label: "Architect 2",
+      provider: "openai",
+      toolIds: [],
+      maxSteps: 8,
+    });
+
+    expect(mockCreateRole).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          slug: "architect",
+          roleKey: "architect_2",
+        }),
+      })
+    );
+  });
+
+  it("maps concurrent unique-constraint races to a validation error", async () => {
+    mockGetTeam
+      .mockResolvedValueOnce(
+        createTeam({
+          roles: [
+            {
+              id: "role_architect",
+              teamId: "team_1",
+              roleKey: "architect",
+              slug: "architect",
+              label: "Architect",
+              description: null,
+              provider: "openai",
+              model: null,
+              toolIds: [],
+              systemPromptOverride: null,
+              maxSteps: 8,
+              sortOrder: 0,
+              metadata: null,
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(createTeam());
+    mockTransaction.mockRejectedValueOnce({ code: "P2002" });
+
+    await expect(
+      roles.add("ws_1", {
+        teamId: "team_1",
+        slug: "reviewer",
+        roleKey: "reviewer",
+        label: "Reviewer",
+        provider: "openai",
+        toolIds: [],
+        maxSteps: 8,
+      })
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });

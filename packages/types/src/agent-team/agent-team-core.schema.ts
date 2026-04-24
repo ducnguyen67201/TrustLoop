@@ -66,20 +66,34 @@ export const agentTeamRoleMetadataSchema = z
   })
   .catchall(z.unknown());
 
-export const agentTeamRoleSchema = z.object({
-  id: z.string().min(1),
-  teamId: z.string().min(1),
-  slug: agentTeamRoleSlugSchema,
-  label: z.string().min(1),
-  description: z.string().nullable().optional(),
-  provider: agentProviderSchema.default(AGENT_PROVIDER.openai),
-  model: z.string().nullable().optional(),
-  toolIds: z.array(agentTeamToolIdSchema).default([]),
-  systemPromptOverride: z.string().nullable().optional(),
-  maxSteps: z.number().int().positive().max(32).default(8),
-  sortOrder: z.number().int().min(0).default(0),
-  metadata: agentTeamRoleMetadataSchema.nullable().optional(),
-});
+export const agentTeamRoleSchema = z.preprocess(
+  (value) => {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+
+    const candidate = value as { roleKey?: unknown; slug?: unknown };
+    return {
+      ...candidate,
+      roleKey: typeof candidate.roleKey === "string" ? candidate.roleKey : candidate.slug,
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    teamId: z.string().min(1),
+    roleKey: z.string().min(1),
+    slug: agentTeamRoleSlugSchema,
+    label: z.string().min(1),
+    description: z.string().nullable().optional(),
+    provider: agentProviderSchema.default(AGENT_PROVIDER.openai),
+    model: z.string().nullable().optional(),
+    toolIds: z.array(agentTeamToolIdSchema).default([]),
+    systemPromptOverride: z.string().nullable().optional(),
+    maxSteps: z.number().int().positive().max(32).default(8),
+    sortOrder: z.number().int().min(0).default(0),
+    metadata: agentTeamRoleMetadataSchema.nullable().optional(),
+  })
+);
 
 export const agentTeamEdgeSchema = z.object({
   id: z.string().min(1),
@@ -137,6 +151,7 @@ export const setDefaultAgentTeamInputSchema = z.object({
 export const addAgentTeamRoleInputSchema = z.object({
   teamId: z.string().min(1),
   slug: agentTeamRoleSlugSchema,
+  roleKey: z.string().trim().min(1).max(80).optional(),
   label: z.string().trim().min(1).max(80),
   description: z.string().trim().max(300).optional(),
   provider: agentProviderSchema.default(AGENT_PROVIDER.openai),

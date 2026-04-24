@@ -2,7 +2,6 @@ import {
   AGENT_TEAM_EVENT_ACTOR_SYSTEM,
   AGENT_TEAM_EVENT_KIND,
   AGENT_TEAM_MESSAGE_KIND,
-  AGENT_TEAM_TARGET,
 } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -95,18 +94,18 @@ describe("recordEvent", () => {
       runId: "run_1",
       workspaceId: "ws_1",
       actor: "architect",
-      target: AGENT_TEAM_TARGET.reviewer,
+      target: "reviewer",
       messageKind: AGENT_TEAM_MESSAGE_KIND.hypothesis,
       payload: {
         messageId: "msg_1",
-        fromRoleSlug: "architect",
-        toRoleSlug: AGENT_TEAM_TARGET.reviewer,
+        fromRoleKey: "architect",
+        toRoleKey: "reviewer",
         kind: AGENT_TEAM_MESSAGE_KIND.hypothesis,
         subject: "root cause",
         contentPreview: "Null deref at checkout.ts:47",
       },
     });
-    expect(event.target).toBe(AGENT_TEAM_TARGET.reviewer);
+    expect(event.target).toBe("reviewer");
     expect(event.messageKind).toBe(AGENT_TEAM_MESSAGE_KIND.hypothesis);
   });
 

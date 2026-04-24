@@ -21,6 +21,7 @@ model AgentTeam {
 model AgentTeamRole {
   id                   String             @id @default(cuid())
   teamId               String
+  roleKey              String
   slug                 String
   label                String
   description          String?
@@ -38,7 +39,7 @@ model AgentTeamRole {
   sourceEdges AgentTeamEdge[]    @relation("AgentTeamEdgeSource")
   targetEdges AgentTeamEdge[]    @relation("AgentTeamEdgeTarget")
 
-  @@unique([teamId, slug])
+  @@unique([teamId, roleKey])
   @@index([teamId, sortOrder])
 }
 
@@ -153,9 +154,10 @@ model AgentTeamMessage {
   id              String            @id @default(cuid())
   runId           String
   threadId        String
+  fromRoleKey     String
   fromRoleSlug    String
   fromRoleLabel   String
-  toRoleSlug      String
+  toRoleKey       String
   kind            String
   subject         String
   content         String            @db.Text
@@ -170,7 +172,7 @@ model AgentTeamMessage {
   replies AgentTeamMessage[] @relation("AgentTeamMessageParent")
 
   @@index([runId, createdAt])
-  @@index([runId, toRoleSlug, createdAt])
+  @@index([runId, toRoleKey, createdAt])
   @@index([runId, threadId, createdAt])
   @@index([parentMessageId])
 }
@@ -178,7 +180,7 @@ model AgentTeamMessage {
 model AgentTeamRoleInbox {
   id                String   @id @default(cuid())
   runId             String
-  roleSlug          String
+  roleKey           String
   state             String   @default("idle")
   lastReadMessageId String?
   wakeReason        String?
@@ -189,7 +191,7 @@ model AgentTeamRoleInbox {
 
   run AgentTeamRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  @@unique([runId, roleSlug])
+  @@unique([runId, roleKey])
   @@index([runId, state, updatedAt])
 }
 
@@ -199,7 +201,7 @@ model AgentTeamFact {
   statement        String   @db.Text
   confidence       Float
   sourceMessageIds Json
-  acceptedBy       Json
+  acceptedByRoleKeys Json
   status           String   @default("proposed")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -212,10 +214,10 @@ model AgentTeamFact {
 model AgentTeamOpenQuestion {
   id              String   @id @default(cuid())
   runId           String
-  askedByRoleSlug String
-  ownerRoleSlug   String
+  askedByRoleKey  String
+  ownerRoleKey    String
   question        String   @db.Text
-  blockingRoles   Json
+  blockingRoleKeys Json
   status          String   @default("open")
   sourceMessageId String
   createdAt       DateTime @default(now())
@@ -223,5 +225,5 @@ model AgentTeamOpenQuestion {
 
   run AgentTeamRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
-  @@index([runId, ownerRoleSlug, status, createdAt])
+  @@index([runId, ownerRoleKey, status, createdAt])
 }

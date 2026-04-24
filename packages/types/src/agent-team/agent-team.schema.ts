@@ -6,7 +6,6 @@ import {
   addAgentTeamRoleInputSchema,
   agentTeamEdgeSchema,
   agentTeamRoleSchema,
-  agentTeamRoleSlugSchema,
   agentTeamRunStatusSchema,
   agentTeamSchema,
   agentTeamSnapshotSchema,
@@ -42,7 +41,7 @@ export const agentTeamRunWorkflowResultSchema = z.object({
   runId: z.string().min(1),
   status: agentTeamRunStatusSchema,
   messageCount: z.number().int().nonnegative(),
-  completedRoleSlugs: z.array(agentTeamRoleSlugSchema),
+  completedRoleKeys: z.array(z.string().min(1)),
 });
 
 export const startAgentTeamRunInputSchema = z.object({

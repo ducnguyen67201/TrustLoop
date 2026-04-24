@@ -1,11 +1,9 @@
 import {
   AGENT_TEAM_MESSAGE_KIND,
   AGENT_TEAM_ROLE_SLUG,
-  AGENT_TEAM_TARGET,
   type AgentTeamDialogueMessageDraft,
   type AgentTeamMessageKind,
   type AgentTeamRole,
-  type AgentTeamRoleSlug,
   type AgentTeamSnapshot,
   canRouteTo,
   isRoleTarget,
@@ -30,50 +28,67 @@ export function selectInitialRole(snapshot: AgentTeamSnapshot): AgentTeamRole {
 }
 
 export function collectQueuedTargets(input: {
-  senderRoleSlug: AgentTeamRoleSlug;
+  senderRole: AgentTeamRole;
+  teamRoles: AgentTeamRole[];
   messages: AgentTeamDialogueMessageDraft[];
-  nextSuggestedRoles: AgentTeamRoleSlug[];
+  nextSuggestedRoleKeys: string[];
   hasReviewerApproval: boolean;
-}): AgentTeamRoleSlug[] {
-  const targets = new Set<AgentTeamRoleSlug>();
+}): string[] {
+  const targets = new Set<string>();
 
   for (const message of input.messages) {
-    if (isRoleTarget(message.toRoleSlug) && shouldWakeTarget(message.kind)) {
-      targets.add(message.toRoleSlug);
+    if (isRoleTarget(message.toRoleKey) && shouldWakeTarget(message.kind)) {
+      targets.add(message.toRoleKey);
     }
 
     if (message.kind === AGENT_TEAM_MESSAGE_KIND.blocked) {
-      targets.add(AGENT_TEAM_ROLE_SLUG.architect);
+      for (const roleKey of listRoleKeysBySlug(input.teamRoles, AGENT_TEAM_ROLE_SLUG.architect)) {
+        targets.add(roleKey);
+      }
     }
 
     if (message.kind === AGENT_TEAM_MESSAGE_KIND.approval) {
-      targets.add(AGENT_TEAM_ROLE_SLUG.prCreator);
+      for (const roleKey of listRoleKeysBySlug(input.teamRoles, AGENT_TEAM_ROLE_SLUG.prCreator)) {
+        targets.add(roleKey);
+      }
     }
   }
 
-  for (const nextRole of input.nextSuggestedRoles) {
+  for (const nextRole of input.nextSuggestedRoleKeys) {
     targets.add(nextRole);
   }
 
   if (!input.hasReviewerApproval) {
-    targets.delete(AGENT_TEAM_ROLE_SLUG.prCreator);
+    for (const roleKey of listRoleKeysBySlug(input.teamRoles, AGENT_TEAM_ROLE_SLUG.prCreator)) {
+      targets.delete(roleKey);
+    }
   }
 
   return [...targets];
 }
 
 export function assertValidMessageRouting(input: {
-  senderRoleSlug: AgentTeamRoleSlug;
+  senderRole: AgentTeamRole;
+  teamRoles: AgentTeamRole[];
   messages: AgentTeamDialogueMessageDraft[];
 }): void {
+  const rolesByKey = new Map(input.teamRoles.map((role) => [role.roleKey, role]));
+
   for (const message of input.messages) {
-    if (!isRoleTarget(message.toRoleSlug)) {
+    if (!isRoleTarget(message.toRoleKey)) {
       continue;
     }
 
-    if (!canRouteTo(input.senderRoleSlug, message.toRoleSlug)) {
+    const targetRole = rolesByKey.get(message.toRoleKey);
+    if (!targetRole) {
       throw new Error(
-        `Role ${input.senderRoleSlug} cannot address ${message.toRoleSlug} in agent-team dialogue`
+        `Role ${input.senderRole.roleKey} cannot address unknown target ${message.toRoleKey}`
+      );
+    }
+
+    if (!canRouteTo(input.senderRole.slug, targetRole.slug)) {
+      throw new Error(
+        `Role ${input.senderRole.roleKey} cannot address ${message.toRoleKey} in agent-team dialogue`
       );
     }
   }
@@ -103,4 +118,8 @@ function compareRoles(left: AgentTeamRole, right: AgentTeamRole): number {
   }
 
   return left.slug.localeCompare(right.slug);
+}
+
+function listRoleKeysBySlug(roles: AgentTeamRole[], slug: AgentTeamRole["slug"]): string[] {
+  return roles.filter((role) => role.slug === slug).map((role) => role.roleKey);
 }

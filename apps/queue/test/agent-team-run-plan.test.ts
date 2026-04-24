@@ -12,6 +12,7 @@ function makeSnapshot(): AgentTeamSnapshot {
       {
         id: "architect",
         teamId: "team_1",
+        roleKey: "architect",
         slug: "architect",
         label: "Architect",
         provider: "openai",
@@ -22,6 +23,7 @@ function makeSnapshot(): AgentTeamSnapshot {
       {
         id: "reviewer",
         teamId: "team_1",
+        roleKey: "reviewer",
         slug: "reviewer",
         label: "Reviewer",
         provider: "openai",
@@ -32,12 +34,24 @@ function makeSnapshot(): AgentTeamSnapshot {
       {
         id: "code_reader",
         teamId: "team_1",
+        roleKey: "code_reader",
         slug: "code_reader",
         label: "Code Reader",
         provider: "openai",
         toolIds: ["searchCode"],
         maxSteps: 6,
         sortOrder: 2,
+      },
+      {
+        id: "pr_creator",
+        teamId: "team_1",
+        roleKey: "pr_creator",
+        slug: "pr_creator",
+        label: "PR Creator",
+        provider: "openai",
+        toolIds: ["createPullRequest"],
+        maxSteps: 6,
+        sortOrder: 3,
       },
     ],
     edges: [],
@@ -55,14 +69,14 @@ describe("collectQueuedTargets", () => {
   it("queues addressed roles and blocks pr_creator before approval", () => {
     const messages: AgentTeamDialogueMessageDraft[] = [
       {
-        toRoleSlug: "reviewer",
+        toRoleKey: "reviewer",
         kind: "proposal",
         subject: "Need review",
         content: "Please validate the fix scope.",
         refs: [],
       },
       {
-        toRoleSlug: "pr_creator",
+        toRoleKey: "pr_creator",
         kind: "proposal",
         subject: "Draft PR",
         content: "Open the PR once approved.",
@@ -71,9 +85,10 @@ describe("collectQueuedTargets", () => {
     ];
 
     const targets = collectQueuedTargets({
-      senderRoleSlug: "architect",
+      senderRole: makeSnapshot().roles[0]!,
+      teamRoles: makeSnapshot().roles,
       messages,
-      nextSuggestedRoles: [],
+      nextSuggestedRoleKeys: [],
       hasReviewerApproval: false,
     });
 
@@ -81,18 +96,20 @@ describe("collectQueuedTargets", () => {
   });
 
   it("unlocks pr_creator after reviewer approval", () => {
+    const snapshot = makeSnapshot();
     const targets = collectQueuedTargets({
-      senderRoleSlug: "reviewer",
+      senderRole: snapshot.roles[1]!,
+      teamRoles: snapshot.roles,
       messages: [
         {
-          toRoleSlug: "pr_creator",
+          toRoleKey: "pr_creator",
           kind: "approval",
           subject: "Approved",
           content: "Proceed with the PR.",
           refs: [],
         },
       ],
-      nextSuggestedRoles: [],
+      nextSuggestedRoleKeys: [],
       hasReviewerApproval: true,
     });
 
@@ -102,12 +119,14 @@ describe("collectQueuedTargets", () => {
 
 describe("assertValidMessageRouting", () => {
   it("rejects invalid role-to-role routing", () => {
+    const snapshot = makeSnapshot();
     expect(() =>
       assertValidMessageRouting({
-        senderRoleSlug: "code_reader",
+        senderRole: snapshot.roles[2]!,
+        teamRoles: snapshot.roles,
         messages: [
           {
-            toRoleSlug: "pr_creator",
+            toRoleKey: "pr_creator",
             kind: "proposal",
             subject: "Ship it",
             content: "Create the PR now.",
