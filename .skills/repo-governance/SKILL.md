@@ -1,3 +1,11 @@
+---
+name: repo-governance
+description: |
+  Repository governance workflow for TrustLoop. Use when the task involves
+  repository-level conventions, skill management, keeping AGENTS/CLAUDE context
+  tidy, or cleaning up canonical skill mirrors and symlinks.
+---
+
 # Repo Governance Skill
 
 Use this skill when the task involves repository-level conventions, skill management, or keeping foundational docs tidy.
