@@ -2,6 +2,25 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.15.0] - 2026-04-25
+
+### Added
+- **Operators can now answer the architect's questions and resume an agent-team
+  run from the inbox.** A new "Resolve" tab on the agent-team panel lights up
+  the moment a run exits to `waiting`. It groups the architect's open questions
+  by who can answer them: operator-target questions get an inline textarea that
+  posts the answer back to the architect's inbox without restarting the
+  workflow; customer-target questions show the architect's draft reply with a
+  one-click copy so the operator can paste it into Slack; internal-target
+  questions are listed as informational so the operator can see what peer
+  roles still owe an answer. A single "Resume run" button at the bottom is the
+  one explicit gate that re-dispatches the workflow — every restart stays
+  operator-driven.
+- `agentTeam.getPendingResolutionQuestions` tRPC query: returns every
+  `question_dispatched` event without a matching `question_answered`,
+  carrying `target`, `question`, `suggestedReply`, `assignedRole`, and
+  `askedByRoleKey` so the panel renders without parsing the raw event log.
+
 ## [0.2.14.0] - 2026-04-25
 
 ### Added
