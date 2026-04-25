@@ -80,6 +80,18 @@
 **Priority:** P2 — useful guard, not blocking. Land before any non-trivial prompt edit.
 **Depends on:** Nothing — builds on already-shipped infrastructure (agent service, resolution schema, role registry).
 
+### Agent-team failed-run recovery for human-resolution routing failures
+
+**What:** Add an operator/admin recovery path for failed agent-team runs whose last failure was a persistence/routing contract bug, such as `Role architect cannot address unknown target operator`. The path should let an operator reprocess the last turn result or resume the run after the queue-side bug is fixed, without manually editing DB rows.
+
+**Why:** The queue now bridges `operator`/`customer` dialogue messages into `question_dispatched` events, but runs that failed before this fix remain failed. A recovery path prevents transient queue bugs from permanently stranding useful agent work.
+
+**Context:** Added after PR #105 fixed future human-resolution target handling in `persistRoleTurnResult`. Keep this narrow: recover failed runs only when the stored events/messages prove the failure is from a known safe persistence bug, not arbitrary model output.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** PR #105 landing.
+
 ## Auth & Onboarding
 
 ### Self-serve workspace creation UI
