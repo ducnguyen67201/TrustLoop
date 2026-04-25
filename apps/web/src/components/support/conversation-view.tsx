@@ -169,8 +169,8 @@ export function ConversationView({
           {/* Left: messages + composer. minSize keeps the message column legible. */}
           <ResizablePanel
             id="messages"
-            defaultSize="70%"
-            minSize="45%"
+            defaultSize={70}
+            minSize={45}
             className="flex min-w-0 flex-col"
           >
             <MessageList
@@ -200,9 +200,9 @@ export function ConversationView({
               from collapsing past the point where its tabs and inboxes still render. */}
           <ResizablePanel
             id="insights"
-            defaultSize="30%"
-            minSize="22%"
-            maxSize="50%"
+            defaultSize={30}
+            minSize={22}
+            maxSize={50}
             className="min-w-0"
           >
             <ConversationInsightsPanel

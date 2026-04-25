@@ -34,6 +34,7 @@ FROM base AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV SKIP_ENV_VALIDATION=1
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY package.json tsconfig.base.json ./
 COPY apps/web ./apps/web
 COPY packages/brand ./packages/brand

@@ -3,8 +3,9 @@
 import { cn } from "@/lib/utils";
 import * as ResizablePrimitive from "react-resizable-panels";
 
-type ResizablePanelGroupProps = ResizablePrimitive.GroupProps & {
-  direction?: ResizablePrimitive.GroupProps["orientation"];
+type ResizablePanelGroupProps = Omit<ResizablePrimitive.PanelGroupProps, "direction"> & {
+  direction?: ResizablePrimitive.PanelGroupProps["direction"];
+  orientation?: ResizablePrimitive.PanelGroupProps["direction"];
 };
 
 function ResizablePanelGroup({
@@ -13,13 +14,13 @@ function ResizablePanelGroup({
   orientation,
   ...props
 }: ResizablePanelGroupProps) {
-  const resolvedOrientation = orientation ?? direction;
+  const resolvedDirection = orientation ?? direction;
 
   return (
-    <ResizablePrimitive.Group
+    <ResizablePrimitive.PanelGroup
       data-slot="resizable-panel-group"
       className={cn("flex h-full w-full aria-[orientation=vertical]:flex-col", className)}
-      orientation={resolvedOrientation}
+      direction={resolvedDirection ?? "horizontal"}
       {...props}
     />
   );
@@ -33,14 +34,14 @@ function ResizableHandle({
   withHandle,
   className,
   ...props
-}: ResizablePrimitive.SeparatorProps & {
+}: ResizablePrimitive.PanelResizeHandleProps & {
   withHandle?: boolean;
 }) {
   return (
-    <ResizablePrimitive.Separator
+    <ResizablePrimitive.PanelResizeHandle
       data-slot="resizable-handle"
       className={cn(
-        "relative flex w-px items-center justify-center bg-border ring-offset-background transition-colors after:absolute after:inset-y-0 after:left-1/2 after:w-2 after:-translate-x-1/2 hover:bg-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[separator=active]:bg-primary aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-2 aria-[orientation=horizontal]:after:w-full aria-[orientation=horizontal]:after:-translate-y-1/2 aria-[orientation=horizontal]:after:translate-x-0 [&[aria-orientation=horizontal]>div]:rotate-90",
+        "relative flex w-px items-center justify-center bg-border ring-offset-background transition-colors after:absolute after:inset-y-0 after:left-1/2 after:w-2 after:-translate-x-1/2 hover:bg-primary/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[resize-handle-state=drag]:bg-primary data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-2 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 data-[panel-group-direction=vertical]:after:translate-x-0 [&[data-panel-group-direction=vertical]>div]:rotate-90",
         className
       )}
       {...props}
@@ -48,7 +49,7 @@ function ResizableHandle({
       {withHandle ? (
         <div className="z-10 flex h-6 w-1 shrink-0 items-center justify-center rounded-sm bg-border" />
       ) : null}
-    </ResizablePrimitive.Separator>
+    </ResizablePrimitive.PanelResizeHandle>
   );
 }
 
