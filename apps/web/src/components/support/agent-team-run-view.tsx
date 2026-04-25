@@ -4,6 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  getAgentRoleColorStyle,
+  getAgentRoleTargetColorStyle,
+} from "@/lib/agent-team/role-metadata";
 import { RiRefreshLine, RiSparklingLine } from "@remixicon/react";
 import {
   AGENT_TEAM_MESSAGE_KIND,
@@ -131,6 +135,7 @@ export function AgentTeamRunView({
                 <div className="contents" key={row.roleKey}>
                   <span
                     className={`min-w-0 truncate ${isActive ? "font-semibold text-primary" : "font-medium"}`}
+                    style={isActive ? undefined : getAgentRoleColorStyle(row.roleKey)}
                     title={formatRoleRef(roleLabels, row.roleKey)}
                   >
                     {isActive ? "▸ " : ""}
@@ -313,10 +318,14 @@ function MessageRow({
       </span>
       <div className="min-w-0">
         <div className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">
-            [{formatRoleRef(roleLabels, message.fromRoleKey)}
+          <span className="font-semibold text-foreground">[</span>
+          <span className="font-semibold" style={getAgentRoleColorStyle(message.fromRoleKey)}>
+            {formatRoleRef(roleLabels, message.fromRoleKey)}
           </span>
-          <span> → {formatTargetRef(roleLabels, message.toRoleKey)}</span>
+          <span> → </span>
+          <span className="font-semibold" style={getAgentRoleTargetColorStyle(message.toRoleKey)}>
+            {formatTargetRef(roleLabels, message.toRoleKey)}
+          </span>
           <span className="font-semibold text-foreground">] </span>
           <span>({message.kind.replaceAll("_", " ")}):</span>
           <span className="ml-1 text-muted-foreground/70">{message.subject}</span>

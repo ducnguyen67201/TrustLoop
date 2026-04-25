@@ -1,8 +1,8 @@
 "use client";
 
-import { getRoleVisual } from "@/components/settings/agent-team/role-metadata";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getRoleVisual } from "@/lib/agent-team/role-metadata";
 import { RiDeleteBinLine, RiStarLine } from "@remixicon/react";
 import { AGENT_TEAM_ROLE_SLUG, type AgentTeamRole } from "@shared/types";
 import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
