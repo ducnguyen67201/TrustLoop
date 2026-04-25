@@ -34629,8 +34629,8 @@
       "source_file": "apps/web/src/components/settings/agent-team/team-graph-role-node.tsx",
       "source_location": "L22",
       "weight": 1.0,
-      "_src": "role_metadata_getrolevisual",
-      "_tgt": "team_graph_role_node_teamgraphrolenode",
+      "_src": "team_graph_role_node_teamgraphrolenode",
+      "_tgt": "role_metadata_getrolevisual",
       "source": "team_graph_role_node_teamgraphrolenode",
       "target": "role_metadata_getrolevisual"
     },
