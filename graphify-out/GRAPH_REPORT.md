@@ -1,11 +1,11 @@
-# Graph Report - tehsudihfsdhfjsdfbj  (2026-04-24)
+# Graph Report - tehsudihfsdhfjsdfbj  (2026-04-25)
 
 ## Corpus Check
-- 544 files · ~283,214 words
+- 544 files · ~282,838 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1576 nodes · 1877 edges · 54 communities detected
+- 1572 nodes · 1868 edges · 54 communities detected
 - Extraction: 77% EXTRACTED · 23% INFERRED · 0% AMBIGUOUS · INFERRED: 427 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
@@ -42,11 +42,11 @@
 - [[_COMMUNITY_Community 29|Community 29]]
 - [[_COMMUNITY_Community 30|Community 30]]
 - [[_COMMUNITY_Community 31|Community 31]]
-- [[_COMMUNITY_Community 32|Community 32]]
-- [[_COMMUNITY_Community 34|Community 34]]
-- [[_COMMUNITY_Community 37|Community 37]]
+- [[_COMMUNITY_Community 33|Community 33]]
+- [[_COMMUNITY_Community 36|Community 36]]
+- [[_COMMUNITY_Community 38|Community 38]]
 - [[_COMMUNITY_Community 39|Community 39]]
-- [[_COMMUNITY_Community 40|Community 40]]
+- [[_COMMUNITY_Community 51|Community 51]]
 - [[_COMMUNITY_Community 52|Community 52]]
 - [[_COMMUNITY_Community 53|Community 53]]
 - [[_COMMUNITY_Community 54|Community 54]]
@@ -82,26 +82,26 @@
   packages/rest/src/services/agent-team/run-event-service.ts → apps/web/src/app/api/slack/oauth/callback/route.ts
 - `readFileData()` --calls--> `GET()`  [INFERRED]
   packages/rest/src/services/support/support-attachment-service.ts → apps/web/src/app/api/slack/oauth/callback/route.ts
-- `main()` --calls--> `GET()`  [INFERRED]
-  scripts/check-docs-links.mjs → apps/web/src/app/api/slack/oauth/callback/route.ts
 - `sendWithRetry()` --calls--> `GET()`  [INFERRED]
   packages/sdk-browser/src/transport.ts → apps/web/src/app/api/slack/oauth/callback/route.ts
 - `canRouteTo()` --calls--> `assertValidMessageRouting()`  [INFERRED]
   packages/types/src/agent-team/agent-team-routing-policy.ts → apps/queue/src/domains/agent-team/agent-team-run-routing.ts
+- `restoreAnalysisContext()` --calls--> `loadAnalysisContext()`  [INFERRED]
+  packages/types/src/support/state-machines/analysis-state-machine.ts → apps/queue/src/domains/support/support-analysis.activity.ts
 
 ## Communities
 
 ### Community 0 - "Community 0"
-Cohesion: 0.03
-Nodes (52): buildRoleExecutionBatches(), extractApiKeyPrefix(), generateWorkspaceApiKeyMaterial(), hashApiKeySecret(), verifyApiKeySecret(), createTRPCContext(), resolveApiKeyAuth(), resolveWorkspaceContext() (+44 more)
+Cohesion: 0.04
+Nodes (57): InvalidDraftDispatchTransitionError, restoreDraftDispatchContext(), transitionDraftDispatch(), InvalidDraftTransitionError, restoreDraftContext(), transitionDraft(), findOrCreateUserFromProfile(), run() (+49 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.04
-Nodes (52): findOrCreateUserFromProfile(), run(), buildCookieValue(), hmacHex(), main(), requireEnv(), main(), registerAgentTeamArchiveSchedule() (+44 more)
+Nodes (49): buildRoleExecutionBatches(), anchorize(), collectMarkdownFiles(), extractAnchors(), isExternal(), main(), splitAnchor(), walk() (+41 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.04
-Nodes (50): buildTeamTurnUserMessage(), buildToolTraceMessages(), resolveProviderConfig(), createAgentForRole(), extractToolCalls(), formatDialogueMessages(), parseAgentOutput(), parseTeamTurnOutput() (+42 more)
+Nodes (51): buildTeamTurnUserMessage(), buildToolTraceMessages(), resolveProviderConfig(), createAgentForRole(), extractToolCalls(), formatDialogueMessages(), parseAgentOutput(), parseTeamTurnOutput() (+43 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.05
@@ -109,15 +109,15 @@ Nodes (29): captureClicks(), captureConsoleErrors(), captureExceptions(), captur
 
 ### Community 4 - "Community 4"
 Cohesion: 0.08
-Nodes (40): buildReturnPath(), disconnectGitHubAction(), getActionErrorMessage(), getString(), githubSettingsPath(), preparePrIntentAction(), refreshGitHubReposAction(), searchEvidenceAction() (+32 more)
+Nodes (41): buildReturnPath(), disconnectGitHubAction(), getActionErrorMessage(), getString(), githubSettingsPath(), preparePrIntentAction(), refreshGitHubReposAction(), searchEvidenceAction() (+33 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.06
 Nodes (33): isRoleTarget(), canRouteTo(), buildOpenQuestionRow(), claimNextQueuedInbox(), getRunProgress(), getRunProgressSnapshot(), initializeRunState(), loadTurnContext() (+25 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.07
-Nodes (33): buildAuthorizationUrl(), autoJoinUserFromVerifiedGoogleProfile(), buildRedirectUri(), determineOutcome(), handleGoogleOAuthCallback(), handleGoogleOAuthStart(), redirectToLogin(), resolveWorkspaceAfterLogin() (+25 more)
+Cohesion: 0.09
+Nodes (32): buildAuthorizationUrl(), autoJoinUserFromVerifiedGoogleProfile(), buildRedirectUri(), determineOutcome(), handleGoogleOAuthCallback(), handleGoogleOAuthStart(), redirectToLogin(), resolveWorkspaceAfterLogin() (+24 more)
 
 ### Community 7 - "Community 7"
 Cohesion: 0.12
@@ -128,56 +128,56 @@ Cohesion: 0.1
 Nodes (29): assign(), extractEventThreadTs(), extractSlackMessageTs(), loadConversationDeliveryContext(), loadReplyPayloadForCommand(), normalizeReplyPayload(), resolveDeliveryThreadTs(), retryDelivery() (+21 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.11
-Nodes (24): anchorize(), collectMarkdownFiles(), extractAnchors(), isExternal(), main(), splitAnchor(), walk(), createConsentManager() (+16 more)
+Cohesion: 0.09
+Nodes (27): extractApiKeyPrefix(), generateWorkspaceApiKeyMaterial(), hashApiKeySecret(), verifyApiKeySecret(), createTRPCContext(), resolveApiKeyAuth(), resolveWorkspaceContext(), POST() (+19 more)
 
 ### Community 10 - "Community 10"
+Cohesion: 0.08
+Nodes (16): WorkspaceLayout(), NotFound(), AgentTeamPanelPreviewPage(), closeListenerIfIdle(), ensureListener(), fanOutEvent(), handleNotification(), hasSubscribers() (+8 more)
+
+### Community 11 - "Community 11"
 Cohesion: 0.09
 Nodes (16): extractRawFiles(), isRecord(), normalizeSlackMessageEvent(), readString(), shouldDropIngressEvent(), fetchEmail(), getCachedProfile(), refreshProfile() (+8 more)
 
-### Community 11 - "Community 11"
+### Community 12 - "Community 12"
 Cohesion: 0.11
 Nodes (20): InvalidAnalysisTransitionError, restoreAnalysisContext(), transitionAnalysis(), findByEmails(), buildSnapshot(), buildThreadSnapshot(), callAgentService(), emitAnalysisCompletedEvent() (+12 more)
-
-### Community 12 - "Community 12"
-Cohesion: 0.13
-Nodes (17): InvalidDraftDispatchTransitionError, restoreDraftDispatchContext(), transitionDraftDispatch(), InvalidDraftTransitionError, restoreDraftContext(), transitionDraft(), loadDispatch(), loadDraft() (+9 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.12
 Nodes (19): createSupportAgent(), renderPromptDocument(), renderPromptSection(), renderProseSection(), resolveModel(), hasUniformPrimitiveArray(), hasUniformPrimitiveObjectArray(), isRecord() (+11 more)
 
 ### Community 14 - "Community 14"
-Cohesion: 0.12
-Nodes (15): generate(), fetchFileContents(), fetchLatestCommitSha(), fetchRepoTree(), createDraftPullRequest(), tryGetFileSha(), buildChunkContent(), chunkFile() (+7 more)
-
-### Community 15 - "Community 15"
 Cohesion: 0.09
 Nodes (12): ConversationView(), NoWorkspacePage(), useAnalysis(), useAuthSession(), useConversationPolling(), useConversationReply(), useEventReassign(), useReassignCandidates() (+4 more)
 
-### Community 16 - "Community 16"
+### Community 15 - "Community 15"
 Cohesion: 0.13
 Nodes (17): writeAuditEvent(), handleSlackOAuthCallback(), redirectToSettings(), base64UrlDecode(), base64UrlEncode(), completeInstall(), disconnect(), exchangeCode() (+9 more)
+
+### Community 16 - "Community 16"
+Cohesion: 0.14
+Nodes (14): fetchFileContents(), fetchLatestCommitSha(), fetchRepoTree(), createDraftPullRequest(), tryGetFileSha(), buildChunkContent(), chunkFile(), hashContent() (+6 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.12
 Nodes (6): createConversationContext(), InvalidConversationTransitionError, restoreConversationContext(), transitionConversation(), tryConversationTransition(), ctx()
 
 ### Community 18 - "Community 18"
-Cohesion: 0.21
-Nodes (15): archiveAgentTeamEvents(), archiveAndDropPartition(), assertSafePartitionName(), createPartition(), cutoffDate(), isoDate(), listPartitions(), logSkippedPartition() (+7 more)
-
-### Community 19 - "Community 19"
 Cohesion: 0.16
 Nodes (13): WorkspaceHomePage(), WorkspaceSettingsPage(), replaceWorkspaceInPath(), workspaceAgentTeamPath(), workspaceAiAnalysisPath(), workspaceApiKeysPath(), workspaceGeneralPath(), workspaceGithubPath() (+5 more)
+
+### Community 19 - "Community 19"
+Cohesion: 0.22
+Nodes (13): processSlackWebhookFromHttpRequest(), handleSlackEventsWebhook(), assertReplayWindow(), buildSlackBaseString(), computeSlackSignature(), getSlackSigningSecret(), toBuffer(), verifyRequest() (+5 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.18
 Nodes (6): createAgentTeamRouter(), Input(), buildRouter(), createAppRouter(), createSupportAnalysisRouter(), workspaceRoleProcedure()
 
 ### Community 21 - "Community 21"
-Cohesion: 0.29
-Nodes (11): assertReplayWindow(), buildSlackBaseString(), computeSlackSignature(), getSlackSigningSecret(), toBuffer(), verifyRequest(), buildCanonicalIdempotencyKey(), extractRoutingFields() (+3 more)
+Cohesion: 0.25
+Nodes (11): archiveAgentTeamEvents(), archiveAndDropPartition(), assertSafePartitionName(), cutoffDate(), isoDate(), listPartitions(), logSkippedPartition(), readPartitionBatch() (+3 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.18
@@ -196,80 +196,80 @@ Cohesion: 0.2
 Nodes (4): buildInitialNodePositions(), computeAutoLayout(), hasStoredLayout(), buildFlowNodes()
 
 ### Community 26 - "Community 26"
-Cohesion: 0.35
-Nodes (9): aggregateErrors(), buildLastActions(), compileDigest(), extractConsoleErrors(), extractNetworkFailures(), extractRouteHistory(), extractRouteUrl(), findFailurePoint() (+1 more)
-
-### Community 27 - "Community 27"
 Cohesion: 0.29
 Nodes (7): jsonWithCors(), sessionCorsHeaders(), withCorsHeaders(), handleSessionIngest(), handleSessionIngestOptions(), handleReplayChunk(), handleReplayChunkOptions()
 
-### Community 28 - "Community 28"
+### Community 27 - "Community 27"
 Cohesion: 0.42
 Nodes (8): buildTrpcQueryUrl(), getStoredCsrfToken(), logTrpcHttp(), nowMs(), resolveErrorMessage(), resolveTrpcData(), trpcMutation(), trpcQuery()
 
-### Community 29 - "Community 29"
+### Community 28 - "Community 28"
 Cohesion: 0.22
 Nodes (4): ConflictError, PermanentExternalError, TransientExternalError, ValidationError
 
-### Community 30 - "Community 30"
+### Community 29 - "Community 29"
 Cohesion: 0.22
 Nodes (2): SummaryCards(), formatDurationMs()
 
-### Community 31 - "Community 31"
+### Community 30 - "Community 30"
 Cohesion: 0.25
 Nodes (2): handleAddMember(), handleUpdateRole()
 
-### Community 32 - "Community 32"
+### Community 31 - "Community 31"
 Cohesion: 0.25
 Nodes (2): buildSessionDigestFixture(), reconstructSessionDigest()
 
-### Community 34 - "Community 34"
+### Community 33 - "Community 33"
 Cohesion: 0.33
 Nodes (2): SidebarMenuButton(), useSidebar()
 
-### Community 37 - "Community 37"
+### Community 36 - "Community 36"
 Cohesion: 0.6
 Nodes (5): containsAny(), firstLines(), main(), maskDatabaseUrl(), runPrismaStatus()
 
-### Community 39 - "Community 39"
+### Community 38 - "Community 38"
 Cohesion: 0.47
 Nodes (4): previousDayStart(), rollupAgentTeamMetricsForDay(), roundNullable(), agentTeamMetricsRollupWorkflow()
 
-### Community 40 - "Community 40"
+### Community 39 - "Community 39"
 Cohesion: 0.33
 Nodes (3): AgentTeamPanel(), useAgentTeamRunStream(), useAgentTeamRun()
 
-### Community 52 - "Community 52"
+### Community 51 - "Community 51"
 Cohesion: 0.4
 Nodes (1): AgentTeamLayoutConflictError
 
-### Community 53 - "Community 53"
+### Community 52 - "Community 52"
 Cohesion: 0.4
 Nodes (2): handleSubmit(), loginUser()
 
-### Community 54 - "Community 54"
+### Community 53 - "Community 53"
 Cohesion: 0.83
 Nodes (3): main(), parseFrontmatter(), stripQuotes()
 
-### Community 55 - "Community 55"
+### Community 54 - "Community 54"
 Cohesion: 0.67
 Nodes (2): createMockClient(), createRealisticDelegate()
 
-### Community 56 - "Community 56"
+### Community 55 - "Community 55"
 Cohesion: 0.67
 Nodes (2): createMockDelegate(), createMockRawClient()
 
-### Community 57 - "Community 57"
+### Community 56 - "Community 56"
 Cohesion: 0.67
 Nodes (2): applySoftDeleteFilter(), isSoftDeleteModel()
 
-### Community 58 - "Community 58"
+### Community 57 - "Community 57"
 Cohesion: 0.83
 Nodes (3): createWorkspaceForUser(), main(), parseArgs()
 
-### Community 59 - "Community 59"
+### Community 58 - "Community 58"
 Cohesion: 0.5
 Nodes (1): InvalidFsmTransitionError
+
+### Community 59 - "Community 59"
+Cohesion: 0.83
+Nodes (3): base64UrlEncode(), buildState(), hmacSign()
 
 ### Community 63 - "Community 63"
 Cohesion: 0.5
@@ -308,25 +308,25 @@ Cohesion: 1.0
 Nodes (2): formatAnnotationTime(), SystemAnnotation()
 
 ## Knowledge Gaps
-- **Thin community `Community 30`** (9 nodes): `summary-cards.tsx`, `timeline-utils.ts`, `SummaryCards()`, `computeTimelineRange()`, `formatDurationMs()`, `formatFullDate()`, `formatShortDate()`, `generateDateMarkers()`, `isOpen()`
+- **Thin community `Community 29`** (9 nodes): `summary-cards.tsx`, `timeline-utils.ts`, `SummaryCards()`, `computeTimelineRange()`, `formatDurationMs()`, `formatFullDate()`, `formatShortDate()`, `generateDateMarkers()`, `isOpen()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 31`** (9 nodes): `page.tsx`, `page.tsx`, `handleAddMember()`, `handleCopyId()`, `handleRename()`, `handleSwitch()`, `handleUpdateRole()`, `roleBadgeClass()`, `roleDescription()`
+- **Thin community `Community 30`** (9 nodes): `page.tsx`, `page.tsx`, `handleAddMember()`, `handleCopyId()`, `handleRename()`, `handleSwitch()`, `handleUpdateRole()`, `roleBadgeClass()`, `roleDescription()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 32`** (8 nodes): `prompt-format-benchmark-fixtures.test.ts`, `session-digest.ts`, `buildSessionDigestFixture()`, `parseAction()`, `parseConsoleEntry()`, `parseError()`, `parseNetworkFailure()`, `reconstructSessionDigest()`
+- **Thin community `Community 31`** (8 nodes): `prompt-format-benchmark-fixtures.test.ts`, `session-digest.ts`, `buildSessionDigestFixture()`, `parseAction()`, `parseConsoleEntry()`, `parseError()`, `parseNetworkFailure()`, `reconstructSessionDigest()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 34`** (7 nodes): `sidebar.tsx`, `cn()`, `handleKeyDown()`, `SidebarMenu()`, `SidebarMenuButton()`, `SidebarMenuItem()`, `useSidebar()`
+- **Thin community `Community 33`** (7 nodes): `sidebar.tsx`, `cn()`, `handleKeyDown()`, `SidebarMenu()`, `SidebarMenuButton()`, `SidebarMenuItem()`, `useSidebar()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 52`** (5 nodes): `use-agent-teams.ts`, `AgentTeamLayoutConflictError`, `.constructor()`, `replaceTeam()`, `useAgentTeams()`
+- **Thin community `Community 51`** (5 nodes): `use-agent-teams.ts`, `AgentTeamLayoutConflictError`, `.constructor()`, `replaceTeam()`, `useAgentTeams()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 53`** (5 nodes): `login-form.tsx`, `sdk.ts`, `handleSubmit()`, `initSDK()`, `loginUser()`
+- **Thin community `Community 52`** (5 nodes): `login-form.tsx`, `sdk.ts`, `handleSubmit()`, `initSDK()`, `loginUser()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 55`** (4 nodes): `createMockClient()`, `createRealisticDelegate()`, `load()`, `hard-delete-integration.test.ts`
+- **Thin community `Community 54`** (4 nodes): `createMockClient()`, `createRealisticDelegate()`, `load()`, `hard-delete-integration.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (4 nodes): `createMockDelegate()`, `createMockRawClient()`, `importHardDelete()`, `hard-delete.test.ts`
+- **Thin community `Community 55`** (4 nodes): `createMockDelegate()`, `createMockRawClient()`, `importHardDelete()`, `hard-delete.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (4 nodes): `soft-delete.ts`, `applySoftDeleteFilter()`, `isSoftDeleteModel()`, `lowerFirst()`
+- **Thin community `Community 56`** (4 nodes): `soft-delete.ts`, `applySoftDeleteFilter()`, `isSoftDeleteModel()`, `lowerFirst()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 59`** (4 nodes): `defineFsm()`, `InvalidFsmTransitionError`, `.constructor()`, `fsm.ts`
+- **Thin community `Community 58`** (4 nodes): `defineFsm()`, `InvalidFsmTransitionError`, `.constructor()`, `fsm.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 63`** (4 nodes): `request-access-form.tsx`, `use-workspace-access-request.ts`, `RequestAccessForm()`, `useWorkspaceAccessRequest()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -348,12 +348,12 @@ Nodes (2): formatAnnotationTime(), SystemAnnotation()
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `GET()` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 9`, `Community 16`, `Community 24`, `Community 26`?**
-  _High betweenness centrality (0.089) - this node is a cross-community bridge._
-- **Why does `update()` connect `Community 1` to `Community 0`, `Community 2`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 10`, `Community 11`, `Community 12`, `Community 14`, `Community 16`, `Community 21`, `Community 24`?**
-  _High betweenness centrality (0.072) - this node is a cross-community bridge._
-- **Why does `create()` connect `Community 1` to `Community 0`, `Community 2`, `Community 4`, `Community 6`, `Community 8`, `Community 10`, `Community 11`, `Community 12`, `Community 14`, `Community 16`, `Community 21`?**
-  _High betweenness centrality (0.043) - this node is a cross-community bridge._
+- **Why does `GET()` connect `Community 1` to `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 9`, `Community 10`, `Community 15`, `Community 19`, `Community 24`?**
+  _High betweenness centrality (0.094) - this node is a cross-community bridge._
+- **Why does `update()` connect `Community 0` to `Community 2`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 11`, `Community 12`, `Community 15`, `Community 16`, `Community 19`, `Community 24`, `Community 59`?**
+  _High betweenness centrality (0.077) - this node is a cross-community bridge._
+- **Why does `create()` connect `Community 0` to `Community 2`, `Community 4`, `Community 6`, `Community 8`, `Community 9`, `Community 11`, `Community 12`, `Community 15`, `Community 16`, `Community 19`?**
+  _High betweenness centrality (0.040) - this node is a cross-community bridge._
 - **Are the 45 inferred relationships involving `GET()` (e.g. with `main()` and `sendWithRetry()`) actually correct?**
   _`GET()` has 45 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 45 inferred relationships involving `update()` (e.g. with `softUpsert()` and `main()`) actually correct?**
