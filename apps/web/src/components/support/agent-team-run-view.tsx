@@ -83,7 +83,10 @@ export function AgentTeamRunView({
   }
 
   return (
-    <div className="space-y-3 font-mono text-sm" data-testid="agent-team-run-panel">
+    <div
+      className="flex h-full min-h-0 flex-col gap-3 font-mono text-sm"
+      data-testid="agent-team-run-panel"
+    >
       {/* Summary strip — dense row per DESIGN.md, not a tile grid. */}
       <div className="space-y-2 rounded-md border border-border/50 p-3">
         <div className="flex items-center justify-between gap-2">
@@ -158,7 +161,7 @@ export function AgentTeamRunView({
 
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
-      <Tabs defaultValue="chat" className="w-full">
+      <Tabs defaultValue="chat" className="flex min-h-0 w-full flex-1 flex-col">
         <TabsList className="grid w-full grid-cols-5 gap-0.5">
           <TabsTrigger value="chat" className="min-w-0 px-1 text-xs">
             Chat
@@ -180,8 +183,11 @@ export function AgentTeamRunView({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="chat" className="mt-3">
-          <ScrollArea className="h-80 rounded-md border border-border/50">
+        <TabsContent
+          value="chat"
+          className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          <ScrollArea className="h-full min-h-0 flex-1 rounded-md border border-border/50">
             <div className="space-y-1 p-3">
               {messageCount === 0 ? (
                 <ChatEmptyState isStreaming={isStreaming} />
@@ -204,16 +210,22 @@ export function AgentTeamRunView({
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="raw" className="mt-3">
-          <ScrollArea className="h-80 rounded-md border border-border/50">
+        <TabsContent
+          value="raw"
+          className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          <ScrollArea className="h-full min-h-0 flex-1 rounded-md border border-border/50">
             <pre className="whitespace-pre-wrap p-3 text-xs leading-relaxed">
               {rawTranscript || "(empty transcript)"}
             </pre>
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="facts" className="mt-3">
-          <ScrollArea className="h-80 rounded-md border border-border/50">
+        <TabsContent
+          value="facts"
+          className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          <ScrollArea className="h-full min-h-0 flex-1 rounded-md border border-border/50">
             <div className="space-y-3 p-3">
               {factCount === 0 ? (
                 <EmptyState
@@ -228,8 +240,11 @@ export function AgentTeamRunView({
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="questions" className="mt-3">
-          <ScrollArea className="h-80 rounded-md border border-border/50">
+        <TabsContent
+          value="questions"
+          className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          <ScrollArea className="h-full min-h-0 flex-1 rounded-md border border-border/50">
             <div className="space-y-3 p-3">
               {run.openQuestions?.length ? (
                 run.openQuestions.map((question) => (
@@ -246,8 +261,11 @@ export function AgentTeamRunView({
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="inboxes" className="mt-3">
-          <ScrollArea className="h-80 rounded-md border border-border/50">
+        <TabsContent
+          value="inboxes"
+          className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          <ScrollArea className="h-full min-h-0 flex-1 rounded-md border border-border/50">
             <div className="space-y-3 p-3">
               {run.roleInboxes?.length ? (
                 run.roleInboxes.map((inbox) => <InboxRow key={inbox.id} inbox={inbox} />)
