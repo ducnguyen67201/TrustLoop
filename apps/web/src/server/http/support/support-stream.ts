@@ -61,12 +61,8 @@ export async function handleSupportStream(
         }
       };
 
-      const closeStream = () => {
-        void cleanup(true);
-      };
-
       const handleAbort = () => {
-        closeStream();
+        void cleanup(false);
       };
 
       unsubscribe = supportRealtime.subscribe(workspaceId, (event) => {

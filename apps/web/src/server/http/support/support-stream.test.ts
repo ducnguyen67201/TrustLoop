@@ -65,4 +65,25 @@ describe("handleSupportStream", () => {
 
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
+
+  it("cleans up without closing the controller when the request aborts", async () => {
+    const unsubscribe = vi.fn().mockResolvedValue(undefined);
+    mockSubscribe.mockReturnValue(unsubscribe);
+    const abortController = new AbortController();
+
+    const request = new Request("https://example.com/api/ws_123/support/stream", {
+      signal: abortController.signal,
+    });
+    const response = await handleSupportStream(request as never, "ws_123");
+
+    expect(response.status).toBe(200);
+
+    abortController.abort();
+    await Promise.resolve();
+
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+
+    await response.body?.cancel();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
 });
