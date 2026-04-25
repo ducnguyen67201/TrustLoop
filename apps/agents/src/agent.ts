@@ -1,4 +1,6 @@
 import { Agent } from "@mastra/core/agent";
+import { env } from "@shared/env";
+import { NODE_ENV, checkEnv } from "@shared/env/shared";
 import * as llmManager from "@shared/rest/services/llm-manager-service";
 import {
   AGENT_TEAM_MESSAGE_KIND,
@@ -43,6 +45,7 @@ import { searchSentryTool } from "./tools/search-sentry";
 
 const DEFAULT_MAX_STEPS = 8;
 const DEFAULT_TEAM_MAX_STEPS = 6;
+const shouldLogLocalAgentDebug = checkEnv(env.NODE_ENV, NODE_ENV.DEVELOPMENT);
 
 const AVAILABLE_TOOLS = {
   searchCode: searchCodeTool,
@@ -109,6 +112,15 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     model: route.targets[0].model,
     maxSteps,
   });
+  logLocalAgentDebug("[agents:debug] Agent selected", {
+    endpoint: "/analyze",
+    agentId: "trustloop-support-agent",
+    agentSlug: "support-analysis",
+    conversationId: request.conversationId,
+    provider: route.targets[0].provider,
+    model: route.targets[0].model,
+    availableTools: ["searchCode", "createPullRequest"],
+  });
 
   const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${renderThreadSnapshotPrompt(request.threadSnapshot)}`;
   const { result, target } = await llmManager.executeWithFallback(route, async (candidate) => {
@@ -122,11 +134,21 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
 
   const output = parseAgentOutput(result.text);
   const toolCalls = extractToolCalls(result);
+  logToolUsage("[agents:debug] Analysis tool usage", {
+    endpoint: "/analyze",
+    agentId: "trustloop-support-agent",
+    agentSlug: "support-analysis",
+    conversationId: request.conversationId,
+    provider: target.provider,
+    model: target.model,
+    steps: result.steps?.length ?? 0,
+    toolCalls,
+  });
 
   console.log("[agents] Analysis complete", {
     conversationId: request.conversationId,
     durationMs: Date.now() - startTime,
-    toolCalls: toolCalls.length,
+    toolCallCount: toolCalls.length,
     steps: result.steps?.length ?? 0,
     confidence: output.analysis.confidence,
     severity: output.analysis.severity,
@@ -159,15 +181,57 @@ export async function runTeamTurn(
 
   const agent = createAgentForRole(request.role, target);
   const userMessage = buildTeamTurnUserMessage(request);
+  logLocalAgentDebug("[agents:debug] Starting team turn", {
+    endpoint: "/team-turn",
+    agentId: `trustloop-agent-team-${request.role.roleKey}`,
+    agentSlug: request.role.slug,
+    runId: request.runId,
+    conversationId: request.conversationId ?? null,
+    roleKey: request.role.roleKey,
+    roleSlug: request.role.slug,
+    provider: target.provider,
+    model: target.model,
+    maxSteps,
+    availableTools: getRoleToolIds(request.role),
+  });
+
   const result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
   const output = parseTeamTurnOutput(result.text);
   const toolCalls = extractToolCalls(result);
+  logToolUsage("[agents:debug] Team turn tool usage", {
+    endpoint: "/team-turn",
+    agentId: `trustloop-agent-team-${request.role.roleKey}`,
+    agentSlug: request.role.slug,
+    runId: request.runId,
+    conversationId: request.conversationId ?? null,
+    roleKey: request.role.roleKey,
+    provider: target.provider,
+    model: target.model,
+    steps: result.steps?.length ?? 0,
+    toolCalls,
+  });
   const meta = {
     provider: target.provider,
     model: target.model,
     totalDurationMs: Date.now() - startTime,
     turnCount: result.steps?.length ?? 0,
   };
+
+  logLocalAgentDebug("[agents:debug] Team turn complete", {
+    endpoint: "/team-turn",
+    agentId: `trustloop-agent-team-${request.role.roleKey}`,
+    agentSlug: request.role.slug,
+    runId: request.runId,
+    conversationId: request.conversationId ?? null,
+    roleKey: request.role.roleKey,
+    durationMs: Date.now() - startTime,
+    toolCallCount: toolCalls.length,
+    steps: result.steps?.length ?? 0,
+    messages: output.messages.length,
+    proposedFacts: output.proposedFacts.length,
+    done: output.done,
+    blocked: Boolean(output.blockedReason),
+  });
 
   return agentTeamRoleTurnOutputSchema.parse({
     ...output,
@@ -236,7 +300,14 @@ interface RawToolResult {
   output?: unknown;
 }
 
-function extractToolCalls(result: unknown) {
+interface ExtractedToolCall {
+  tool: string;
+  input: Record<string, unknown>;
+  output: string;
+  durationMs: number;
+}
+
+function extractToolCalls(result: unknown): ExtractedToolCall[] {
   const raw = (result as { toolResults?: RawToolResult[] }).toolResults ?? [];
   return raw.map((tc) => ({
     tool: tc.toolName ?? tc.name ?? "unknown",
@@ -245,6 +316,49 @@ function extractToolCalls(result: unknown) {
       typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result ?? tc.output ?? ""),
     durationMs: 0,
   }));
+}
+
+function logToolUsage(
+  label: string,
+  input: {
+    endpoint: string;
+    agentId: string;
+    agentSlug: string;
+    conversationId: string | null;
+    provider: string;
+    model: string;
+    steps: number;
+    toolCalls: ExtractedToolCall[];
+    runId?: string;
+    roleKey?: string;
+  }
+): void {
+  logLocalAgentDebug(label, {
+    endpoint: input.endpoint,
+    agentId: input.agentId,
+    agentSlug: input.agentSlug,
+    runId: input.runId,
+    conversationId: input.conversationId,
+    roleKey: input.roleKey,
+    provider: input.provider,
+    model: input.model,
+    steps: input.steps,
+    toolCallCount: input.toolCalls.length,
+    tools:
+      input.toolCalls.length === 0
+        ? []
+        : input.toolCalls.map((toolCall, index) => ({
+            index: index + 1,
+            tool: toolCall.tool,
+            inputKeys: Object.keys(toolCall.input).sort(),
+            outputChars: toolCall.output.length,
+          })),
+  });
+}
+
+function logLocalAgentDebug(label: string, payload: Record<string, unknown>): void {
+  if (!shouldLogLocalAgentDebug) return;
+  console.log(label, payload);
 }
 
 function pickToolsForRole(role: AgentTeamRole) {

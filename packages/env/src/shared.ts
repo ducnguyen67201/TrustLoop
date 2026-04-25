@@ -9,6 +9,10 @@ export const NODE_ENV = {
 
 export type NodeEnv = (typeof NODE_ENV)[keyof typeof NODE_ENV];
 
+export function checkEnv(nodeEnv: NodeEnv, ...allowed: NodeEnv[]): boolean {
+  return allowed.includes(nodeEnv);
+}
+
 /** Treat staging like production for secure cookies, silent DB logs, etc. */
 export function isProductionLike(nodeEnv: NodeEnv): boolean {
   return nodeEnv === NODE_ENV.PRODUCTION || nodeEnv === NODE_ENV.STAGING;

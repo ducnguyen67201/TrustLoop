@@ -133,7 +133,7 @@ export async function runAnalysisAgent(
       draftId,
       status: result.draft ? ANALYSIS_RESULT_STATUS.analyzed : ANALYSIS_RESULT_STATUS.needsContext,
       confidence: result.analysis.confidence,
-      toolCallCount: result.meta.turnCount,
+      toolCallCount: result.toolCalls.length,
     };
   } catch (error) {
     return handleAnalysisFailure(input, error);
@@ -345,7 +345,7 @@ async function persistAnalysisResult(analysisId: string, result: AnalyzeResponse
       confidence: result.analysis.confidence,
       missingInfo: result.analysis.missingInfo,
       reasoningTrace: result.analysis.reasoningTrace,
-      toolCallCount: result.meta.turnCount,
+      toolCallCount: result.toolCalls.length,
       llmModel: result.meta.model,
       llmLatencyMs: result.meta.totalDurationMs,
     },
@@ -402,7 +402,7 @@ async function emitAnalysisCompletedEvent(
         confidence: result.analysis.confidence,
         category: result.analysis.category,
         severity: result.analysis.severity,
-        toolCallCount: result.meta.turnCount,
+        toolCallCount: result.toolCalls.length,
       },
     },
   });
