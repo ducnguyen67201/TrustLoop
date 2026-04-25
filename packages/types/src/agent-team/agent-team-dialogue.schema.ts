@@ -337,10 +337,8 @@ export const agentTeamRoleTurnInputSchema = z.object({
   conversationId: z.string().min(1).optional(),
   runId: z.string().min(1),
   // Stable per-run counter incremented by the workflow loop on each turn it
-  // dispatches. The agent uses it (with runId) to derive deterministic question
-  // ids in the resolution output: `${runId}-${turnIndex}-${questionIndex}`.
-  // Activity retries with the same input produce the same ids — preserves
-  // idempotency for the resume mechanism in Phase 1's PR 2.
+  // dispatches. The agent combines it with runId to derive deterministic
+  // question ids in resolution output: `${runId}-${turnIndex}-${questionIndex}`.
   turnIndex: z.number().int().nonnegative().default(0),
   teamRoles: z.array(agentTeamRoleSchema).min(1),
   role: agentTeamRoleSchema,
@@ -359,10 +357,8 @@ export const agentTeamTurnMetaSchema = z.object({
   turnCount: z.number().int().nonnegative(),
 });
 
-// Turn output shape consumed by the activity. `resolution` REPLACED the legacy
-// `blockedReason: string` field as part of the agentic resolution-schema rollout.
-// All consumers now derive blocked-state semantics from `resolution.status`
-// (e.g. `needs_input` → role is blocked) and surface text via `resolution.whyStuck`.
+// Consumers derive blocked-state semantics from `resolution.status`
+// (`needs_input` → role is blocked) and surface text via `resolution.whyStuck`.
 export const agentTeamRoleTurnOutputSchema = z.object({
   messages: z.array(agentTeamDialogueMessageDraftSchema).default([]),
   proposedFacts: z.array(agentTeamFactDraftSchema).default([]),

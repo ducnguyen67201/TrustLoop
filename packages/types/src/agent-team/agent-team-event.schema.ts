@@ -24,8 +24,8 @@ export const AGENT_TEAM_EVENT_KIND = {
   toolCalled: "tool_called",
   toolReturned: "tool_returned",
   error: "error",
-  // Resolution lifecycle (PR 1, atomic with `b → r` schema change). UI status
-  // badges derive from these events, not from message metadata.
+  // Resolution lifecycle. UI status badges derive from these events, not from
+  // message metadata.
   questionDispatched: "question_dispatched",
   questionAnswered: "question_answered",
   questionSuperseded: "question_superseded",
@@ -160,9 +160,9 @@ const errorPayload = z.object({
   stack: z.string().nullable().optional(),
 });
 
-// Resolution lifecycle payloads. Per the DX phase refinement (DX #3), each
-// payload includes target+status so dashboard filters and log search don't
-// need to join back to the originating turn output.
+// Resolution lifecycle payloads. Each payload includes target+status so
+// dashboard filters and log search don't need to join back to the
+// originating turn output.
 const questionDispatchedPayload = z.object({
   questionId: z.string().min(1),
   target: resolutionTargetSchema,
