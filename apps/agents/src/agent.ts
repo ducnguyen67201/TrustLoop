@@ -28,6 +28,7 @@ import {
   compressedAgentTeamTurnOutputSchema,
   compressedAnalysisOutputSchema,
   createDraftPullRequestResultSchema,
+  parseJsonModelOutput,
   reconstructAgentTeamTurnOutput,
   reconstructAnalysisOutput,
 } from "@shared/types";
@@ -279,34 +280,6 @@ function parseTeamTurnOutput(rawOutput: string | undefined) {
     done: reconstructed.done,
     blockedReason: reconstructed.blockedReason,
   };
-}
-
-function parseJsonModelOutput(rawOutput: string, errorPrefix: string): unknown {
-  const jsonText = normalizeJsonModelOutput(rawOutput);
-  try {
-    return JSON.parse(jsonText);
-  } catch {
-    throw new Error(`${errorPrefix}: ${rawOutput.slice(0, 200)}`);
-  }
-}
-
-function normalizeJsonModelOutput(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("```")) {
-    return trimmed;
-  }
-
-  const payloadStart = trimmed.indexOf("\n");
-  if (payloadStart === -1) {
-    return trimmed;
-  }
-
-  const closingFence = trimmed.indexOf("```", payloadStart + 1);
-  if (closingFence === -1) {
-    return trimmed;
-  }
-
-  return trimmed.slice(payloadStart + 1, closingFence).trim();
 }
 
 function resolveAgentTeamRoleUseCase(role: AgentTeamRole): LlmUseCase {

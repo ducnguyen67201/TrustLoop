@@ -7,6 +7,8 @@ export {
   type ReconstructedAgentTeamTurnOutput,
 } from "./agent-team-turn";
 
+export { normalizeJsonModelOutput, parseJsonModelOutput } from "./model-json";
+
 export {
   compressedAnalysisOutputSchema,
   reconstructAnalysisOutput,

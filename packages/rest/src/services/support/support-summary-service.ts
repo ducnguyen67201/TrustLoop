@@ -9,6 +9,7 @@ import {
   type SupportSummaryWorkflowResult,
   THREAD_SUMMARY_MAX_CHARS,
   compressedSummaryOutputSchema,
+  parseJsonModelOutput,
   reconstructSummaryOutput,
   supportSummaryWorkflowResultSchema,
 } from "@shared/types";
@@ -156,13 +157,7 @@ export async function generateSummary(messages: SupportSummaryMessage[]): Promis
     throw new Error(`Summarizer produced no output for ${MODEL_CONFIG.summary}`);
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error(`Summarizer returned non-JSON response: ${raw.slice(0, 200)}`);
-  }
-
+  const parsed = parseJsonModelOutput(raw, "Summarizer returned non-JSON response");
   const compressed = compressedSummaryOutputSchema.parse(parsed);
   return reconstructSummaryOutput(compressed).summary;
 }
