@@ -82,6 +82,30 @@ export const resumeAgentTeamRunInputSchema = z.object({
   runId: z.string().min(1),
 });
 
+// Pending question = a question the architect dispatched that has not yet been
+// answered. Computed server-side from the question_dispatched / question_answered
+// event pair so the operator UI can render the resolution panel without parsing
+// raw events. `askedByRoleKey` is the actor of the dispatched event (almost
+// always the architect, but the schema doesn't hard-code that — any role can
+// emit a resolution).
+export const getPendingResolutionQuestionsInputSchema = z.object({
+  runId: z.string().min(1),
+});
+
+export const pendingResolutionQuestionSchema = z.object({
+  questionId: z.string().min(1),
+  askedByRoleKey: z.string().min(1),
+  target: z.enum(["customer", "operator", "internal"]),
+  question: z.string().min(1),
+  // For target=customer: operator/company-voice draft the architect prepared.
+  suggestedReply: z.string().nullable(),
+  // For target=internal: role key the question was routed to.
+  assignedRole: z.string().nullable(),
+  dispatchedAt: z.iso.datetime(),
+});
+
+export const getPendingResolutionQuestionsResponseSchema = z.array(pendingResolutionQuestionSchema);
+
 export const agentTeamRunSummarySchema = z.object({
   id: z.string().min(1),
   workspaceId: z.string().min(1),
@@ -108,4 +132,11 @@ export type StartAgentTeamRunInput = z.infer<typeof startAgentTeamRunInputSchema
 export type GetAgentTeamRunInput = z.infer<typeof getAgentTeamRunInputSchema>;
 export type RecordOperatorAnswerInput = z.infer<typeof recordOperatorAnswerInputSchema>;
 export type ResumeAgentTeamRunInput = z.infer<typeof resumeAgentTeamRunInputSchema>;
+export type GetPendingResolutionQuestionsInput = z.infer<
+  typeof getPendingResolutionQuestionsInputSchema
+>;
+export type PendingResolutionQuestion = z.infer<typeof pendingResolutionQuestionSchema>;
+export type GetPendingResolutionQuestionsResponse = z.infer<
+  typeof getPendingResolutionQuestionsResponseSchema
+>;
 export type AgentTeamRunSummary = z.infer<typeof agentTeamRunSummarySchema>;

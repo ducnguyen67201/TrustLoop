@@ -14,6 +14,7 @@ import {
   getAgentTeamInputSchema,
   getAgentTeamRunInputSchema,
   getLatestAgentTeamRunInputSchema,
+  getPendingResolutionQuestionsInputSchema,
   recordOperatorAnswerInputSchema,
   removeAgentTeamEdgeInputSchema,
   removeAgentTeamRoleInputSchema,
@@ -77,6 +78,14 @@ export function createAgentTeamRouter(dispatcher: WorkflowDispatcher) {
     getRun: workspaceProcedure
       .input(getAgentTeamRunInputSchema)
       .query(({ ctx, input }) => agentTeamRuns.getRun({ ...input, workspaceId: ctx.workspaceId })),
+    getPendingResolutionQuestions: workspaceProcedure
+      .input(getPendingResolutionQuestionsInputSchema)
+      .query(({ ctx, input }) =>
+        resumeRunService.getPendingQuestions({
+          workspaceId: ctx.workspaceId,
+          runId: input.runId,
+        })
+      ),
     recordOperatorAnswer: workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER)
       .input(recordOperatorAnswerInputSchema)
       .mutation(({ ctx, input }) =>

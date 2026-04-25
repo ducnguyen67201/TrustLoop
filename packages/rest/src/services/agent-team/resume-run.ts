@@ -7,9 +7,12 @@ import {
   AGENT_TEAM_ROLE_INBOX_STATE,
   AGENT_TEAM_RUN_STATUS,
   ConflictError,
+  type GetPendingResolutionQuestionsResponse,
+  type PendingResolutionQuestion,
   ValidationError,
   type WorkflowDispatchResponse,
   agentTeamSnapshotSchema,
+  getPendingResolutionQuestionsInputSchema,
   recordOperatorAnswerInputSchema,
   resumeAgentTeamRunInputSchema,
 } from "@shared/types";
@@ -249,6 +252,92 @@ export async function resumeRun(
   });
 
   return dispatch;
+}
+
+interface GetPendingQuestionsArgs {
+  workspaceId: string;
+  runId: string;
+}
+
+/**
+ * Lists every question_dispatched event on a run that does not yet have a
+ * matching question_answered event. Powers the operator resolution panel —
+ * the operator answers operator-target questions inline and uses
+ * customer-target suggestedReply drafts as Slack reply seeds. Returned in
+ * dispatch order (oldest first) so the panel renders predictably across
+ * refetches.
+ */
+export async function getPendingQuestions(
+  args: GetPendingQuestionsArgs
+): Promise<GetPendingResolutionQuestionsResponse> {
+  const parsed = getPendingResolutionQuestionsInputSchema.parse({ runId: args.runId });
+
+  const run = await prisma.agentTeamRun.findFirst({
+    where: { id: parsed.runId, workspaceId: args.workspaceId },
+    select: { id: true },
+  });
+  if (!run) {
+    throw new ValidationError(`Agent team run ${parsed.runId} not found`);
+  }
+
+  const [dispatched, answered] = await Promise.all([
+    prisma.agentTeamRunEvent.findMany({
+      where: {
+        runId: run.id,
+        kind: AGENT_TEAM_EVENT_KIND.questionDispatched,
+      },
+      orderBy: { ts: "asc" },
+      select: { ts: true, actor: true, payload: true },
+    }),
+    prisma.agentTeamRunEvent.findMany({
+      where: {
+        runId: run.id,
+        kind: AGENT_TEAM_EVENT_KIND.questionAnswered,
+      },
+      select: { payload: true },
+    }),
+  ]);
+
+  const answeredIds = new Set<string>();
+  for (const row of answered) {
+    const payload = row.payload as { questionId?: unknown };
+    if (typeof payload?.questionId === "string") {
+      answeredIds.add(payload.questionId);
+    }
+  }
+
+  const pending: PendingResolutionQuestion[] = [];
+  for (const row of dispatched) {
+    const payload = row.payload as {
+      questionId?: unknown;
+      target?: unknown;
+      question?: unknown;
+      suggestedReply?: unknown;
+      assignedRole?: unknown;
+    };
+    if (typeof payload?.questionId !== "string" || answeredIds.has(payload.questionId)) {
+      continue;
+    }
+    const target = payload.target;
+    if (target !== "customer" && target !== "operator" && target !== "internal") {
+      continue;
+    }
+    const question = payload.question;
+    if (typeof question !== "string" || question.length === 0) {
+      continue;
+    }
+    pending.push({
+      questionId: payload.questionId,
+      askedByRoleKey: row.actor,
+      target,
+      question,
+      suggestedReply: typeof payload.suggestedReply === "string" ? payload.suggestedReply : null,
+      assignedRole: typeof payload.assignedRole === "string" ? payload.assignedRole : null,
+      dispatchedAt: row.ts.toISOString(),
+    });
+  }
+
+  return pending;
 }
 
 async function buildThreadSnapshot(conversationId: string | null): Promise<string> {
