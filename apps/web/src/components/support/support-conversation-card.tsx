@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { SupportConversation } from "@shared/types";
-import type { DragEvent } from "react";
+import { type DragEvent, memo } from "react";
 
 function formatTimestamp(value: string | null): string {
   if (!value) {
@@ -48,7 +48,7 @@ interface SupportConversationCardProps {
  * In select mode, drag is suppressed and the card shows a persistent
  * checkbox; click toggles selection.
  */
-export function SupportConversationCard({
+export const SupportConversationCard = memo(function SupportConversationCard({
   conversation,
   isSelected,
   onSelect,
@@ -143,4 +143,4 @@ export function SupportConversationCard({
       </Card>
     </button>
   );
-}
+});

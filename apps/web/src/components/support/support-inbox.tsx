@@ -118,10 +118,13 @@ export function SupportInbox() {
     return base;
   }, [inbox.listData]);
 
-  function handleSelectConversation(conversationId: string) {
-    inbox.setSelectedConversationId(conversationId);
-    updateThreadParam(conversationId);
-  }
+  const handleSelectConversation = useCallback(
+    (conversationId: string) => {
+      inbox.setSelectedConversationId(conversationId);
+      updateThreadParam(conversationId);
+    },
+    [inbox.setSelectedConversationId, updateThreadParam]
+  );
 
   function handleDrop(conversationId: string, targetStatus: SupportConversationStatus) {
     const conversation = inbox.listData?.conversations.find((c) => c.id === conversationId);
@@ -154,13 +157,17 @@ export function SupportInbox() {
     }
   }
 
-  const boardColumns = KANBAN_COLUMNS.map((column) => ({
-    ...column,
-    conversations:
-      inbox.listData?.conversations.filter(
-        (conversation) => conversation.status === column.status
-      ) ?? [],
-  }));
+  const boardColumns = useMemo(
+    () =>
+      KANBAN_COLUMNS.map((column) => ({
+        ...column,
+        conversations:
+          inbox.listData?.conversations.filter(
+            (conversation) => conversation.status === column.status
+          ) ?? [],
+      })),
+    [inbox.listData]
+  );
 
   const refreshSelectedConversation = useCallback(() => {
     setSelectedConversationRefreshNonce((current) => current + 1);

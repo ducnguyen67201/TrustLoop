@@ -10,11 +10,67 @@ import type {
   SupportReaction,
 } from "@shared/types";
 import { SUPPORT_CONVERSATION_STATUS } from "@shared/types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface SupportInboxActionState {
   actionError: string | null;
   isMutating: boolean;
+}
+
+interface RefreshListOptions {
+  showLoading?: boolean;
+}
+
+function areConversationSnapshotsEqual(
+  current: SupportConversation,
+  incoming: SupportConversation
+): boolean {
+  return JSON.stringify(current) === JSON.stringify(incoming);
+}
+
+function mergeConversationList(
+  current: SupportConversationListResponse | null,
+  incoming: SupportConversationListResponse
+): SupportConversationListResponse {
+  if (!current) {
+    return incoming;
+  }
+
+  const currentById = new Map(
+    current.conversations.map((conversation) => [conversation.id, conversation])
+  );
+  let didChange =
+    current.nextCursor !== incoming.nextCursor ||
+    current.delayedData !== incoming.delayedData ||
+    current.conversations.length !== incoming.conversations.length;
+
+  const conversations = incoming.conversations.map((incomingConversation, index) => {
+    const currentConversation = currentById.get(incomingConversation.id);
+    if (!currentConversation) {
+      didChange = true;
+      return incomingConversation;
+    }
+
+    if (current.conversations[index]?.id !== incomingConversation.id) {
+      didChange = true;
+    }
+
+    if (areConversationSnapshotsEqual(currentConversation, incomingConversation)) {
+      return currentConversation;
+    }
+
+    didChange = true;
+    return incomingConversation;
+  });
+
+  if (!didChange) {
+    return current;
+  }
+
+  return {
+    ...incoming,
+    conversations,
+  };
 }
 
 function updateConversationInList(
@@ -49,9 +105,28 @@ export function useSupportInbox() {
     actionError: null,
     isMutating: false,
   });
+  const listDataRef = useRef<SupportConversationListResponse | null>(null);
 
-  const refreshList = useCallback(async () => {
-    setIsListLoading(true);
+  const updateListData = useCallback(
+    (
+      updater: (
+        current: SupportConversationListResponse | null
+      ) => SupportConversationListResponse | null
+    ) => {
+      setListData((current) => {
+        const next = updater(current);
+        listDataRef.current = next;
+        return next;
+      });
+    },
+    []
+  );
+
+  const refreshList = useCallback(async (options?: RefreshListOptions) => {
+    const showLoading = options?.showLoading ?? listDataRef.current === null;
+    if (showLoading) {
+      setIsListLoading(true);
+    }
     setListError(null);
 
     try {
@@ -61,7 +136,9 @@ export function useSupportInbox() {
           limit: 50,
         }
       );
-      setListData(result);
+      const nextList = mergeConversationList(listDataRef.current, result);
+      listDataRef.current = nextList;
+      setListData(nextList);
       setSelectedConversationId((currentId) => {
         if (
           currentId &&
@@ -74,9 +151,13 @@ export function useSupportInbox() {
       });
     } catch (error) {
       setListError(error instanceof Error ? error.message : "Failed to load support inbox");
-      setListData(null);
+      if (!listDataRef.current) {
+        setListData(null);
+      }
     } finally {
-      setIsListLoading(false);
+      if (showLoading) {
+        setIsListLoading(false);
+      }
     }
   }, []);
 
@@ -145,7 +226,7 @@ export function useSupportInbox() {
   const assignConversation = useCallback(
     async (conversationId: string, assigneeUserId: string | null) => {
       const previousListData = listData;
-      setListData((current) =>
+      updateListData((current) =>
         updateConversationInList(current, conversationId, (conversation) => ({
           ...conversation,
           assigneeUserId,
@@ -158,17 +239,17 @@ export function useSupportInbox() {
           assigneeUserId,
         });
       } catch (error) {
-        setListData(previousListData);
+        updateListData(() => previousListData);
         throw error;
       }
     },
-    [listData, runMutation]
+    [listData, runMutation, updateListData]
   );
 
   const updateConversationStatus = useCallback(
     async (conversationId: string, status: SupportConversationStatus) => {
       const previousListData = listData;
-      setListData((current) =>
+      updateListData((current) =>
         updateConversationInList(current, conversationId, (conversation) => ({
           ...conversation,
           status,
@@ -181,17 +262,17 @@ export function useSupportInbox() {
           status,
         });
       } catch (error) {
-        setListData(previousListData);
+        updateListData(() => previousListData);
         throw error;
       }
     },
-    [listData, runMutation]
+    [listData, runMutation, updateListData]
   );
 
   const markDoneWithOverrideReason = useCallback(
     async (conversationId: string, overrideReason: string) => {
       const previousListData = listData;
-      setListData((current) =>
+      updateListData((current) =>
         updateConversationInList(current, conversationId, (conversation) => ({
           ...conversation,
           status: SUPPORT_CONVERSATION_STATUS.done,
@@ -204,11 +285,11 @@ export function useSupportInbox() {
           overrideReason,
         });
       } catch (error) {
-        setListData(previousListData);
+        updateListData(() => previousListData);
         throw error;
       }
     },
-    [listData, runMutation]
+    [listData, runMutation, updateListData]
   );
 
   const retryDelivery = useCallback(

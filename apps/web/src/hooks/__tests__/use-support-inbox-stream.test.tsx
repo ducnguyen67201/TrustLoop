@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSupportInboxStream } from "@/hooks/use-support-inbox-stream";
@@ -35,6 +35,7 @@ describe("useSupportInboxStream", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -88,6 +89,62 @@ describe("useSupportInboxStream", () => {
 
     expect(onRefreshInbox).not.toHaveBeenCalled();
     expect(onSelectedConversationChanged).not.toHaveBeenCalled();
+  });
+
+  it("ignores the initial connected handshake", () => {
+    const onRefreshInbox = vi.fn().mockResolvedValue(undefined);
+    const onSelectedConversationChanged = vi.fn();
+
+    renderHook(() =>
+      useSupportInboxStream({
+        enabled: true,
+        workspaceId: "ws_123",
+        selectedConversationId: "conv_123",
+        onRefreshInbox,
+        onSelectedConversationChanged,
+      })
+    );
+
+    MockEventSource.instances[0]?.emit({
+      type: SUPPORT_REALTIME_EVENT_TYPE.connected,
+      workspaceId: "ws_123",
+      occurredAt: "2026-04-19T18:00:00.000Z",
+    });
+
+    expect(onRefreshInbox).not.toHaveBeenCalled();
+    expect(onSelectedConversationChanged).not.toHaveBeenCalled();
+  });
+
+  it("runs one recovery refresh after reconnect", () => {
+    vi.useFakeTimers();
+    const onRefreshInbox = vi.fn().mockResolvedValue(undefined);
+    const onSelectedConversationChanged = vi.fn();
+
+    renderHook(() =>
+      useSupportInboxStream({
+        enabled: true,
+        workspaceId: "ws_123",
+        selectedConversationId: "conv_123",
+        onRefreshInbox,
+        onSelectedConversationChanged,
+      })
+    );
+
+    MockEventSource.instances[0]?.emitError();
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+
+    expect(MockEventSource.instances).toHaveLength(2);
+
+    MockEventSource.instances[1]?.emit({
+      type: SUPPORT_REALTIME_EVENT_TYPE.connected,
+      workspaceId: "ws_123",
+      occurredAt: "2026-04-19T18:00:00.000Z",
+    });
+
+    expect(onRefreshInbox).toHaveBeenCalledTimes(1);
+    expect(onSelectedConversationChanged).toHaveBeenCalledTimes(1);
   });
 
   it("closes the stream on error to avoid endless reconnects", () => {

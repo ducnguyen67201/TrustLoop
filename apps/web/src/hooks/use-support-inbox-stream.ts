@@ -131,11 +131,15 @@ export function useSupportInboxStream({
       }
 
       if (realtimeEvent.type === SUPPORT_REALTIME_EVENT_TYPE.connected) {
+        const shouldRecoverAfterReconnect = reconnectAttemptRef.current > 0;
         reconnectAttemptRef.current = 0;
         clearReconnectTimer();
-        requestInboxRefresh();
-        if (selectedConversationIdRef.current) {
-          onSelectedConversationChangedRef.current();
+
+        if (shouldRecoverAfterReconnect) {
+          requestInboxRefresh();
+          if (selectedConversationIdRef.current) {
+            onSelectedConversationChangedRef.current();
+          }
         }
         return;
       }
