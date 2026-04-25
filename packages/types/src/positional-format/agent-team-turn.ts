@@ -105,9 +105,6 @@ export const compressedAgentTeamTurnFactSchema = z.object({
   r: z.array(z.string().min(1)).default([]),
 });
 
-// Top-level compressed output. The legacy `b: blockedReason` field has been
-// REMOVED in favor of `r: turnResolution` per the agentic resolution-schema
-// rollout (PR 1, atomic with 4 consumer-site updates).
 export const compressedAgentTeamTurnOutputSchema = z.object({
   m: z.array(compressedAgentTeamTurnMessageSchema).default([]),
   f: z.array(compressedAgentTeamTurnFactSchema).default([]),
@@ -150,11 +147,10 @@ export type ReconstructedAgentTeamTurnOutput = {
   resolution: TurnResolution | null;
 };
 
+// Run id and a stable per-turn index so reconstructed question ids are
+// deterministic (idempotent across activity retries). Format:
+// `${runId}-${turnIndex}-${questionIndex}`.
 export interface ReconstructAgentTeamTurnOutputContext {
-  // Run id and a stable per-turn index so the reconstructed question ids are
-  // deterministic (idempotent across activity retries). Format:
-  // `${runId}-${turnIndex}-${questionIndex}`. Decided in Issue 3A; reaffirmed by
-  // Codex outside-voice as a Phase-2-readiness foundation.
   runId: string;
   turnIndex: number;
 }
@@ -193,9 +189,7 @@ function reconstructResolution(
     whyStuck: compressed.w ?? null,
     questionsToResolve: compressed.qs.map(
       (question, questionIndex): QuestionToResolve => ({
-        // Server-generated deterministic id; LLM-supplied ids are explicitly NOT
-        // accepted. Per Issue 3A: "Don't trust LLM output for invariants you can
-        // enforce mechanically."
+        // Server-generated deterministic id; LLM-supplied ids are not accepted.
         id: `${context.runId}-${context.turnIndex}-${questionIndex}`,
         target: mapTargetCodeToTarget(question.t),
         question: question.q,

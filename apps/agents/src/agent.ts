@@ -236,11 +236,8 @@ export async function runTeamTurn(
     messages: output.messages.length,
     proposedFacts: output.proposedFacts.length,
     done: output.done,
-    // A role is "blocked" only when its resolution status is needs_input (it
-    // has unresolved questions external to itself). `no_action_needed` is
-    // semantically a close-recommendation, NOT a blocked state — treating it
-    // as blocked would strand acknowledgement cases indefinitely (Codex
-    // finding #3 from the /ship adversarial review).
+    // Blocked = unresolved questions external to this role. `no_action_needed`
+    // is a close-recommendation handled by the operator, not a blocked state.
     blocked:
       output.resolution !== null &&
       output.resolution !== undefined &&
@@ -275,9 +272,9 @@ function parseTeamTurnOutput(
 
   const parsed = parseJsonModelOutput(rawOutput, "Agent team role returned non-JSON response");
   const compressed = compressedAgentTeamTurnOutputSchema.parse(parsed);
-  // Reconstruction assigns deterministic question ids using runId + turnIndex.
-  // Same compressed input + same context = same ids (idempotent across activity
-  // retries). LLM-supplied ids are explicitly NOT accepted (Issue 3A).
+  // Server assigns deterministic question ids from runId + turnIndex so the
+  // same compressed input produces the same ids across activity retries.
+  // LLM-supplied ids are not accepted.
   const reconstructed = reconstructAgentTeamTurnOutput(compressed, context);
 
   return {

@@ -484,11 +484,9 @@ export async function persistRoleTurnResult(
     //   resolution.status == needs_input  → role_blocked (waiting for input)
     //   resolution.status == no_action_needed OR complete OR null → idle
     //
-    // `no_action_needed` is semantically "conversation should close," NOT
-    // "waiting for input" — treating it as blocked would strand
-    // acknowledgement cases indefinitely (Codex finding #3 from /ship
-    // adversarial review). The conversation closure happens via the
-    // operator's Close-as-no-action button (PR 2).
+    // `no_action_needed` is a close-recommendation, not a blocked state —
+    // treating it as blocked would strand acknowledgement cases. Closure
+    // happens via the operator's Close-as-no-action action.
     const isResolutionBlocked =
       input.result.resolution !== null &&
       input.result.resolution !== undefined &&
@@ -499,9 +497,6 @@ export async function persistRoleTurnResult(
         ? AGENT_TEAM_ROLE_INBOX_STATE.blocked
         : AGENT_TEAM_ROLE_INBOX_STATE.idle;
 
-    // Wake reason replaces the legacy freeform blockedReason string with the
-    // architect's structured `whyStuck` text. Same human-readable column;
-    // structured payload now lives on `question_dispatched` events instead.
     const wakeReasonText = input.result.resolution?.whyStuck ?? null;
 
     await tx.agentTeamRoleInbox.update({
@@ -540,20 +535,11 @@ export async function persistRoleTurnResult(
       });
     }
 
-    // Resolution-question dispatch. For each question in the architect's
-    // resolution output, emit a `question_dispatched` event with the
-    // deterministic question id (assigned at parse time) plus target/status/
-    // text. PR 2's resume helper consumes these events to address questions
-    // by id when the operator submits an answer or sends a customer reply.
-    // Closes Codex finding #2 from /ship adversarial review (resolution
-    // questions were reconstructed but never persisted).
-    //
-    // Idempotent at the event-store level: persistRoleTurnResult runs inside
-    // a transaction, and activity retries replay this entire block — a
-    // duplicate question id from the same compressed turn output produces
-    // the same deterministic id, which the event log accepts as a re-emit.
-    // PR 2's dispatcher will check for an existing question_dispatched event
-    // before enqueuing role inbox messages, so retries are safe.
+    // Persist each question in the architect's resolution as a
+    // question_dispatched event. Question ids are deterministic
+    // (assigned at parse time from runId+turnIndex+questionIndex), so
+    // activity retries produce the same ids and the event log records
+    // each question exactly once across replays.
     if (input.result.resolution && input.result.resolution.questionsToResolve.length > 0) {
       const resolutionStatus = input.result.resolution.status;
       for (const question of input.result.resolution.questionsToResolve) {
@@ -750,9 +736,8 @@ function normalizeTurnMessages(
 
   // Synthesize a `kind=blocked` transcript message when the architect emits
   // a non-complete resolution and didn't already include an explicit blocked
-  // message. The body uses `resolution.whyStuck` (replaces the legacy freeform
-  // blockedReason). Structured questions live on `question_dispatched` events
-  // and on AgentTeamMessage.metadata, NOT on this synthetic message.
+  // message. Body uses `resolution.whyStuck`; structured questions live on
+  // `question_dispatched` events, not on this synthetic message.
   const isResolutionBlocked =
     result.resolution !== null &&
     result.resolution !== undefined &&
