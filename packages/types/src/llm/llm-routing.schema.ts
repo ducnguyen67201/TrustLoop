@@ -10,9 +10,11 @@ export const llmProviderValues = [LLM_PROVIDER.openai, LLM_PROVIDER.openrouter] 
 
 export const llmProviderSchema = z.enum(llmProviderValues);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Queue / REST Model Declarations
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * --------------------------------------------------------------------------
+ * Queue / REST Model Declarations
+ * --------------------------------------------------------------------------
+ */
 
 export const QUEUE_LLM_USE_CASE = {
   supportAnalysis: "support-analysis",
@@ -21,9 +23,11 @@ export const QUEUE_LLM_USE_CASE = {
   codexEmbedding: "codex-embedding",
 } as const;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Agent Service Model Declarations
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * --------------------------------------------------------------------------
+ * Agent Service Model Declarations
+ * --------------------------------------------------------------------------
+ */
 
 export const AGENT_SERVICE_LLM_USE_CASE = {
   agentTeamArchitect: "agent-team-architect",

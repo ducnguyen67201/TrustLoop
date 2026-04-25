@@ -1,7 +1,8 @@
 import { prisma } from "@shared/database";
 import * as embeddings from "@shared/rest/services/codex/embedding";
 import * as llmManager from "@shared/rest/services/llm-manager-service";
-import { LLM_USE_CASE } from "@shared/types";
+import { LLM_USE_CASE, parseJsonModelOutput } from "@shared/types";
+import { z } from "zod";
 
 const RRF_K = 60;
 const VECTOR_CANDIDATE_LIMIT = 50;
@@ -11,6 +12,20 @@ const RERANK_RETURN_LIMIT = 5;
 const RERANK_TIMEOUT_MS = 800;
 const RERANK_SNIPPET_LINES = 35;
 const QUALITY_THRESHOLD = 0.2;
+
+const rerankScoreSchema = z.object({
+  index: z.number().int().nonnegative(),
+  score: z.number().min(0).max(10),
+  reason: z.string(),
+});
+
+const rerankOutputSchema = z.union([
+  z.array(rerankScoreSchema),
+  z.object({
+    results: z.array(rerankScoreSchema).optional(),
+    rankings: z.array(rerankScoreSchema).optional(),
+  }),
+]);
 
 export type ScoredChunk = {
   id: string;
@@ -234,10 +249,10 @@ ${snippets.join("\n\n")}`;
       return top.map((c) => ({ ...c, rerankerScore: null, rerankerReason: null }));
     }
 
-    const parsed = JSON.parse(content);
-    const scores: Array<{ index: number; score: number; reason: string }> = Array.isArray(parsed)
-      ? parsed
-      : (parsed.results ?? parsed.rankings ?? []);
+    const parsed = rerankOutputSchema.parse(
+      parseJsonModelOutput(content, "Codex reranker returned non-JSON response")
+    );
+    const scores = Array.isArray(parsed) ? parsed : (parsed.results ?? parsed.rankings ?? []);
 
     const reranked: RerankedChunk[] = top.map((chunk, i) => {
       const match = scores.find((s) => s.index === i);
