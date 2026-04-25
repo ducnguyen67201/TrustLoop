@@ -280,13 +280,16 @@ function CustomerQuestionRow({
   const draftToCopy = question.suggestedReply ?? question.question;
 
   const handleCopy = async () => {
+    // Optimistic feedback: flip the label first so the operator sees the
+    // click registered. If the Clipboard API rejects (corporate policy,
+    // restricted iframe, headless context), the visible draft text is
+    // still selectable as a fallback — but the button must not look dead.
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
     try {
       await navigator.clipboard.writeText(draftToCopy);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard API unavailable (test env, locked-down browser). The
-      // operator can still select-and-copy the visible text — no fatal.
+      // No-op. Operator can select-and-copy the visible text manually.
     }
   };
 

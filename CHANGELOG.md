@@ -2,6 +2,18 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.15.1] - 2026-04-25
+
+### Fixed
+- **Copy reply button now confirms the click even when the browser blocks
+  the Clipboard API.** Surfaced by /qa: in restricted-clipboard
+  environments (corporate policy, headless contexts, sandboxed iframes)
+  the button silently failed and the operator had no idea whether their
+  click registered. The label now flips to "Copied" optimistically before
+  the async write so the click always feels responsive; if the underlying
+  Clipboard API rejects, the visible draft text is still selectable as a
+  manual fallback.
+
 ## [0.2.15.0] - 2026-04-25
 
 ### Added
