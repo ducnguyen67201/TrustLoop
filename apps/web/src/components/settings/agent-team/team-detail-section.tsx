@@ -2,16 +2,16 @@
 
 import { AddEdgeDialog } from "@/components/settings/agent-team/add-edge-dialog";
 import { AddRoleDialog } from "@/components/settings/agent-team/add-role-dialog";
+import { TeamGraphView } from "@/components/settings/agent-team/team-graph-view";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ALL_ROLE_SLUGS,
   ROLE_DEFAULT_TOOLS,
   ROLE_LABELS,
   getRoleVisual,
-} from "@/components/settings/agent-team/role-metadata";
-import { TeamGraphView } from "@/components/settings/agent-team/team-graph-view";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+} from "@/lib/agent-team/role-metadata";
 import { RiFlashlightLine } from "@remixicon/react";
 import {
   AGENT_PROVIDER,

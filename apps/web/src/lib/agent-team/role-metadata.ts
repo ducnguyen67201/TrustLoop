@@ -11,7 +11,16 @@ import {
   AGENT_TEAM_TOOL_ID,
   type AgentTeamRoleSlug,
   type AgentTeamToolId,
+  agentTeamRoleSlugValues,
 } from "@shared/types";
+
+const ROLE_SLUG_SET = new Set<string>(agentTeamRoleSlugValues);
+
+function isRoleSlug(value: string): value is AgentTeamRoleSlug {
+  return ROLE_SLUG_SET.has(value);
+}
+
+const NON_ROLE_TARGETS = new Set(["broadcast", "orchestrator"]);
 
 interface RoleVisual {
   icon: RemixiconComponentType;
@@ -55,6 +64,20 @@ export const ROLE_VISUALS: Record<AgentTeamRoleSlug, RoleVisual> = {
 
 export function getRoleVisual(slug: AgentTeamRoleSlug): RoleVisual {
   return ROLE_VISUALS[slug];
+}
+
+export function getAgentRoleColor(roleKey: string): string | undefined {
+  return isRoleSlug(roleKey) ? ROLE_VISUALS[roleKey].color : undefined;
+}
+
+export function getAgentRoleColorStyle(roleKey: string): { color?: string } {
+  const color = getAgentRoleColor(roleKey);
+  return color ? { color } : {};
+}
+
+export function getAgentRoleTargetColorStyle(target: string): { color?: string } {
+  if (NON_ROLE_TARGETS.has(target)) return {};
+  return getAgentRoleColorStyle(target);
 }
 
 /**

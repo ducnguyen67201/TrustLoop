@@ -1,6 +1,5 @@
 "use client";
 
-import { getRoleVisual } from "@/components/settings/agent-team/role-metadata";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getRoleVisual } from "@/lib/agent-team/role-metadata";
 import { RiArrowRightSLine } from "@remixicon/react";
 import type { AddAgentTeamEdgeInput, AgentTeam } from "@shared/types";
 import { useMemo, useState } from "react";

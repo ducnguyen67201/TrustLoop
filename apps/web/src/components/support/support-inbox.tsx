@@ -86,8 +86,10 @@ export function SupportInbox() {
         params.set("thread", conversationId);
       } else {
         params.delete("thread");
+        params.delete("tab");
       }
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     },
     [pathname, router, searchParams]
   );
