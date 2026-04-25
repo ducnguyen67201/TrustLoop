@@ -1,0 +1,80 @@
+name: Run Migrations Production
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [production]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why are you manually running production migrations?"
+        required: true
+        default: "Apply pending production migrations"
+
+concurrency:
+  group: migrations-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: production
+    env:
+      DOPPLER_PROJECT: trustloop
+      DOPPLER_CONFIG: prd
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'production' || github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Use repo-pinned npm
+        run: |
+          PINNED_NPM=$(node -p "require('./package.json').packageManager.split('@')[1]")
+          npm install -g "npm@$PINNED_NPM"
+          npm --version
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -y > /dev/null
+          sudo apt-get install -y postgresql-client > /dev/null
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: Run production migration gate
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: .github/scripts/run-prisma-migrations.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Production migration gate"
+            echo ""
+            echo "- Doppler config: \`prd\`"
+            echo "- Trigger: ${{ github.event_name }}"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "- Ref: refs/heads/production"
+              echo "- Reason: ${{ inputs.reason }}"
+            else
+              echo "- Ref: refs/heads/${{ github.event.workflow_run.head_branch }}"
+              echo "- Commit: ${{ github.event.workflow_run.head_sha }}"
+              echo "- CI run: ${{ github.event.workflow_run.html_url }}"
+            fi
+            echo "- Outcome: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+

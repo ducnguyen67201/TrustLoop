@@ -1,8 +1,8 @@
 name: Deploy staging
 
 # Staging promotions merge the CI-validated `main` commit into the `staging`
-# branch. The existing `CI` + `Migrate DB` workflows on `staging` then take
-# over from there.
+# branch. The push to `staging` then runs CI, followed by the
+# `Run Migrations Staging` release gate.
 #
 # Required repo secret:
 #   - STAGING_PUSH_TOKEN  (PAT or GitHub App token with contents:write so the
@@ -40,7 +40,7 @@ jobs:
         run: |
           if [ -z "${{ secrets.STAGING_PUSH_TOKEN }}" ]; then
             echo "::error::STAGING_PUSH_TOKEN secret is not set."
-            echo "::error::Use a PAT or GitHub App token, not GITHUB_TOKEN, so the push to staging triggers CI + migrate workflows."
+            echo "::error::Use a PAT or GitHub App token, not GITHUB_TOKEN, so the push to staging triggers CI + migration workflows."
             exit 1
           fi
 

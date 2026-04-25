@@ -143,7 +143,8 @@ For each of `web`, `queue`, `agents` in both `staging` and `production`:
 4. **Settings → Networking**: enable private networking so
    `RAILWAY_PRIVATE_DOMAIN` resolves.
 5. Configure env vars: Tier 1 → Tier 2 → Tier 3 in that order.
-6. First deploy: click **Deploy** in Deployments tab. `@shared/env` will
+6. First deploy: click **Deploy** in Deployments tab after the matching
+   migration gate succeeds. `@shared/env` will
    crash at import if any required var is missing — crash-loop + clear
    log is the intended fail-fast behavior.
 
@@ -160,8 +161,11 @@ each one.
 3. On success, `.github/workflows/deploy-staging.yml` merges that validated
    commit into the `staging` branch.
 4. The push to `staging` triggers `CI` on `staging`.
-5. After staging CI succeeds, `.github/workflows/migrate.yml` applies staging
-   DB migrations against Doppler config `stg`.
+5. After staging CI succeeds, `.github/workflows/run-migrations-staging.yml`
+   applies staging DB migrations against Doppler config `stg`. The workflow
+   is also the no-op gate for commits with no pending migrations.
+6. Deploy `web`, `queue`, and `agents` manually from Railway only after
+   `Run Migrations Staging` succeeds for the staging commit.
 
 Required secrets:
 - Repo secret `STAGING_PUSH_TOKEN` for the branch-promotion workflow. This
@@ -173,10 +177,19 @@ Required secrets:
 
 1. Merge PRs to `production`.
 2. GitHub Actions runs `CI` on `production`.
-3. On success, `.github/workflows/migrate.yml` applies production DB migrations
-   against Doppler config `prd`.
-4. Deploy production services manually from Railway when ready.
+3. On success, `.github/workflows/run-migrations-production.yml` applies
+   production DB migrations against Doppler config `prd`. Configure required
+   reviewers on the GitHub `production` environment so production migrations
+   wait for human approval before touching the database.
+4. Deploy production services manually from Railway only after
+   `Run Migrations Production` succeeds for the production commit.
 
 This branch mapping must stay aligned with the workflows:
-- push to `main` => run CI on `main`, then promote that commit to `staging`, then run CI + migrations on `staging`
-- push to `production` => run CI on `production`, then auto-apply production DB migrations
+- push to `main` => run CI on `main`, promote that commit to `staging`, run CI on `staging`, run `Run Migrations Staging`, then manually deploy staging services
+- push to `production` => run CI on `production`, run `Run Migrations Production`, then manually deploy production services
+
+Manual recovery:
+- `.github/workflows/migrate.yml` is manual-only. Use it to re-run idempotent
+  migrations for `staging` or `production` without pushing a new commit.
+- Never deploy services for a commit whose matching migration gate failed or
+  has not run yet.

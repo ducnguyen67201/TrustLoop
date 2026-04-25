@@ -1,31 +1,26 @@
 name: Migrate check (drift)
 
-# Read-only validation that runs on every PR touching the database
-# package. Uses an ephemeral Postgres container — NEVER touches the
-# real staging or production DBs.
+# Read-only validation that runs on every PR touching the database package.
+# Uses ephemeral Postgres databases and never touches staging or production.
 #
 # What this catches:
-#   - schema.prisma changed without a corresponding migration file
-#     (someone forgot to run `npm run db:migrate` locally)
-#   - a new migration file that fails to apply cleanly from scratch
-#   - migration file renamed/edited after it was committed (bad practice)
-#
-# What this does NOT do:
-#   - apply migrations to staging or prod (that's migrate.yml's job)
-#   - modify any real secret or env
-#
-# If this fails on your PR, run `npm run db:migrate` locally, commit the
-# generated migration file, push again.
+#   - schema files changed without a matching migration
+#   - migrations that fail to apply cleanly from scratch
+#   - destructive SQL without an explicit review marker
+#   - raw SQL objects Prisma cannot model but production depends on
 
 on:
   pull_request:
     paths:
       - 'packages/database/**'
       - '.github/workflows/migrate-check.yml'
+      - '.github/scripts/check-migration-safety.sh'
   push:
     branches: [main, production]
     paths:
       - 'packages/database/**'
+      - '.github/workflows/migrate-check.yml'
+      - '.github/scripts/check-migration-safety.sh'
 
 jobs:
   check:
@@ -36,8 +31,6 @@ jobs:
     services:
       postgres:
         # pgvector image = Postgres 17 + the `vector` extension preinstalled.
-        # Matches docker-compose.yml for local dev. Required because the
-        # add_embedding_hybrid_search migration calls CREATE EXTENSION vector.
         image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: postgres
@@ -52,9 +45,12 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop_test?schema=public
+      SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop_shadow?schema=public
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -67,46 +63,94 @@ jobs:
           npm install -g "npm@$PINNED_NPM"
           npm --version
 
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -y > /dev/null
+          sudo apt-get install -y postgresql-client > /dev/null
+
       - run: npm install --no-audit --no-fund
+
+      - name: Scan changed migrations for unsafe SQL
+        env:
+          MIGRATION_SAFETY_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: .github/scripts/check-migration-safety.sh
+
+      - name: Create Prisma shadow database
+        run: |
+          PGPASSWORD=postgres psql \
+            -h localhost -U postgres -d postgres \
+            -c 'CREATE DATABASE trustloop_shadow;'
+
+      - name: Check schema and migrations agree
+        # Compares committed migrations against the schema folder before
+        # applying anything to the test DB.
+        working-directory: packages/database
+        run: |
+          npx prisma migrate diff \
+            --from-migrations ./prisma/migrations \
+            --to-schema ./prisma/schema \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
+            --exit-code \
+            --script
 
       - name: Generate Prisma client
         run: npm run db:generate
 
       - name: Apply all migrations to ephemeral Postgres
-        # Use `migrate deploy` (production-safe, no shadow DB, no prompts)
-        # instead of `migrate dev` which requires the shadow DB to also
-        # have all extensions installed and is meant for local interactive use.
+        # `migrate deploy` is production-safe: committed migrations only,
+        # no prompts, no shadow DB.
         run: npm run db:migrate:deploy
+
+      - name: Assert raw SQL objects Prisma cannot model
+        # Prisma cannot model the pgvector HNSW index. Verify it exists with
+        # the expected method/opclass before dropping it for Prisma's diff.
+        run: |
+          PGPASSWORD=postgres psql \
+            -h localhost -U postgres -d trustloop_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+            index_method text;
+            opclass_name text;
+          BEGIN
+            SELECT am.amname, opc.opcname
+              INTO index_method, opclass_name
+              FROM pg_class index_class
+              JOIN pg_index index_info ON index_info.indexrelid = index_class.oid
+              JOIN pg_am am ON am.oid = index_class.relam
+              JOIN pg_opclass opc ON opc.oid = index_info.indclass[0]
+             WHERE index_class.relname = 'RepositoryIndexChunk_embedding_idx';
+
+            IF index_method IS DISTINCT FROM 'hnsw'
+              OR opclass_name IS DISTINCT FROM 'vector_cosine_ops' THEN
+              RAISE EXCEPTION
+                'RepositoryIndexChunk_embedding_idx mismatch. method=%, opclass=%',
+                index_method,
+                opclass_name;
+            END IF;
+          END $$;
+          SQL
 
       - name: Drop HNSW index for drift check
         # Prisma 7's schema language cannot express `USING hnsw`. The
-        # RepositoryIndexChunk_embedding_idx lives only in raw SQL. To
-        # let migrate diff see a clean baseline, drop it in the ephemeral
-        # DB before comparison. This is CI-only — staging + prod keep it.
+        # RepositoryIndexChunk_embedding_idx lives only in raw SQL. To let
+        # migrate diff see a clean baseline, drop it in the ephemeral DB.
         run: |
           PGPASSWORD=postgres psql \
             -h localhost -U postgres -d trustloop_test \
             -c 'DROP INDEX IF EXISTS "RepositoryIndexChunk_embedding_idx";'
 
+      - name: Check post-migration status
+        run: npm --workspace @shared/database exec -- prisma migrate status
+
       - name: Detect schema drift
-        # Compares the live (just-migrated) DB against the committed
-        # schema files. If they differ, someone edited schema/*.prisma
-        # without generating a migration (or vice versa).
-        #
-        # Prisma 7 flag semantics:
-        #   --from-config-datasource → read DATABASE_URL from prisma.config.ts
-        #                              (this is the ephemeral DB after migrate deploy)
-        #   --to-schema <path>       → path to the schema folder (multi-file)
-        #   --exit-code              → 0=no diff, 2=drift detected, 1=error
+        # Compares the live just-migrated DB against committed schema files.
         working-directory: packages/database
         run: |
           npx prisma migrate diff \
             --from-config-datasource \
             --to-schema ./prisma/schema \
             --exit-code
-        # If this step exits 2, the log shows the SQL that would be needed
-        # to bring the DB in line with schema/*.prisma. Run
-        # `npm run db:migrate` locally to generate a real migration for it.
 
       - name: Summary
         if: always()
@@ -114,7 +158,7 @@ jobs:
           {
             echo "### Migration drift check"
             echo ""
-            echo "- Ephemeral DB: postgres:17"
+            echo "- Ephemeral DB: postgres:17 + pgvector"
             echo "- Trigger: ${{ github.event_name }}"
             echo "- Outcome: ${{ job.status }}"
           } >> "$GITHUB_STEP_SUMMARY"
