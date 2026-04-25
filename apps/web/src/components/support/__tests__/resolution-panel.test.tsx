@@ -107,6 +107,30 @@ describe("ResolutionPanel", () => {
     expect(screen.getByTestId("resolution-customer-copy")).toBeTruthy();
   });
 
+  it("flips Copy button to 'Copied' optimistically even when clipboard write rejects", async () => {
+    mockPendingResponse([customerQuestion]);
+    // Simulate a locked-down browser: writeText rejects, but the UI must
+    // still confirm the click registered so the operator isn't left
+    // wondering whether the button worked.
+    const writeText = vi.fn().mockRejectedValue(new Error("Clipboard blocked"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(<ResolutionPanel runId="run_1" runStatus="waiting" roleLabels={roleLabels} />);
+
+    await waitFor(() => screen.getByTestId("resolution-customer-copy"));
+    fireEvent.click(screen.getByTestId("resolution-customer-copy"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("resolution-customer-copy").textContent).toContain("Copied");
+    });
+    expect(writeText).toHaveBeenCalledWith(
+      "Hey — could you share the error code from the dashboard?"
+    );
+  });
+
   it("disables Resume button when run is not in waiting status", async () => {
     mockPendingResponse([operatorQuestion]);
 
