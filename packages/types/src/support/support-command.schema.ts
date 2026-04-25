@@ -10,6 +10,7 @@ export const SUPPORT_COMMAND_TYPE = {
   sendReply: "SEND_REPLY",
   retryDelivery: "RETRY_DELIVERY",
   markDoneWithOverride: "MARK_DONE_WITH_OVERRIDE",
+  closeAsNoAction: "CLOSE_AS_NO_ACTION",
 } as const;
 
 export const supportCommandTypeValues = [
@@ -20,6 +21,7 @@ export const supportCommandTypeValues = [
   SUPPORT_COMMAND_TYPE.sendReply,
   SUPPORT_COMMAND_TYPE.retryDelivery,
   SUPPORT_COMMAND_TYPE.markDoneWithOverride,
+  SUPPORT_COMMAND_TYPE.closeAsNoAction,
 ] as const;
 
 export const supportCommandTypeSchema = z.enum(supportCommandTypeValues);
@@ -82,6 +84,14 @@ export const supportMarkDoneWithOverrideCommandSchema = z.object({
   overrideReason: z.string().trim().min(10).max(1000),
 });
 
+export const supportCloseAsNoActionCommandSchema = z.object({
+  commandType: z.literal(SUPPORT_COMMAND_TYPE.closeAsNoAction),
+  workspaceId: z.string().min(1),
+  conversationId: z.string().min(1),
+  actorUserId: z.string().min(1),
+  agentTeamRunId: z.string().min(1),
+});
+
 export const supportCommandRequestSchema = z.discriminatedUnion("commandType", [
   supportAssignCommandSchema,
   supportUpdateStatusCommandSchema,
@@ -90,6 +100,7 @@ export const supportCommandRequestSchema = z.discriminatedUnion("commandType", [
   supportSendReplyCommandSchema,
   supportRetryDeliveryCommandSchema,
   supportMarkDoneWithOverrideCommandSchema,
+  supportCloseAsNoActionCommandSchema,
 ]);
 
 export const supportCommandResponseSchema = z.object({
@@ -108,5 +119,6 @@ export type SupportRetryDeliveryCommand = z.infer<typeof supportRetryDeliveryCom
 export type SupportMarkDoneWithOverrideCommand = z.infer<
   typeof supportMarkDoneWithOverrideCommandSchema
 >;
+export type SupportCloseAsNoActionCommand = z.infer<typeof supportCloseAsNoActionCommandSchema>;
 export type SupportCommandRequest = z.infer<typeof supportCommandRequestSchema>;
 export type SupportCommandResponse = z.infer<typeof supportCommandResponseSchema>;

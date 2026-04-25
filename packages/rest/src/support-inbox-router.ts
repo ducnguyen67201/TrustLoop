@@ -7,6 +7,7 @@ import {
   SUPPORT_COMMAND_TYPE,
   WORKSPACE_ROLE,
   supportAssignCommandSchema,
+  supportCloseAsNoActionCommandSchema,
   supportConversationStatusSchema,
   supportMarkDoneWithOverrideCommandSchema,
   supportMergeConversationsRequestSchema,
@@ -89,6 +90,22 @@ export const supportInboxRouter = router({
       supportCommand.markDoneWithOverride({
         ...input,
         commandType: SUPPORT_COMMAND_TYPE.markDoneWithOverride,
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.user.id,
+      })
+    ),
+  closeConversationAsNoAction: operatorProcedure
+    .input(
+      supportCloseAsNoActionCommandSchema.omit({
+        workspaceId: true,
+        actorUserId: true,
+        commandType: true,
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      supportCommand.closeAsNoAction({
+        ...input,
+        commandType: SUPPORT_COMMAND_TYPE.closeAsNoAction,
         workspaceId: ctx.workspaceId,
         actorUserId: ctx.user.id,
       })

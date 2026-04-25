@@ -15,5 +15,6 @@
 // ---------------------------------------------------------------------------
 
 export * from "./support-command/assign";
+export * from "./support-command/close-as-no-action";
 export * from "./support-command/reply";
 export * from "./support-command/status";
