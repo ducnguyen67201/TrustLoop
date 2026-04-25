@@ -1,4 +1,5 @@
 import * as edges from "@shared/rest/services/agent-team/edge-service";
+import * as resumeRunService from "@shared/rest/services/agent-team/resume-run";
 import * as roles from "@shared/rest/services/agent-team/role-service";
 import * as agentTeamRuns from "@shared/rest/services/agent-team/run-service";
 import * as teams from "@shared/rest/services/agent-team/team-service";
@@ -13,8 +14,10 @@ import {
   getAgentTeamInputSchema,
   getAgentTeamRunInputSchema,
   getLatestAgentTeamRunInputSchema,
+  recordOperatorAnswerInputSchema,
   removeAgentTeamEdgeInputSchema,
   removeAgentTeamRoleInputSchema,
+  resumeAgentTeamRunInputSchema,
   setDefaultAgentTeamInputSchema,
   startAgentTeamRunInputSchema,
   updateAgentTeamInputSchema,
@@ -74,5 +77,21 @@ export function createAgentTeamRouter(dispatcher: WorkflowDispatcher) {
     getRun: workspaceProcedure
       .input(getAgentTeamRunInputSchema)
       .query(({ ctx, input }) => agentTeamRuns.getRun({ ...input, workspaceId: ctx.workspaceId })),
+    recordOperatorAnswer: workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER)
+      .input(recordOperatorAnswerInputSchema)
+      .mutation(({ ctx, input }) =>
+        resumeRunService.recordOperatorAnswer({
+          workspaceId: ctx.workspaceId,
+          runId: input.runId,
+          questionId: input.questionId,
+          answer: input.answer,
+          actorUserId: ctx.user.id,
+        })
+      ),
+    resumeRun: workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER)
+      .input(resumeAgentTeamRunInputSchema)
+      .mutation(({ ctx, input }) =>
+        resumeRunService.resumeRun({ workspaceId: ctx.workspaceId, runId: input.runId }, dispatcher)
+      ),
   });
 }

@@ -2,6 +2,26 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.14.0] - 2026-04-25
+
+### Added
+- Operator resume flow for agent-team runs that exited in `waiting`. Two new
+  tRPC mutations on `agentTeam`: `recordOperatorAnswer` writes the operator's
+  answer into the architect's inbox as a synthetic message, flips the role
+  inbox from `blocked` → `queued`, and emits a `question_answered` event
+  without restarting the workflow. `resumeRun` is the explicit follow-up
+  action: it dispatches a fresh Temporal execution of the same `runId` with
+  `isResume: true` and a unique `resumeNonce` suffix on the workflow id, so
+  Temporal accepts the restart without colliding with the completed
+  execution.
+- `agentTeamRunWorkflowInputSchema` gains optional `isResume` + `resumeNonce`
+  fields. The workflow skips `initializeRunState` when `isResume === true`,
+  preserving the architect's queued role-inbox + `wakeReason: "operator-answer"`
+  that `recordOperatorAnswer` wrote before dispatch.
+- `WorkflowDispatcher.startAgentTeamRunResumeWorkflow` — dedicated dispatcher
+  method so the resume-only workflowId convention
+  (`agent-team-run-{runId}-resume-{nonce}`) is enforced in one place.
+
 ## [0.2.13.0] - 2026-04-25
 
 ### Added

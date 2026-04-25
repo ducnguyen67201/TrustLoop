@@ -20,6 +20,9 @@ export interface WorkflowDispatcher {
     input: SupportAnalysisWorkflowInput
   ): Promise<WorkflowDispatchResponse>;
   startAgentTeamRunWorkflow(input: AgentTeamRunWorkflowInput): Promise<WorkflowDispatchResponse>;
+  startAgentTeamRunResumeWorkflow(
+    input: AgentTeamRunWorkflowInput & { resumeNonce: string }
+  ): Promise<WorkflowDispatchResponse>;
   startSupportSummaryWorkflow(
     input: SupportSummaryWorkflowInput
   ): Promise<WorkflowDispatchResponse>;
@@ -127,6 +130,24 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
   async startAgentTeamRunWorkflow(input) {
     const client = await getClient();
     const workflowId = `agent-team-run-${input.runId}`;
+    const handle = await client.workflow.start(workflowNames.agentTeamRun, {
+      args: [input],
+      taskQueue: TASK_QUEUES.CODEX,
+      workflowId,
+    });
+
+    return workflowDispatchResponseSchema.parse({
+      workflowId,
+      runId: handle.firstExecutionRunId,
+      queue: TASK_QUEUES.CODEX,
+    });
+  },
+  async startAgentTeamRunResumeWorkflow(input) {
+    const client = await getClient();
+    // Same runId, new workflowId. Temporal rejects starting a workflow whose
+    // id collides with a previously-completed execution, so the resume nonce
+    // suffix gives every operator-triggered restart a fresh execution slot.
+    const workflowId = `agent-team-run-${input.runId}-resume-${input.resumeNonce}`;
     const handle = await client.workflow.start(workflowNames.agentTeamRun, {
       args: [input],
       taskQueue: TASK_QUEUES.CODEX,

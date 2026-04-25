@@ -33,6 +33,11 @@ function createDispatcher(): WorkflowDispatcher {
       runId: "temporal_run_1",
       queue: "codex-intensive",
     })),
+    startAgentTeamRunResumeWorkflow: vi.fn(async (payload) => ({
+      workflowId: `agent-team-run-${payload.runId}-resume-${payload.resumeNonce}`,
+      runId: "temporal_run_resume_1",
+      queue: "codex-intensive",
+    })),
   };
 }
 

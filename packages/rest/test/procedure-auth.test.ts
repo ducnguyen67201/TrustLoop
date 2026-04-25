@@ -46,6 +46,9 @@ const noopDispatcher = {
   async startAgentTeamRunWorkflow() {
     return { workflowId: "wf", runId: "run", queue: TASK_QUEUES.SUPPORT };
   },
+  async startAgentTeamRunResumeWorkflow() {
+    return { workflowId: "wf", runId: "run", queue: TASK_QUEUES.SUPPORT };
+  },
   async startSupportSummaryWorkflow() {
     return { workflowId: "wf", runId: "run", queue: TASK_QUEUES.SUPPORT };
   },
