@@ -108,20 +108,6 @@ When you pick this up: add a `hostedDomain String?` field to `Workspace`, pass i
 
 ## Auth
 
-### Lock read-side of support routers against workspace API keys
-
-**What:** `supportInboxRouter.listConversations`, `supportInboxRouter.getConversationTimeline`, `supportAnalysisRouter.getLatestAnalysis`, and the `sessionReplayRouter` queries (`list`, `getEvents`, `correlate`, `getSession`, `getReplayChunks`) all ride `workspaceProcedure`, which still accepts workspace API keys (`tlk_*`). After the operator-mutation role gate, mutations are safe — but reads still expose conversation timelines (operator reply bodies, draft content), analysis output (override reasons, suggested drafts), and session replay events (user email, click streams) to any holder of a valid workspace API key.
-
-**Why:** Workspace API keys are intended for customer-facing ingest endpoints (SDK ingestion, webhook inbound). They are not meant to read operator-private data. A leaked key today means the attacker can tail every customer support conversation.
-
-**Context:** Flagged by both Claude + Codex adversarial reviewers during `/ship` on 2026-04-19 (commit locking operator mutations). The mutation fix was landed; reads were scoped to a follow-up at user direction. Cited files: `packages/rest/src/support-inbox-router.ts:31,43`, `packages/rest/src/support-analysis-router.ts:41`, `packages/rest/src/session-replay-router.ts:7,48,78,141,155`.
-
-When you pick this up: the mechanical fix is to route the listed queries through `workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER)` (same pattern used by the mutations). The larger design question is whether to split `workspaceProcedure` into two explicit variants (`workspaceSessionProcedure` for user-UI reads, `workspaceApiKeyProcedure` for SDK/ingest endpoints with a scope check) so the "API keys can't read operator data" invariant is enforced structurally rather than procedure-by-procedure.
-
-**Effort:** S (human: ~2 hr / CC: ~20 min)
-**Priority:** P1 — actively exposed read path in a pre-product auth model.
-**Depends on:** None.
-
 ### Stale role cache after workspace membership demotion
 
 **What:** `ctx.role` is captured once at context build from `resolveWorkspaceContext`. A user demoted ADMIN→MEMBER or removed from a workspace mid-session keeps operating at the old role until the session cookie expires.
@@ -418,6 +404,16 @@ When you pick this up: the `AgentTeamRunEvent` table already supports JSONB payl
 
 **Completed:** 2026-04-19. Mutation hole flagged by Codex during /autoplan eng review of the SupportConversation FSM plan; `dispatchWorkflow` hole flagged by Codex during /ship adversarial pass (on the same day, scope expanded by user at the /ship gate).
 
+### Lock support read endpoints against workspace API keys
+
+**What:** `supportInboxRouter.listConversations`, `supportInboxRouter.getConversationTimeline`, and `supportAnalysisRouter.getLatestAnalysis` now use `workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER)` through the existing `operatorProcedure` alias. Workspace API keys (`tlk_*`) can no longer read support inbox timelines or latest analysis output through these tRPC procedures.
+
+**Implementation:** `packages/rest/src/support-inbox-router.ts` — moved both read queries from `workspaceProcedure` to `operatorProcedure`. `packages/rest/src/support-analysis-router.ts` — moved `getLatestAnalysis` from `workspaceProcedure` to `operatorProcedure`. `packages/rest/test/procedure-auth.test.ts` — added API-key-only rejection tests for all three read endpoints. `sessionReplayRouter` was already protected by `operatorProcedure`.
+
+**Tests:** `npm --workspace @shared/rest exec vitest run test/procedure-auth.test.ts`, `npm --workspace @shared/rest run type-check`, and `npm --workspace @shared/rest run lint` pass.
+
+**Completed:** 2026-04-25. Follow-up to the 2026-04-19 operator mutation auth fix; closes the P1 read-side support data exposure called out during /ship review.
+
 ### Tighten bot-message filter to installation.botUserId
 
 **What:** Replaced the blanket `authorRoleBucket === bot` drop in `apps/queue/src/domains/support/support.activity.ts` with a targeted filter that only drops messages whose `slackUserId` matches `installation.botUserId`. Other-integration bot messages (e.g. a GitHub app posting a PR screenshot) now pass through the ingress boundary so Pillar A file mirroring can process them.
@@ -427,4 +423,3 @@ When you pick this up: the `AgentTeamRunEvent` table already supports JSONB payl
 **Tests:** 8 new unit tests in `apps/queue/test/should-drop-ingress-event.test.ts` cover SYSTEM / BOT-is-ours / BOT-is-other / legacy-null / customer / internal / edge cases.
 
 **Completed:** v0.1.2.0 (2026-04-12)
-

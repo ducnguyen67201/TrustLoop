@@ -1,6 +1,6 @@
 import * as supportAnalysis from "@shared/rest/services/support/support-analysis-service";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
-import { router, workspaceProcedure, workspaceRoleProcedure } from "@shared/rest/trpc";
+import { router, workspaceRoleProcedure } from "@shared/rest/trpc";
 import {
   WORKSPACE_ROLE,
   approveDraftInputSchema,
@@ -38,7 +38,7 @@ export function createSupportAnalysisRouter(dispatcher: WorkflowDispatcher) {
         actorUserId: ctx.user.id,
       })
     ),
-    getLatestAnalysis: workspaceProcedure
+    getLatestAnalysis: operatorProcedure
       .input(triggerAnalysisInputSchema)
       .query(({ ctx, input }) => supportAnalysis.getLatest(input.conversationId, ctx.workspaceId)),
   });
