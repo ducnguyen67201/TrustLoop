@@ -66,6 +66,20 @@
 **Priority:** P2
 **Depends on:** Sentry removal (done in chore/remove-sentry-integration).
 
+## Agent Team
+
+### Architect prompt eval suite (Phase 1 PR 4)
+
+**What:** Smoke eval suite for the architect's structured resolution output. New directory `apps/agents/test/evals/` with 4 fixture conversations (`greeting`, `acknowledgement`, `bug-with-context`, `bug-missing-data`) plus a runner that calls the real architect via `runTeamTurn` and asserts: (1) the compressed JSON parses through `compressedAgentTeamTurnOutputSchema`, (2) `resolution.status` matches the fixture's expected status, (3) question IDs follow the deterministic `{runId}-{turnIndex}-{N}` pattern, (4) target routing is correct (operator vs customer vs internal). Skipped by default in CI; runs only with `RUN_LLM_EVALS=1` because each invocation costs real OpenAI tokens.
+
+**Why:** Phase 1 of the agentic resolution flow shipped four PRs (1, 2, 2.1, 3 + 3.1) that all guarded the *consumer* side of the structured resolution — Zod schemas, reconstruction, UI panel, FSM tests. Every existing test mocks `mockGenerate` and feeds canned LLM output, so the *prompt* itself has zero regression coverage. Prompt drift (someone tweaks the architect system prompt) would not be caught until production. Greeting → no-action and bug-missing-data → operator-target are the two failure modes that would most directly hurt operators if they regressed; both are cheap to pin with a smoke eval. Quality judgment (LLM-as-judge scoring question text) is intentionally out of scope — defer until there's signal that quality is actually drifting.
+
+**Context:** Deferred from the Phase 1 sequence shipped 2026-04-25. PRs #100 (resolution schema), #101 (closeAsNoAction), #102 (resume mechanism), #103 (resolution panel), #104 (Copy reply optimistic feedback) all landed without this. Architect prompt lives at `apps/agents/src/roles/architect.prompt.ts`; the agent itself at `apps/agents/src/agent.ts` (`runTeamTurn`). Existing `apps/agents/test/agent-team.test.ts` is the consumer-side reference — eval runner should match its conventions but skip the `vi.mock("@mastra/core/agent")` hook so a real LLM call goes through.
+
+**Effort:** S (human: ~2-3 hr / CC: ~45 min)
+**Priority:** P2 — useful guard, not blocking. Land before any non-trivial prompt edit.
+**Depends on:** Nothing — builds on already-shipped infrastructure (agent service, resolution schema, role registry).
+
 ## Auth & Onboarding
 
 ### Self-serve workspace creation UI
