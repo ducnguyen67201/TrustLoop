@@ -5,6 +5,7 @@ import {
   type AgentTeamMessageKind,
   type AgentTeamRole,
   type AgentTeamSnapshot,
+  RESOLUTION_TARGET,
   canRouteTo,
   isRoleTarget,
 } from "@shared/types";
@@ -35,9 +36,13 @@ export function collectQueuedTargets(input: {
   hasReviewerApproval: boolean;
 }): string[] {
   const targets = new Set<string>();
+  const rolesByKey = new Map(input.teamRoles.map((role) => [role.roleKey, role]));
 
   for (const message of input.messages) {
     if (isRoleTarget(message.toRoleKey) && shouldWakeTarget(message.kind)) {
+      if (!rolesByKey.has(message.toRoleKey)) {
+        continue;
+      }
       targets.add(message.toRoleKey);
     }
 
@@ -55,6 +60,10 @@ export function collectQueuedTargets(input: {
   }
 
   for (const nextRole of input.nextSuggestedRoleKeys) {
+    const targetRole = rolesByKey.get(nextRole);
+    if (!targetRole || !canRouteTo(input.senderRole.slug, targetRole.slug)) {
+      continue;
+    }
     targets.add(nextRole);
   }
 
@@ -81,6 +90,10 @@ export function assertValidMessageRouting(input: {
 
     const targetRole = rolesByKey.get(message.toRoleKey);
     if (!targetRole) {
+      if (isHumanResolutionTarget(message.toRoleKey)) {
+        continue;
+      }
+
       throw new Error(
         `Role ${input.senderRole.roleKey} cannot address unknown target ${message.toRoleKey}`
       );
@@ -110,6 +123,10 @@ export function shouldWakeTarget(kind: AgentTeamMessageKind): boolean {
   ];
 
   return !passiveKinds.includes(kind);
+}
+
+export function isHumanResolutionTarget(target: string): boolean {
+  return target === RESOLUTION_TARGET.customer || target === RESOLUTION_TARGET.operator;
 }
 
 function compareRoles(left: AgentTeamRole, right: AgentTeamRole): number {

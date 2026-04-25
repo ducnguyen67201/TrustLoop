@@ -86,6 +86,7 @@ export async function agentTeamRunWorkflow(
 
       progress = await turnActivities.persistRoleTurnResult({
         runId: input.runId,
+        turnIndex: turnCount,
         role,
         teamRoles: input.teamSnapshot.roles,
         result,

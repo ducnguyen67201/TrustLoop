@@ -187,6 +187,8 @@ This is the core novelty. Five roles, five inboxes, typed messages with explicit
 - **Hard gate:** pr-creator is removed unless `hasReviewerApproval === true` somewhere in the run history. This is the single hardcoded approval check. There is no pending signing/human-in-the-loop primitive yet.
 
 - `assertValidMessageRouting()` enforces `canRouteTo(sender.slug, target.slug)` from `packages/types/src/agent-team/agent-team-routing-policy.ts`. Delivery happens by `roleKey`, but the allow/deny policy still operates on preset role types. Invalid targets throw, which aborts `persistRoleTurnResult` and causes a Temporal retry of the turn.
+- Human resolution targets (`customer`, `operator`) are not role inboxes. If a role emits a question-like dialogue message to either target, the queue does not create a phantom inbox; it bridges the message into a `question_dispatched` event, marks the sender blocked, and lets the run pause in `waiting` for the resolution panel.
+- Unknown/non-dialogue targets still throw. `nextSuggestedRoleKeys` are filtered to existing role keys that pass the same slug-level routing policy.
 
 ### Run terminal states
 

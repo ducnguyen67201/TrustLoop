@@ -2,6 +2,7 @@ import {
   MAX_AGENT_TEAM_MESSAGES,
   assertValidMessageRouting,
   collectQueuedTargets,
+  isHumanResolutionTarget,
   selectInitialRole,
   shouldCreateOpenQuestion,
 } from "@/domains/agent-team/agent-team-run-routing";
@@ -34,6 +35,8 @@ import {
   type AgentTeamRoleTurnInput,
   type AgentTeamRoleTurnOutput,
   type AgentTeamRunWorkflowInput,
+  RESOLUTION_STATUS,
+  RESOLUTION_TARGET,
   agentTeamDialogueMessageSchema,
   agentTeamFactSchema,
   agentTeamOpenQuestionSchema,
@@ -56,6 +59,7 @@ interface TurnContextPayload {
 
 interface PersistRoleTurnResultInput {
   runId: string;
+  turnIndex: number;
   role: AgentTeamRole;
   teamRoles: AgentTeamRole[];
   result: AgentTeamRoleTurnOutput;
@@ -413,7 +417,7 @@ export async function persistRoleTurnResult(
     }
 
     const openQuestionsToCreate = createdMessages
-      .filter((message) => shouldCreateOpenQuestion(message.kind))
+      .filter((message) => shouldCreateOpenQuestionForMessage(message, input.teamRoles))
       .map((message) => buildOpenQuestionRow(message, input.role.roleKey, input.teamRoles));
 
     if (openQuestionsToCreate.length > 0) {
@@ -487,17 +491,26 @@ export async function persistRoleTurnResult(
     // `no_action_needed` is a close-recommendation, not a blocked state —
     // treating it as blocked would strand acknowledgement cases. Closure
     // happens via the operator's Close-as-no-action action.
+    const messageResolutionQuestions = buildResolutionQuestionsFromMessages({
+      runId: input.runId,
+      turnIndex: input.turnIndex,
+      messages: persistableMessages,
+      teamRoles: input.teamRoles,
+    });
+
     const isResolutionBlocked =
       input.result.resolution !== null &&
       input.result.resolution !== undefined &&
-      input.result.resolution.status === "needs_input";
-    const selfState = input.result.done
-      ? AGENT_TEAM_ROLE_INBOX_STATE.done
-      : isResolutionBlocked
-        ? AGENT_TEAM_ROLE_INBOX_STATE.blocked
+      input.result.resolution.status === RESOLUTION_STATUS.needsInput;
+    const selfBlocked = isResolutionBlocked || messageResolutionQuestions.length > 0;
+    const selfState = selfBlocked
+      ? AGENT_TEAM_ROLE_INBOX_STATE.blocked
+      : input.result.done
+        ? AGENT_TEAM_ROLE_INBOX_STATE.done
         : AGENT_TEAM_ROLE_INBOX_STATE.idle;
 
-    const wakeReasonText = input.result.resolution?.whyStuck ?? null;
+    const wakeReasonText =
+      input.result.resolution?.whyStuck ?? messageResolutionQuestions.at(0)?.question ?? null;
 
     await tx.agentTeamRoleInbox.update({
       where: {
@@ -559,6 +572,24 @@ export async function persistRoleTurnResult(
           },
         });
       }
+    }
+
+    for (const question of messageResolutionQuestions) {
+      eventDrafts.push({
+        kind: AGENT_TEAM_EVENT_KIND.questionDispatched,
+        runId: input.runId,
+        workspaceId: run.workspaceId,
+        actor: input.role.roleKey,
+        target: question.target,
+        payload: {
+          questionId: question.id,
+          target: question.target,
+          status: RESOLUTION_STATUS.needsInput,
+          question: question.question,
+          suggestedReply: question.suggestedReply,
+          assignedRole: null,
+        },
+      });
     }
 
     // Flush accumulated event drafts inside the same transaction. Projections
@@ -758,6 +789,69 @@ function normalizeTurnMessages(
   }
 
   return messages;
+}
+
+interface MessageResolutionQuestion {
+  id: string;
+  target: typeof RESOLUTION_TARGET.customer | typeof RESOLUTION_TARGET.operator;
+  question: string;
+  suggestedReply: string | null;
+}
+
+function buildResolutionQuestionsFromMessages(input: {
+  runId: string;
+  turnIndex: number;
+  messages: AgentTeamDialogueMessageDraft[];
+  teamRoles: AgentTeamRole[];
+}): MessageResolutionQuestion[] {
+  const roleKeys = new Set(input.teamRoles.map((role) => role.roleKey));
+
+  return input.messages.flatMap((message, messageIndex) => {
+    if (!isHumanResolutionMessage(message, roleKeys)) {
+      return [];
+    }
+
+    return [
+      {
+        id: `${input.runId}-${input.turnIndex}-message-${messageIndex}`,
+        target: message.toRoleKey,
+        question: message.content,
+        suggestedReply: message.toRoleKey === RESOLUTION_TARGET.customer ? message.content : null,
+      },
+    ];
+  });
+}
+
+function isHumanResolutionMessage(
+  message: AgentTeamDialogueMessageDraft,
+  roleKeys: ReadonlySet<string>
+): message is AgentTeamDialogueMessageDraft & {
+  toRoleKey: typeof RESOLUTION_TARGET.customer | typeof RESOLUTION_TARGET.operator;
+} {
+  if (roleKeys.has(message.toRoleKey)) {
+    return false;
+  }
+
+  if (
+    message.toRoleKey !== RESOLUTION_TARGET.customer &&
+    message.toRoleKey !== RESOLUTION_TARGET.operator
+  ) {
+    return false;
+  }
+
+  return shouldCreateOpenQuestion(message.kind);
+}
+
+function shouldCreateOpenQuestionForMessage(
+  message: AgentTeamDialogueMessage,
+  teamRoles: AgentTeamRole[]
+): boolean {
+  if (!shouldCreateOpenQuestion(message.kind)) {
+    return false;
+  }
+
+  const targetsExistingRole = teamRoles.some((role) => role.roleKey === message.toRoleKey);
+  return targetsExistingRole || !isHumanResolutionTarget(message.toRoleKey);
 }
 
 function buildOpenQuestionRow(

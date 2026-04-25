@@ -115,9 +115,50 @@ describe("collectQueuedTargets", () => {
 
     expect(targets).toEqual(["pr_creator"]);
   });
+
+  it("does not queue human resolution targets or unknown next suggestions", () => {
+    const snapshot = makeSnapshot();
+    const targets = collectQueuedTargets({
+      senderRole: snapshot.roles[0]!,
+      teamRoles: snapshot.roles,
+      messages: [
+        {
+          toRoleKey: "operator",
+          kind: "question",
+          subject: "Need operator context",
+          content: "Which deployment should we inspect?",
+          refs: [],
+        },
+      ],
+      nextSuggestedRoleKeys: ["operator", "missing_role", "reviewer"],
+      hasReviewerApproval: false,
+    });
+
+    expect(targets).toEqual(["reviewer"]);
+  });
 });
 
 describe("assertValidMessageRouting", () => {
+  it("allows human resolution targets without requiring agent roles", () => {
+    const snapshot = makeSnapshot();
+
+    expect(() =>
+      assertValidMessageRouting({
+        senderRole: snapshot.roles[0]!,
+        teamRoles: snapshot.roles,
+        messages: [
+          {
+            toRoleKey: "operator",
+            kind: "question",
+            subject: "Need operator context",
+            content: "Which deployment should we inspect?",
+            refs: [],
+          },
+        ],
+      })
+    ).not.toThrow();
+  });
+
   it("rejects invalid role-to-role routing", () => {
     const snapshot = makeSnapshot();
     expect(() =>
@@ -135,5 +176,25 @@ describe("assertValidMessageRouting", () => {
         ],
       })
     ).toThrow(/cannot address/i);
+  });
+
+  it("still rejects unknown non-resolution targets", () => {
+    const snapshot = makeSnapshot();
+
+    expect(() =>
+      assertValidMessageRouting({
+        senderRole: snapshot.roles[0]!,
+        teamRoles: snapshot.roles,
+        messages: [
+          {
+            toRoleKey: "made_up_role",
+            kind: "question",
+            subject: "Unknown",
+            content: "Please handle this.",
+            refs: [],
+          },
+        ],
+      })
+    ).toThrow(/unknown target/i);
   });
 });
