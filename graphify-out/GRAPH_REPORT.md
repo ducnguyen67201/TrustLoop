@@ -1,11 +1,11 @@
 # Graph Report - tehsudihfsdhfjsdfbj  (2026-04-25)
 
 ## Corpus Check
-- 546 files · ~284,333 words
+- 547 files · ~284,592 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1581 nodes · 1888 edges · 53 communities detected
+- 1582 nodes · 1888 edges · 53 communities detected
 - Extraction: 77% EXTRACTED · 23% INFERRED · 0% AMBIGUOUS · INFERRED: 433 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
@@ -342,11 +342,11 @@ Nodes (2): formatAnnotationTime(), SystemAnnotation()
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `GET()` connect `Community 0` to `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 8`, `Community 10`, `Community 11`, `Community 24`?**
-  _High betweenness centrality (0.095) - this node is a cross-community bridge._
+  _High betweenness centrality (0.100) - this node is a cross-community bridge._
 - **Why does `update()` connect `Community 2` to `Community 0`, `Community 1`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 12`, `Community 13`, `Community 16`, `Community 22`, `Community 24`?**
-  _High betweenness centrality (0.078) - this node is a cross-community bridge._
+  _High betweenness centrality (0.079) - this node is a cross-community bridge._
 - **Why does `resolveApiKeyAuth()` connect `Community 0` to `Community 2`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
 - **Are the 45 inferred relationships involving `GET()` (e.g. with `main()` and `sendWithRetry()`) actually correct?**
   _`GET()` has 45 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 45 inferred relationships involving `update()` (e.g. with `softUpsert()` and `main()`) actually correct?**
