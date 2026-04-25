@@ -40,6 +40,7 @@ export type ConversationEvent =
   | { type: "operatorSetStale"; actorUserId: string }
   | { type: "operatorSetDone"; actorUserId: string; deliveryConfirmed: boolean }
   | { type: "operatorOverrideDone"; actorUserId: string; overrideReason: string }
+  | { type: "operatorCloseAsNoAction"; actorUserId: string; agentTeamRunId: string }
   | { type: "markStale" }
   | { type: "analysisEscalated"; analysisId: string };
 
@@ -95,6 +96,10 @@ const operatorMoves = {
     return toDone(ctx);
   },
   operatorOverrideDone: toDone,
+  // Distinct event from operatorOverrideDone so audit + analytics can
+  // tell apart "forced done despite missing evidence" from "intentionally
+  // closed because the agent team had nothing actionable."
+  operatorCloseAsNoAction: toDone,
 } as const;
 
 const conversationFsm = defineFsm<ConversationStatusValue, ConversationEvent, ConversationContext>({

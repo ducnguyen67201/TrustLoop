@@ -2,6 +2,17 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.13.0] - 2026-04-25
+
+### Added
+- **Operators can now close a conversation as "no action needed."** When the
+  agent team produces a blocked turn for a greeting, acknowledgement, or
+  off-topic customer message, the operator can mark the conversation done
+  without sending a reply. The action is rejected with a 409 conflict if the
+  customer sent a follow-up after the agent run finished, so an operator
+  can't accidentally close a conversation while the customer's actual reply
+  is sitting in the queue.
+
 ## [0.2.12.0] - 2026-04-25
 
 ### Changed

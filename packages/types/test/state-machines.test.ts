@@ -509,6 +509,15 @@ describe("conversation state machine", () => {
       expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
     });
 
+    it("operatorCloseAsNoAction → DONE", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorCloseAsNoAction",
+        actorUserId: ACTOR,
+        agentTeamRunId: "atr_1",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
     it("analysisEscalated → IN_PROGRESS", () => {
       const next = transitionConversation(ctx(), {
         type: "analysisEscalated",
@@ -637,6 +646,15 @@ describe("conversation state machine", () => {
         type: "operatorOverrideDone",
         actorUserId: ACTOR,
         overrideReason: "cleanup",
+      });
+      expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
+    });
+
+    it("operatorCloseAsNoAction is idempotent on DONE", () => {
+      const next = transitionConversation(ctx(), {
+        type: "operatorCloseAsNoAction",
+        actorUserId: ACTOR,
+        agentTeamRunId: "atr_1",
       });
       expect(next.status).toBe(SUPPORT_CONVERSATION_STATUS.done);
     });
