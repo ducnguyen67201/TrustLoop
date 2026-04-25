@@ -11,6 +11,7 @@ All notable changes to TrustLoop will be documented in this file.
 ### Changed
 - **The old migration workflow is manual recovery only.** Automatic release migrations no longer share one branch-switching workflow; manual reruns still use the same hardened migration script for staging or production.
 - **Drift checks now assert raw SQL database objects before Prisma comparison.** CI verifies the pgvector HNSW index exists with the expected method and opclass before dropping it in the ephemeral database for Prisma's drift diff, so raw SQL coverage is checked instead of silently skipped.
+- **Migration drift detection now matches Prisma 7's supported command surface.** The check applies committed migrations from scratch, verifies the raw pgvector index, removes that known Prisma-unmodelable index in the ephemeral database, then runs the schema drift diff.
 - **Deployment docs now require the migration gate before Railway service deploys.** The staging and production runbooks describe CI, migration gates, required production environment approval, and the manual recovery path.
 
 ## [0.2.10.0] - 2026-04-23

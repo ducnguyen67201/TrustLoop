@@ -45,7 +45,6 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop_test?schema=public
-      SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trustloop_shadow?schema=public
 
     steps:
       - uses: actions/checkout@v5
@@ -74,24 +73,6 @@ jobs:
         env:
           MIGRATION_SAFETY_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: .github/scripts/check-migration-safety.sh
-
-      - name: Create Prisma shadow database
-        run: |
-          PGPASSWORD=postgres psql \
-            -h localhost -U postgres -d postgres \
-            -c 'CREATE DATABASE trustloop_shadow;'
-
-      - name: Check schema and migrations agree
-        # Compares committed migrations against the schema folder before
-        # applying anything to the test DB.
-        working-directory: packages/database
-        run: |
-          npx prisma migrate diff \
-            --from-migrations ./prisma/migrations \
-            --to-schema ./prisma/schema \
-            --shadow-database-url "$SHADOW_DATABASE_URL" \
-            --exit-code \
-            --script
 
       - name: Generate Prisma client
         run: npm run db:generate
