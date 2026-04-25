@@ -82,60 +82,66 @@ export function AgentTeamRunView({
     <div className="space-y-3 font-mono text-sm" data-testid="agent-team-run-panel">
       {/* Summary strip — dense row per DESIGN.md, not a tile grid. */}
       <div className="space-y-2 rounded-md border border-border/50 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge variant="outline" className={statusClassName(run.status)}>
-              {run.status}
-            </Badge>
-            {isStreaming ? <span className="text-muted-foreground">live</span> : null}
-            <span className="text-muted-foreground">·</span>
-            <span>{formatDuration(durationMs)}</span>
-            <span className="text-muted-foreground">·</span>
-            <span>{messageCount} turns</span>
-            <span className="text-muted-foreground">·</span>
-            <span>{factCount} facts</span>
-            <span className="text-muted-foreground">·</span>
-            <span>{openQuestionCount} open</span>
-            <span className="text-muted-foreground">·</span>
-            <span className="truncate text-muted-foreground" title={run.id}>
-              {run.id}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <Badge variant="outline" className={`shrink-0 ${statusClassName(run.status)}`}>
+            {run.status}
+          </Badge>
+          <div className="flex shrink-0 items-center gap-1">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs"
+              className="h-6 px-1.5 text-xs"
               aria-pressed={showAbs}
               onClick={() => setShowAbs((v) => !v)}
             >
-              {showAbs ? "⌚ abs" : "⌚ +rel"}
+              {showAbs ? "abs" : "+rel"}
             </Button>
             <Button
               variant="outline"
               size="sm"
+              className="h-6 px-2 text-xs"
               onClick={onStartRun}
               disabled={isMutating || isStreaming}
             >
-              <RiRefreshLine className="h-4 w-4" />
+              <RiRefreshLine className="h-3.5 w-3.5" />
               Re-run
             </Button>
           </div>
         </div>
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+          {isStreaming ? <span>live</span> : null}
+          {isStreaming ? <span>·</span> : null}
+          <span>{formatDuration(durationMs)}</span>
+          <span>·</span>
+          <span>{messageCount} turns</span>
+          <span>·</span>
+          <span>{factCount} facts</span>
+          <span>·</span>
+          <span>{openQuestionCount} open</span>
+        </div>
+        <p className="truncate text-[10px] text-muted-foreground/70" title={run.id}>
+          {run.id}
+        </p>
         {perRole.length > 0 ? (
-          <div className="grid grid-cols-[auto_auto_auto_auto_auto] gap-x-3 gap-y-0.5 text-xs">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] gap-x-2 gap-y-0.5 text-xs">
             {perRole.map((row) => {
               const isActive = row.roleKey === activeRoleKey;
               return (
                 <div className="contents" key={row.roleKey}>
-                  <span className={isActive ? "font-semibold text-primary" : "font-medium"}>
-                    {isActive ? "▸" : " "} {formatRoleRef(roleLabels, row.roleKey)}
+                  <span
+                    className={`min-w-0 truncate ${isActive ? "font-semibold text-primary" : "font-medium"}`}
+                    title={formatRoleRef(roleLabels, row.roleKey)}
+                  >
+                    {isActive ? "▸ " : ""}
+                    {roleLabels.get(row.roleKey) ?? row.roleKey}
                   </span>
-                  <span className="text-muted-foreground">{row.turns} turns</span>
-                  <span className="text-muted-foreground">{row.toolCalls} tools</span>
-                  <span className="text-muted-foreground">{formatDuration(row.wallMs)}</span>
-                  <span className="text-muted-foreground">
+                  <span className="text-muted-foreground tabular-nums">{row.turns}t</span>
+                  <span className="text-muted-foreground tabular-nums">{row.toolCalls}x</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {formatDuration(row.wallMs)}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums">
                     {row.firstAt != null ? `+${secs(row.firstAt)}s` : "—"}
                   </span>
                 </div>
@@ -148,12 +154,25 @@ export function AgentTeamRunView({
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
       <Tabs defaultValue="chat" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="chat">Chat</TabsTrigger>
-          <TabsTrigger value="raw">Raw</TabsTrigger>
-          <TabsTrigger value="facts">Facts ({factCount})</TabsTrigger>
-          <TabsTrigger value="questions">Questions ({openQuestionCount})</TabsTrigger>
-          <TabsTrigger value="inboxes">Inboxes ({inboxCount})</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-5 gap-0.5">
+          <TabsTrigger value="chat" className="min-w-0 px-1 text-xs">
+            Chat
+          </TabsTrigger>
+          <TabsTrigger value="raw" className="min-w-0 px-1 text-xs">
+            Raw
+          </TabsTrigger>
+          <TabsTrigger value="facts" aria-label="Facts" className="min-w-0 px-1 text-xs">
+            Facts
+            <CountSuffix value={factCount} />
+          </TabsTrigger>
+          <TabsTrigger value="questions" aria-label="Questions" className="min-w-0 px-1 text-xs">
+            Q&amp;A
+            <CountSuffix value={openQuestionCount} />
+          </TabsTrigger>
+          <TabsTrigger value="inboxes" aria-label="Inboxes" className="min-w-0 px-1 text-xs">
+            Inbox
+            <CountSuffix value={inboxCount} />
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="chat" className="mt-3">
@@ -306,6 +325,11 @@ function MessageRow({
       </div>
     </div>
   );
+}
+
+function CountSuffix({ value }: { value: number }) {
+  if (value <= 0) return null;
+  return <span className="ml-1 text-muted-foreground">{value}</span>;
 }
 
 function ChatEmptyState({ isStreaming }: { isStreaming: boolean }) {

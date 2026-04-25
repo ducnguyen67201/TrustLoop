@@ -7,6 +7,7 @@ import { MessageList } from "@/components/support/message-list";
 import { ReassignEventDialog } from "@/components/support/reassign-event-dialog";
 import { ReplyComposer } from "@/components/support/reply-composer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalysis } from "@/hooks/use-analysis";
 import { useAuthSession } from "@/hooks/use-auth-session";
@@ -163,10 +164,15 @@ export function ConversationView({
           onUpdateStatus={onUpdateConversationStatus}
         />
 
-        {/* Two-panel body */}
-        <div className="flex min-h-0 flex-1">
-          {/* Left: messages + composer */}
-          <div className="flex min-w-0 flex-1 flex-col">
+        {/* Two-panel body with a draggable separator. */}
+        <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
+          {/* Left: messages + composer. minSize keeps the message column legible. */}
+          <ResizablePanel
+            id="messages"
+            defaultSize="70%"
+            minSize="45%"
+            className="flex min-w-0 flex-col"
+          >
             <MessageList
               events={events}
               isLoading={isLoading}
@@ -186,28 +192,39 @@ export function ConversationView({
               onCancelThreadReply={() => setReplyToEventId(null)}
               sendError={sendError}
             />
-          </div>
+          </ResizablePanel>
 
-          {/* Right: properties sidebar */}
-          <ConversationInsightsPanel
-            conversation={conversation}
-            events={events}
-            isMutating={isMutating}
-            onAssign={onAssignConversation}
-            onUpdateStatus={onUpdateConversationStatus}
-            analysis={analysisHook.analysis}
-            isAnalyzing={analysisHook.isAnalyzing}
-            isAnalysisMutating={analysisHook.isMutating}
-            analysisError={analysisHook.error}
-            onTriggerAnalysis={() => void analysisHook.triggerAnalysis()}
-            onApproveDraft={(draftId, editedBody) =>
-              void analysisHook.approveDraft(draftId, editedBody)
-            }
-            onDismissDraft={(draftId, reason) => void analysisHook.dismissDraft(draftId, reason)}
-            workspaceId={workspaceId}
-            sessionReplay={sessionReplay}
-          />
-        </div>
+          <ResizableHandle withHandle />
+
+          {/* Right: properties / agent team sidebar. minSize prevents the inbox panel
+              from collapsing past the point where its tabs and inboxes still render. */}
+          <ResizablePanel
+            id="insights"
+            defaultSize="30%"
+            minSize="22%"
+            maxSize="50%"
+            className="min-w-0"
+          >
+            <ConversationInsightsPanel
+              conversation={conversation}
+              events={events}
+              isMutating={isMutating}
+              onAssign={onAssignConversation}
+              onUpdateStatus={onUpdateConversationStatus}
+              analysis={analysisHook.analysis}
+              isAnalyzing={analysisHook.isAnalyzing}
+              isAnalysisMutating={analysisHook.isMutating}
+              analysisError={analysisHook.error}
+              onTriggerAnalysis={() => void analysisHook.triggerAnalysis()}
+              onApproveDraft={(draftId, editedBody) =>
+                void analysisHook.approveDraft(draftId, editedBody)
+              }
+              onDismissDraft={(draftId, reason) => void analysisHook.dismissDraft(draftId, reason)}
+              workspaceId={workspaceId}
+              sessionReplay={sessionReplay}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
       <ReassignEventDialog

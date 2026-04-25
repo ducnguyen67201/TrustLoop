@@ -33,7 +33,7 @@ interface ConversationInsightsPanelProps {
  */
 export function ConversationInsightsPanel(props: ConversationInsightsPanelProps) {
   return (
-    <aside className="flex h-full w-[420px] shrink-0 flex-col border-l">
+    <aside className="flex h-full w-full flex-col border-l">
       <Tabs defaultValue="properties" className="flex h-full flex-col">
         <div className="border-b px-4 py-3">
           <TabsList className="grid w-full grid-cols-2">
