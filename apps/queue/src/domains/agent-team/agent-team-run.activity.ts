@@ -3,6 +3,7 @@ import {
   collectQueuedTargets,
   isHumanResolutionTarget,
   partitionMessagesByRouting,
+  resolveSelfTurnState,
   selectInitialRole,
   shouldCreateOpenQuestion,
 } from "@/domains/agent-team/agent-team-run-routing";
@@ -512,16 +513,21 @@ export async function persistRoleTurnResult(
       teamRoles: input.teamRoles,
     });
 
-    const isResolutionBlocked =
-      input.result.resolution !== null &&
-      input.result.resolution !== undefined &&
-      input.result.resolution.status === RESOLUTION_STATUS.needsInput;
-    const selfBlocked = isResolutionBlocked || messageResolutionQuestions.length > 0;
-    const selfState = selfBlocked
-      ? AGENT_TEAM_ROLE_INBOX_STATE.blocked
-      : input.result.done
-        ? AGENT_TEAM_ROLE_INBOX_STATE.done
-        : AGENT_TEAM_ROLE_INBOX_STATE.idle;
+    const { state: selfState, hallucinatedBlock } = resolveSelfTurnState({
+      resolution: input.result.resolution,
+      messageResolutionQuestionCount: messageResolutionQuestions.length,
+      done: input.result.done,
+    });
+    if (hallucinatedBlock) {
+      console.warn("[agent-team] Downgraded blocked-without-questions to idle", {
+        runId: input.runId,
+        turnIndex: input.turnIndex,
+        roleKey: input.role.roleKey,
+        roleSlug: input.role.slug,
+        resolutionStatus: input.result.resolution?.status ?? null,
+        whyStuck: input.result.resolution?.whyStuck ?? null,
+      });
+    }
 
     const wakeReasonText =
       input.result.resolution?.whyStuck ?? messageResolutionQuestions.at(0)?.question ?? null;

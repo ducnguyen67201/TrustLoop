@@ -1,10 +1,14 @@
 import {
   AGENT_TEAM_MESSAGE_KIND,
+  AGENT_TEAM_ROLE_INBOX_STATE,
   AGENT_TEAM_ROLE_SLUG,
   type AgentTeamDialogueMessageDraft,
   type AgentTeamMessageKind,
   type AgentTeamRole,
+  type AgentTeamRoleInboxState,
+  type AgentTeamRoleTurnOutput,
   type AgentTeamSnapshot,
+  RESOLUTION_STATUS,
   RESOLUTION_TARGET,
   canRouteTo,
   isRoleTarget,
@@ -157,6 +161,48 @@ export function partitionMessagesByRouting(input: {
   }
 
   return { valid, dropped };
+}
+
+export interface ResolveSelfTurnStateInput {
+  resolution: AgentTeamRoleTurnOutput["resolution"];
+  messageResolutionQuestionCount: number;
+  done: boolean;
+}
+
+export interface ResolveSelfTurnStateResult {
+  state: AgentTeamRoleInboxState;
+  // True when the role asked to block (status=needs_input or kind=blocked
+  // message) but dispatched zero customer/operator-targeted questions. With
+  // no human-actionable signal the operator panel has nothing to offer, so
+  // the run would loop between waiting and resume forever. Downgrade to idle
+  // and log a warning so the next claimNextQueuedInbox cycle can drain.
+  hallucinatedBlock: boolean;
+}
+
+export function resolveSelfTurnState(input: ResolveSelfTurnStateInput): ResolveSelfTurnStateResult {
+  const isResolutionBlocked =
+    input.resolution !== null &&
+    input.resolution !== undefined &&
+    input.resolution.status === RESOLUTION_STATUS.needsInput;
+  const wantsBlock = isResolutionBlocked || input.messageResolutionQuestionCount > 0;
+  const humanQuestionCount =
+    (input.resolution?.questionsToResolve.filter(
+      (question) =>
+        question.target === RESOLUTION_TARGET.customer ||
+        question.target === RESOLUTION_TARGET.operator
+    ).length ?? 0) + input.messageResolutionQuestionCount;
+  const hallucinatedBlock = wantsBlock && humanQuestionCount === 0;
+
+  let state: AgentTeamRoleInboxState;
+  if (wantsBlock && !hallucinatedBlock) {
+    state = AGENT_TEAM_ROLE_INBOX_STATE.blocked;
+  } else if (input.done) {
+    state = AGENT_TEAM_ROLE_INBOX_STATE.done;
+  } else {
+    state = AGENT_TEAM_ROLE_INBOX_STATE.idle;
+  }
+
+  return { state, hallucinatedBlock };
 }
 
 export function shouldCreateOpenQuestion(kind: AgentTeamMessageKind): boolean {

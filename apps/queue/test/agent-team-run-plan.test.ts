@@ -4,6 +4,7 @@ import {
   assertValidMessageRouting,
   collectQueuedTargets,
   partitionMessagesByRouting,
+  resolveSelfTurnState,
   selectInitialRole,
 } from "../src/domains/agent-team/agent-team-run-routing";
 
@@ -292,5 +293,121 @@ describe("partitionMessagesByRouting", () => {
 
     expect(valid.map((m) => m.toRoleKey)).toEqual(["broadcast", "customer"]);
     expect(dropped).toEqual([]);
+  });
+});
+
+describe("resolveSelfTurnState", () => {
+  it("blocks when the resolution dispatches a customer-targeted question", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "needs_input",
+        whyStuck: "Need customer to clarify the issue",
+        questionsToResolve: [
+          {
+            id: "run-0-0",
+            target: "customer",
+            question: "What can we help you with today?",
+            suggestedReply: "Hi! Could you share what you're running into?",
+            assignedRole: null,
+          },
+        ],
+      },
+      messageResolutionQuestionCount: 0,
+      done: false,
+    });
+
+    expect(result.state).toBe("blocked");
+    expect(result.hallucinatedBlock).toBe(false);
+  });
+
+  it("blocks when a message-targeted question reaches the operator", () => {
+    const result = resolveSelfTurnState({
+      resolution: null,
+      messageResolutionQuestionCount: 1,
+      done: false,
+    });
+
+    expect(result.state).toBe("blocked");
+    expect(result.hallucinatedBlock).toBe(false);
+  });
+
+  it("downgrades to idle when needs_input dispatches zero human-targeted questions", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "needs_input",
+        whyStuck: "Customer message has no actionable issue",
+        questionsToResolve: [],
+      },
+      messageResolutionQuestionCount: 0,
+      done: false,
+    });
+
+    expect(result.state).toBe("idle");
+    expect(result.hallucinatedBlock).toBe(true);
+  });
+
+  it("downgrades to idle when needs_input only routes to internal peers", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "needs_input",
+        whyStuck: "Asking the RCA analyst",
+        questionsToResolve: [
+          {
+            id: "run-0-0",
+            target: "internal",
+            question: "Did Sentry surface anything related?",
+            suggestedReply: null,
+            assignedRole: "rca_analyst",
+          },
+        ],
+      },
+      messageResolutionQuestionCount: 0,
+      done: false,
+    });
+
+    expect(result.state).toBe("idle");
+    expect(result.hallucinatedBlock).toBe(true);
+  });
+
+  it("returns done when the role marks itself complete and is not blocked", () => {
+    const result = resolveSelfTurnState({
+      resolution: null,
+      messageResolutionQuestionCount: 0,
+      done: true,
+    });
+
+    expect(result.state).toBe("done");
+    expect(result.hallucinatedBlock).toBe(false);
+  });
+
+  it("treats no_action_needed as not-blocked and returns idle", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "no_action_needed",
+        whyStuck: null,
+        questionsToResolve: [],
+        recommendedClose: "no_action_taken",
+      },
+      messageResolutionQuestionCount: 0,
+      done: false,
+    });
+
+    expect(result.state).toBe("idle");
+    expect(result.hallucinatedBlock).toBe(false);
+  });
+
+  it("prefers done over blocked when the role flags itself complete with no questions", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "needs_input",
+        whyStuck: "Still wrapping up but technically finished",
+        questionsToResolve: [],
+      },
+      messageResolutionQuestionCount: 0,
+      done: true,
+    });
+
+    expect(result.state).toBe("done");
+    expect(result.hallucinatedBlock).toBe(true);
   });
 });
