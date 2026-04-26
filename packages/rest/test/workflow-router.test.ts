@@ -29,6 +29,11 @@ function createDispatcher(): WorkflowDispatcher {
       runId: "run_agent_team_1",
       queue: "codex-intensive",
     })),
+    startAgentTeamRunResumeWorkflow: vi.fn(async () => ({
+      workflowId: "agent-team-run-run_1-resume-1",
+      runId: "run_agent_team_resume_1",
+      queue: "codex-intensive",
+    })),
     startSendDraftToSlackWorkflow: vi.fn(async () => ({
       workflowId: "send-draft-draft_1",
       runId: "run_send_draft_1",

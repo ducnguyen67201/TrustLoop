@@ -1,5 +1,6 @@
 "use client";
 
+import { ResolutionPanel } from "@/components/support/resolution-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,7 +20,7 @@ import {
   type AgentTeamRoleInbox,
   type AgentTeamRunSummary,
 } from "@shared/types";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 interface AgentTeamRunViewProps {
   error: string | null;
@@ -42,6 +43,17 @@ export function AgentTeamRunView({
   run,
 }: AgentTeamRunViewProps) {
   const [showAbs, setShowAbs] = useState(false);
+  const [activeTab, setActiveTab] = useState("chat");
+  // Auto-focus the Resolve tab the first time a run lands in `waiting` —
+  // that's the moment the operator needs to act. Subsequent tab clicks are
+  // respected (no override loop).
+  const [autoFocusedForRunId, setAutoFocusedForRunId] = useState<string | null>(null);
+  useEffect(() => {
+    if (run && run.status === AGENT_TEAM_RUN_STATUS.waiting && autoFocusedForRunId !== run.id) {
+      setActiveTab("resolve");
+      setAutoFocusedForRunId(run.id);
+    }
+  }, [run, autoFocusedForRunId]);
 
   const messages = run?.messages ?? [];
   const messageCount = messages.length;
@@ -161,13 +173,27 @@ export function AgentTeamRunView({
 
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
-      <Tabs defaultValue="chat" className="flex min-h-0 w-full flex-1 flex-col">
-        <TabsList className="grid w-full grid-cols-5 gap-0.5">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="flex min-h-0 w-full flex-1 flex-col"
+      >
+        <TabsList className="grid w-full grid-cols-6 gap-0.5">
           <TabsTrigger value="chat" className="min-w-0 px-1 text-xs">
             Chat
           </TabsTrigger>
           <TabsTrigger value="raw" className="min-w-0 px-1 text-xs">
             Raw
+          </TabsTrigger>
+          <TabsTrigger
+            value="resolve"
+            aria-label="Resolve"
+            className="min-w-0 px-1 text-xs data-[state=active]:text-amber-700"
+          >
+            Resolve
+            {run.status === AGENT_TEAM_RUN_STATUS.waiting ? (
+              <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+            ) : null}
           </TabsTrigger>
           <TabsTrigger value="facts" aria-label="Facts" className="min-w-0 px-1 text-xs">
             Facts
@@ -218,6 +244,17 @@ export function AgentTeamRunView({
             <pre className="whitespace-pre-wrap p-3 text-xs leading-relaxed">
               {rawTranscript || "(empty transcript)"}
             </pre>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent
+          value="resolve"
+          className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          <ScrollArea className="h-full min-h-0 flex-1 rounded-md border border-border/50">
+            <div className="p-3">
+              <ResolutionPanel runId={run.id} runStatus={run.status} roleLabels={roleLabels} />
+            </div>
           </ScrollArea>
         </TabsContent>
 

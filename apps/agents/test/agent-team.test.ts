@@ -119,7 +119,7 @@ describe("runTeamTurn", () => {
         q: [],
         n: ["rca_analyst"],
         d: 0,
-        b: null,
+        r: null,
       }),
       steps: [{ id: "step_1" }, { id: "step_2" }],
       toolResults: [
@@ -146,7 +146,7 @@ describe("runTeamTurn", () => {
   it("accepts compressed dialogue output wrapped in a JSON code fence", async () => {
     mockGenerate.mockResolvedValue({
       text: `\`\`\`json
-{"m":[{"k":0,"t":"rca_analyst","s":"Clarification needed","b":"Can you confirm which customer-visible failure should be investigated?","p":null,"r":[]}],"f":[],"q":[],"n":["rca_analyst"],"d":0,"b":null}
+{"m":[{"k":0,"t":"rca_analyst","s":"Clarification needed","b":"Can you confirm which customer-visible failure should be investigated?","p":null,"r":[]}],"f":[],"q":[],"n":["rca_analyst"],"d":0,"r":null}
 \`\`\``,
       steps: [{ id: "step_1" }],
       toolResults: [],
@@ -176,7 +176,7 @@ describe("runTeamTurn", () => {
         q: [],
         n: [],
         d: 1,
-        b: null,
+        r: null,
       }),
       steps: [{ id: "step_1" }],
       toolResults: [
@@ -222,7 +222,7 @@ describe("runTeamTurn", () => {
         q: [],
         n: [],
         d: 1,
-        b: null,
+        r: null,
       }),
       steps: [{ id: "step_1" }],
       toolResults: [
@@ -263,7 +263,7 @@ describe("/team-turn route", () => {
         q: ["question_1"],
         n: ["pr_creator"],
         d: 1,
-        b: null,
+        r: null,
       }),
       steps: [{ id: "step_1" }],
       toolResults: [],

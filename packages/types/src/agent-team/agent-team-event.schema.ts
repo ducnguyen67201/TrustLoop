@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   agentTeamMessageKindSchema,
   agentTeamTargetSchema,
+  resolutionStatusSchema,
+  resolutionTargetSchema,
 } from "@shared/types/agent-team/agent-team-dialogue.schema";
 
 // Append-only event log kinds. Adding a new kind is a one-way door once prod
@@ -22,6 +24,11 @@ export const AGENT_TEAM_EVENT_KIND = {
   toolCalled: "tool_called",
   toolReturned: "tool_returned",
   error: "error",
+  // Resolution lifecycle. UI status badges derive from these events, not from
+  // message metadata.
+  questionDispatched: "question_dispatched",
+  questionAnswered: "question_answered",
+  questionSuperseded: "question_superseded",
 } as const;
 
 export const agentTeamEventKindValues = [
@@ -38,6 +45,9 @@ export const agentTeamEventKindValues = [
   AGENT_TEAM_EVENT_KIND.toolCalled,
   AGENT_TEAM_EVENT_KIND.toolReturned,
   AGENT_TEAM_EVENT_KIND.error,
+  AGENT_TEAM_EVENT_KIND.questionDispatched,
+  AGENT_TEAM_EVENT_KIND.questionAnswered,
+  AGENT_TEAM_EVENT_KIND.questionSuperseded,
 ] as const;
 
 export const agentTeamEventKindSchema = z.enum(agentTeamEventKindValues);
@@ -150,6 +160,36 @@ const errorPayload = z.object({
   stack: z.string().nullable().optional(),
 });
 
+// Resolution lifecycle payloads. Each payload includes target+status so
+// dashboard filters and log search don't need to join back to the
+// originating turn output.
+const questionDispatchedPayload = z.object({
+  questionId: z.string().min(1),
+  target: resolutionTargetSchema,
+  status: resolutionStatusSchema,
+  question: z.string().min(1),
+  // For target=customer; suggestion the architect drafted, in operator/company voice.
+  suggestedReply: z.string().nullable().optional(),
+  // For target=internal; role key the question was routed to.
+  assignedRole: z.string().nullable().optional(),
+});
+
+const questionAnsweredPayload = z.object({
+  questionId: z.string().min(1),
+  target: resolutionTargetSchema,
+  // Where the answer came from. customer = synthetic from a customer reply,
+  // operator = operator typed answer in UI, internal_role = a peer role
+  // posted an answer message.
+  source: z.enum(["customer", "operator", "internal_role"]),
+  answer: z.string().nullable().optional(),
+});
+
+const questionSupersededPayload = z.object({
+  questionId: z.string().min(1),
+  target: resolutionTargetSchema,
+  reason: z.string().min(1),
+});
+
 // Base shape shared by every event. `id` and `ts` are DB-assigned on write.
 const agentTeamRunEventBase = z.object({
   id: z.string().min(1),
@@ -217,6 +257,18 @@ export const agentTeamRunEventSchema = z.discriminatedUnion("kind", [
   agentTeamRunEventBase.extend({
     kind: z.literal(AGENT_TEAM_EVENT_KIND.error),
     payload: errorPayload,
+  }),
+  agentTeamRunEventBase.extend({
+    kind: z.literal(AGENT_TEAM_EVENT_KIND.questionDispatched),
+    payload: questionDispatchedPayload,
+  }),
+  agentTeamRunEventBase.extend({
+    kind: z.literal(AGENT_TEAM_EVENT_KIND.questionAnswered),
+    payload: questionAnsweredPayload,
+  }),
+  agentTeamRunEventBase.extend({
+    kind: z.literal(AGENT_TEAM_EVENT_KIND.questionSuperseded),
+    payload: questionSupersededPayload,
   }),
 ]);
 
@@ -326,6 +378,29 @@ export const agentTeamRunEventDraftSchema = z.discriminatedUnion("kind", [
     workspaceId: z.string().min(1),
     actor: agentTeamEventActorSchema,
     payload: errorPayload,
+  }),
+  z.object({
+    kind: z.literal(AGENT_TEAM_EVENT_KIND.questionDispatched),
+    runId: z.string().min(1),
+    workspaceId: z.string().min(1),
+    actor: agentTeamEventActorSchema,
+    target: z.string().nullable().optional(),
+    payload: questionDispatchedPayload,
+  }),
+  z.object({
+    kind: z.literal(AGENT_TEAM_EVENT_KIND.questionAnswered),
+    runId: z.string().min(1),
+    workspaceId: z.string().min(1),
+    actor: agentTeamEventActorSchema,
+    target: z.string().nullable().optional(),
+    payload: questionAnsweredPayload,
+  }),
+  z.object({
+    kind: z.literal(AGENT_TEAM_EVENT_KIND.questionSuperseded),
+    runId: z.string().min(1),
+    workspaceId: z.string().min(1),
+    actor: agentTeamEventActorSchema,
+    payload: questionSupersededPayload,
   }),
 ]);
 

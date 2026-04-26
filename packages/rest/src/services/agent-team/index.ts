@@ -27,3 +27,8 @@ export {
   setDefault as setDefaultAgentTeam,
   update as updateAgentTeam,
 } from "@shared/rest/services/agent-team/team-service";
+export {
+  getPendingQuestions as getPendingResolutionQuestions,
+  recordOperatorAnswer,
+  resumeRun as resumeAgentTeamRun,
+} from "@shared/rest/services/agent-team/resume-run";

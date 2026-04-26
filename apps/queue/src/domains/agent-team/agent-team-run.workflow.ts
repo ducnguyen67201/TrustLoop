@@ -21,10 +21,16 @@ const turnActivities = proxyActivities<typeof agentTeamActivities>({
 export async function agentTeamRunWorkflow(
   input: AgentTeamRunWorkflowInput
 ): Promise<AgentTeamRunWorkflowResult> {
-  await lifecycleActivities.initializeRunState({
-    runId: input.runId,
-    teamSnapshot: input.teamSnapshot,
-  });
+  // On resume, role inboxes already exist and the architect's queue state was
+  // primed by recordOperatorAnswer before dispatch. initializeRunState would
+  // overwrite the architect's wakeReason back to "initial-seed", losing the
+  // synthetic operator-answer signal.
+  if (input.isResume !== true) {
+    await lifecycleActivities.initializeRunState({
+      runId: input.runId,
+      teamSnapshot: input.teamSnapshot,
+    });
+  }
 
   let progress = await lifecycleActivities.getRunProgress(input.runId);
   let turnCount = 0;
@@ -64,6 +70,10 @@ export async function agentTeamRunWorkflow(
         workspaceId: input.workspaceId,
         conversationId: input.conversationId,
         runId: input.runId,
+        // Pass the workflow's turn counter so the agent derives deterministic
+        // question ids in resolution output: same compressed input + same
+        // (runId, turnIndex) = same ids across activity retries.
+        turnIndex: turnCount,
         teamRoles: input.teamSnapshot.roles,
         role,
         requestSummary: input.threadSnapshot,
@@ -76,6 +86,7 @@ export async function agentTeamRunWorkflow(
 
       progress = await turnActivities.persistRoleTurnResult({
         runId: input.runId,
+        turnIndex: turnCount,
         role,
         teamRoles: input.teamSnapshot.roles,
         result,

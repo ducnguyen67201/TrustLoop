@@ -2,6 +2,7 @@ import {
   MAX_AGENT_TEAM_MESSAGES,
   assertValidMessageRouting,
   collectQueuedTargets,
+  isHumanResolutionTarget,
   selectInitialRole,
   shouldCreateOpenQuestion,
 } from "@/domains/agent-team/agent-team-run-routing";
@@ -34,6 +35,8 @@ import {
   type AgentTeamRoleTurnInput,
   type AgentTeamRoleTurnOutput,
   type AgentTeamRunWorkflowInput,
+  RESOLUTION_STATUS,
+  RESOLUTION_TARGET,
   agentTeamDialogueMessageSchema,
   agentTeamFactSchema,
   agentTeamOpenQuestionSchema,
@@ -56,6 +59,7 @@ interface TurnContextPayload {
 
 interface PersistRoleTurnResultInput {
   runId: string;
+  turnIndex: number;
   role: AgentTeamRole;
   teamRoles: AgentTeamRole[];
   result: AgentTeamRoleTurnOutput;
@@ -413,7 +417,7 @@ export async function persistRoleTurnResult(
     }
 
     const openQuestionsToCreate = createdMessages
-      .filter((message) => shouldCreateOpenQuestion(message.kind))
+      .filter((message) => shouldCreateOpenQuestionForMessage(message, input.teamRoles))
       .map((message) => buildOpenQuestionRow(message, input.role.roleKey, input.teamRoles));
 
     if (openQuestionsToCreate.length > 0) {
@@ -479,13 +483,34 @@ export async function persistRoleTurnResult(
       });
     }
 
-    // Self-role terminal state. done → role_completed, blockedReason →
-    // role_blocked. "idle" is the normal between-turn state; no event.
-    const selfState = input.result.done
-      ? AGENT_TEAM_ROLE_INBOX_STATE.done
-      : input.result.blockedReason
-        ? AGENT_TEAM_ROLE_INBOX_STATE.blocked
+    // Self-role terminal state.
+    //   done                              → role_completed
+    //   resolution.status == needs_input  → role_blocked (waiting for input)
+    //   resolution.status == no_action_needed OR complete OR null → idle
+    //
+    // `no_action_needed` is a close-recommendation, not a blocked state —
+    // treating it as blocked would strand acknowledgement cases. Closure
+    // happens via the operator's Close-as-no-action action.
+    const messageResolutionQuestions = buildResolutionQuestionsFromMessages({
+      runId: input.runId,
+      turnIndex: input.turnIndex,
+      messages: persistableMessages,
+      teamRoles: input.teamRoles,
+    });
+
+    const isResolutionBlocked =
+      input.result.resolution !== null &&
+      input.result.resolution !== undefined &&
+      input.result.resolution.status === RESOLUTION_STATUS.needsInput;
+    const selfBlocked = isResolutionBlocked || messageResolutionQuestions.length > 0;
+    const selfState = selfBlocked
+      ? AGENT_TEAM_ROLE_INBOX_STATE.blocked
+      : input.result.done
+        ? AGENT_TEAM_ROLE_INBOX_STATE.done
         : AGENT_TEAM_ROLE_INBOX_STATE.idle;
+
+    const wakeReasonText =
+      input.result.resolution?.whyStuck ?? messageResolutionQuestions.at(0)?.question ?? null;
 
     await tx.agentTeamRoleInbox.update({
       where: {
@@ -498,7 +523,7 @@ export async function persistRoleTurnResult(
         state: selfState,
         lastReadMessageId: createdMessages.at(-1)?.id ?? null,
         unreadCount: 0,
-        wakeReason: input.result.blockedReason ?? null,
+        wakeReason: wakeReasonText,
       },
     });
 
@@ -518,7 +543,51 @@ export async function persistRoleTurnResult(
         actor: input.role.roleKey,
         payload: {
           roleKey: input.role.roleKey,
-          wakeReason: input.result.blockedReason ?? null,
+          wakeReason: wakeReasonText,
+        },
+      });
+    }
+
+    // Persist each question in the architect's resolution as a
+    // question_dispatched event. Question ids are deterministic
+    // (assigned at parse time from runId+turnIndex+questionIndex), so
+    // activity retries produce the same ids and the event log records
+    // each question exactly once across replays.
+    if (input.result.resolution && input.result.resolution.questionsToResolve.length > 0) {
+      const resolutionStatus = input.result.resolution.status;
+      for (const question of input.result.resolution.questionsToResolve) {
+        eventDrafts.push({
+          kind: AGENT_TEAM_EVENT_KIND.questionDispatched,
+          runId: input.runId,
+          workspaceId: run.workspaceId,
+          actor: input.role.roleKey,
+          target: question.target,
+          payload: {
+            questionId: question.id,
+            target: question.target,
+            status: resolutionStatus,
+            question: question.question,
+            suggestedReply: question.suggestedReply ?? null,
+            assignedRole: question.assignedRole ?? null,
+          },
+        });
+      }
+    }
+
+    for (const question of messageResolutionQuestions) {
+      eventDrafts.push({
+        kind: AGENT_TEAM_EVENT_KIND.questionDispatched,
+        runId: input.runId,
+        workspaceId: run.workspaceId,
+        actor: input.role.roleKey,
+        target: question.target,
+        payload: {
+          questionId: question.id,
+          target: question.target,
+          status: RESOLUTION_STATUS.needsInput,
+          question: question.question,
+          suggestedReply: question.suggestedReply,
+          assignedRole: null,
         },
       });
     }
@@ -696,7 +765,16 @@ function normalizeTurnMessages(
     (message) => message.kind === AGENT_TEAM_MESSAGE_KIND.blocked
   );
 
-  if (result.blockedReason && !alreadyBlocked) {
+  // Synthesize a `kind=blocked` transcript message when the architect emits
+  // a non-complete resolution and didn't already include an explicit blocked
+  // message. Body uses `resolution.whyStuck`; structured questions live on
+  // `question_dispatched` events, not on this synthetic message.
+  const isResolutionBlocked =
+    result.resolution !== null &&
+    result.resolution !== undefined &&
+    result.resolution.status !== "complete";
+  if (isResolutionBlocked && !alreadyBlocked) {
+    const whyStuck = result.resolution?.whyStuck ?? "Agent stopped without a stated reason";
     messages.push({
       toRoleKey:
         role.slug === AGENT_TEAM_ROLE_SLUG.architect
@@ -705,12 +783,75 @@ function normalizeTurnMessages(
             AGENT_TEAM_TARGET.orchestrator),
       kind: AGENT_TEAM_MESSAGE_KIND.blocked,
       subject: `${role.label} blocked`,
-      content: result.blockedReason,
+      content: whyStuck,
       refs: [],
     });
   }
 
   return messages;
+}
+
+interface MessageResolutionQuestion {
+  id: string;
+  target: typeof RESOLUTION_TARGET.customer | typeof RESOLUTION_TARGET.operator;
+  question: string;
+  suggestedReply: string | null;
+}
+
+function buildResolutionQuestionsFromMessages(input: {
+  runId: string;
+  turnIndex: number;
+  messages: AgentTeamDialogueMessageDraft[];
+  teamRoles: AgentTeamRole[];
+}): MessageResolutionQuestion[] {
+  const roleKeys = new Set(input.teamRoles.map((role) => role.roleKey));
+
+  return input.messages.flatMap((message, messageIndex) => {
+    if (!isHumanResolutionMessage(message, roleKeys)) {
+      return [];
+    }
+
+    return [
+      {
+        id: `${input.runId}-${input.turnIndex}-message-${messageIndex}`,
+        target: message.toRoleKey,
+        question: message.content,
+        suggestedReply: message.toRoleKey === RESOLUTION_TARGET.customer ? message.content : null,
+      },
+    ];
+  });
+}
+
+function isHumanResolutionMessage(
+  message: AgentTeamDialogueMessageDraft,
+  roleKeys: ReadonlySet<string>
+): message is AgentTeamDialogueMessageDraft & {
+  toRoleKey: typeof RESOLUTION_TARGET.customer | typeof RESOLUTION_TARGET.operator;
+} {
+  if (roleKeys.has(message.toRoleKey)) {
+    return false;
+  }
+
+  if (
+    message.toRoleKey !== RESOLUTION_TARGET.customer &&
+    message.toRoleKey !== RESOLUTION_TARGET.operator
+  ) {
+    return false;
+  }
+
+  return shouldCreateOpenQuestion(message.kind);
+}
+
+function shouldCreateOpenQuestionForMessage(
+  message: AgentTeamDialogueMessage,
+  teamRoles: AgentTeamRole[]
+): boolean {
+  if (!shouldCreateOpenQuestion(message.kind)) {
+    return false;
+  }
+
+  const targetsExistingRole = teamRoles.some((role) => role.roleKey === message.toRoleKey);
+  return targetsExistingRole || !isHumanResolutionTarget(message.toRoleKey);
 }
 
 function buildOpenQuestionRow(

@@ -118,14 +118,18 @@ describe("agent team positional format", () => {
       q: ["question_1"],
       n: ["code_reader"],
       d: 0,
-      b: null,
+      r: null,
     });
 
-    const result = reconstructAgentTeamTurnOutput(compressed);
+    const result = reconstructAgentTeamTurnOutput(compressed, {
+      runId: "run_test",
+      turnIndex: 0,
+    });
 
     expect(result.messages[0]?.kind).toBe("request_evidence");
     expect(result.messages[0]?.toRoleKey).toBe("code_reader");
     expect(result.proposedFacts[0]?.confidence).toBe(0.82);
+    expect(result.resolution).toBeNull();
   });
 
   it("documents the compressed format with examples", () => {

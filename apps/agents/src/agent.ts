@@ -199,7 +199,10 @@ export async function runTeamTurn(
   });
 
   const result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
-  const output = parseTeamTurnOutput(result.text);
+  const output = parseTeamTurnOutput(result.text, {
+    runId: request.runId,
+    turnIndex: request.turnIndex,
+  });
   const toolCalls = extractToolCalls(result);
   logToolUsage("[agents:debug] Team turn tool usage", {
     endpoint: "/team-turn",
@@ -233,7 +236,12 @@ export async function runTeamTurn(
     messages: output.messages.length,
     proposedFacts: output.proposedFacts.length,
     done: output.done,
-    blocked: Boolean(output.blockedReason),
+    // Blocked = unresolved questions external to this role. `no_action_needed`
+    // is a close-recommendation handled by the operator, not a blocked state.
+    blocked:
+      output.resolution !== null &&
+      output.resolution !== undefined &&
+      output.resolution.status === "needs_input",
   });
 
   return agentTeamRoleTurnOutputSchema.parse({
@@ -254,14 +262,20 @@ function parseAgentOutput(rawOutput: string | undefined) {
   return reconstructAnalysisOutput(compressed);
 }
 
-function parseTeamTurnOutput(rawOutput: string | undefined) {
+function parseTeamTurnOutput(
+  rawOutput: string | undefined,
+  context: { runId: string; turnIndex: number }
+) {
   if (!rawOutput) {
     throw new Error("Agent team role produced no output after completing the loop");
   }
 
   const parsed = parseJsonModelOutput(rawOutput, "Agent team role returned non-JSON response");
   const compressed = compressedAgentTeamTurnOutputSchema.parse(parsed);
-  const reconstructed = reconstructAgentTeamTurnOutput(compressed);
+  // Server assigns deterministic question ids from runId + turnIndex so the
+  // same compressed input produces the same ids across activity retries.
+  // LLM-supplied ids are not accepted.
+  const reconstructed = reconstructAgentTeamTurnOutput(compressed, context);
 
   return {
     messages: reconstructed.messages.map((message) =>
@@ -278,7 +292,7 @@ function parseTeamTurnOutput(rawOutput: string | undefined) {
     resolvedQuestionIds: reconstructed.resolvedQuestionIds,
     nextSuggestedRoleKeys: reconstructed.nextSuggestedRoleKeys,
     done: reconstructed.done,
-    blockedReason: reconstructed.blockedReason,
+    resolution: reconstructed.resolution,
   };
 }
 

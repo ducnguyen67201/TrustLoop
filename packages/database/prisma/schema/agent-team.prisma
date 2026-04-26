@@ -66,6 +66,10 @@ model AgentTeamRun {
   teamId         String
   conversationId String?
   analysisId     String?
+  // Resume chain. Points to the previous run's id when an operator-resume
+  // started this run; null on the original. SetNull on parent delete keeps
+  // the chain queryable even if the original row is removed.
+  parentRunId    String?
   status         String   @default("queued")
   teamSnapshot   Json
   workflowId     String?
@@ -78,6 +82,8 @@ model AgentTeamRun {
 
   workspace     Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   team          AgentTeam               @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  parentRun     AgentTeamRun?           @relation("AgentTeamRunResume", fields: [parentRunId], references: [id], onDelete: SetNull)
+  childRuns     AgentTeamRun[]          @relation("AgentTeamRunResume")
   messages      AgentTeamMessage[]
   roleInboxes   AgentTeamRoleInbox[]
   facts         AgentTeamFact[]
@@ -87,6 +93,7 @@ model AgentTeamRun {
   @@index([workspaceId, status])
   @@index([conversationId])
   @@index([analysisId])
+  @@index([parentRunId])
 }
 
 // Append-only event log for an agent-team run. Source of truth; derived read

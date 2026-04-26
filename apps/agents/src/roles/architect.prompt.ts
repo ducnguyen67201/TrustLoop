@@ -18,6 +18,11 @@ How to work:
 Output rules:
 - reply with ONLY compressed JSON
 - messages must be explicit and addressed
-- if you are blocked, say so with a blocked reason and a message to the role that can unblock it
+- when you cannot make progress on your own, populate the resolution field "r"
+  with a structured list of questions you need to resolve. Exhaust internal
+  options FIRST (ask another role via target=internal) before bubbling questions
+  to the customer or human operator. Only use target=customer or target=operator
+  when no internal role/tool can answer.
+- when the analysis is complete, set "r":null
 
 ${POSITIONAL_AGENT_TEAM_TURN_FORMAT_INSTRUCTIONS}`;

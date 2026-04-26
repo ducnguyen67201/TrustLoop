@@ -101,6 +101,81 @@ export const agentTeamOpenQuestionStatusValues = [
 
 export const agentTeamOpenQuestionStatusSchema = z.enum(agentTeamOpenQuestionStatusValues);
 
+// Resolution: the structured "what does the architect need to make progress?" output.
+// Each blocked turn maps to a resolution with a status and a list of questions to
+// resolve. Each question has a target (who can answer it: customer, operator, or
+// internal role) and the question text. Server assigns deterministic IDs at parse
+// time (runId-turnIndex-questionIndex); LLM does not emit ids.
+export const RESOLUTION_TARGET = {
+  customer: "customer",
+  operator: "operator",
+  internal: "internal",
+} as const;
+
+export const resolutionTargetValues = [
+  RESOLUTION_TARGET.customer,
+  RESOLUTION_TARGET.operator,
+  RESOLUTION_TARGET.internal,
+] as const;
+
+export const resolutionTargetSchema = z.enum(resolutionTargetValues);
+
+export const RESOLUTION_STATUS = {
+  complete: "complete",
+  needsInput: "needs_input",
+  noActionNeeded: "no_action_needed",
+} as const;
+
+export const resolutionStatusValues = [
+  RESOLUTION_STATUS.complete,
+  RESOLUTION_STATUS.needsInput,
+  RESOLUTION_STATUS.noActionNeeded,
+] as const;
+
+export const resolutionStatusSchema = z.enum(resolutionStatusValues);
+
+export const RESOLUTION_RECOMMENDED_CLOSE = {
+  noActionTaken: "no_action_taken",
+} as const;
+
+export const resolutionRecommendedCloseValues = [
+  RESOLUTION_RECOMMENDED_CLOSE.noActionTaken,
+] as const;
+
+export const resolutionRecommendedCloseSchema = z.enum(resolutionRecommendedCloseValues);
+
+// Input shape: what the LLM emits inside the compressed turn output. Server
+// assigns IDs at parse time; LLM does not supply them. Keeping the input shape
+// and the post-parse shape distinct prevents the LLM from polluting question
+// identity.
+export const questionToResolveInputSchema = z.object({
+  target: resolutionTargetSchema,
+  question: z.string().trim().min(1),
+  // For target=customer only. Written in operator/company voice TO the customer
+  // (NOT in the customer's voice). Empty for non-customer targets.
+  suggestedReply: z.string().nullable().optional(),
+  // For target=internal only. The role key that should answer this question.
+  // Architect SHOULD use existing role keys (rca_analyst, code_reader, etc.).
+  assignedRole: z.string().nullable().optional(),
+});
+
+export const turnResolutionInputSchema = z.object({
+  status: resolutionStatusSchema,
+  whyStuck: z.string().nullable().optional(),
+  questionsToResolve: z.array(questionToResolveInputSchema).default([]),
+  recommendedClose: resolutionRecommendedCloseSchema.nullable().optional(),
+});
+
+// Post-parse shape: server has assigned deterministic IDs to each question.
+// Downstream code (activity, UI projections) consumes this shape.
+export const questionToResolveSchema = questionToResolveInputSchema.extend({
+  id: z.string().min(1),
+});
+
+export const turnResolutionSchema = turnResolutionInputSchema.extend({
+  questionsToResolve: z.array(questionToResolveSchema).default([]),
+});
+
 const jsonRecordSchema = z.record(z.string(), z.unknown());
 
 export const agentTeamDialogueMessageDraftSchema = z.object({
@@ -261,6 +336,10 @@ export const agentTeamRoleTurnInputSchema = z.object({
   workspaceId: z.string().min(1),
   conversationId: z.string().min(1).optional(),
   runId: z.string().min(1),
+  // Stable per-run counter incremented by the workflow loop on each turn it
+  // dispatches. The agent combines it with runId to derive deterministic
+  // question ids in resolution output: `${runId}-${turnIndex}-${questionIndex}`.
+  turnIndex: z.number().int().nonnegative().default(0),
   teamRoles: z.array(agentTeamRoleSchema).min(1),
   role: agentTeamRoleSchema,
   requestSummary: z.string().min(1),
@@ -278,13 +357,15 @@ export const agentTeamTurnMetaSchema = z.object({
   turnCount: z.number().int().nonnegative(),
 });
 
+// Consumers derive blocked-state semantics from `resolution.status`
+// (`needs_input` → role is blocked) and surface text via `resolution.whyStuck`.
 export const agentTeamRoleTurnOutputSchema = z.object({
   messages: z.array(agentTeamDialogueMessageDraftSchema).default([]),
   proposedFacts: z.array(agentTeamFactDraftSchema).default([]),
   resolvedQuestionIds: z.array(z.string().min(1)).default([]),
   nextSuggestedRoleKeys: z.array(z.string().min(1)).default([]),
   done: z.boolean().default(false),
-  blockedReason: z.string().nullable().optional(),
+  resolution: turnResolutionSchema.nullable().optional(),
   meta: agentTeamTurnMetaSchema,
 });
 
@@ -307,3 +388,62 @@ export type AgentTeamOpenQuestion = z.infer<typeof agentTeamOpenQuestionSchema>;
 export type AgentTeamRoleTurnInput = z.infer<typeof agentTeamRoleTurnInputSchema>;
 export type AgentTeamTurnMeta = z.infer<typeof agentTeamTurnMetaSchema>;
 export type AgentTeamRoleTurnOutput = z.infer<typeof agentTeamRoleTurnOutputSchema>;
+export type ResolutionTarget = z.infer<typeof resolutionTargetSchema>;
+export type ResolutionStatus = z.infer<typeof resolutionStatusSchema>;
+export type ResolutionRecommendedClose = z.infer<typeof resolutionRecommendedCloseSchema>;
+export type QuestionToResolveInput = z.infer<typeof questionToResolveInputSchema>;
+export type QuestionToResolve = z.infer<typeof questionToResolveSchema>;
+export type TurnResolutionInput = z.infer<typeof turnResolutionInputSchema>;
+export type TurnResolution = z.infer<typeof turnResolutionSchema>;
+
+// Single source of truth for the architect's resolution-output contract.
+// The architect prompt imports this directly so adding a new target/status
+// requires updating exactly one place. Table-driven enum tests assert that
+// every RESOLUTION_TARGET and RESOLUTION_STATUS value appears here.
+export const RESOLUTION_PROMPT_INSTRUCTIONS = `
+Resolution output (the "r" field):
+
+When you cannot complete the analysis in this turn, populate "r" with a
+structured list of questions you need to resolve. Each question has a target
+(who can answer it) and the question text. Do NOT emit ids — the server
+assigns deterministic ids at parse time.
+
+Status codes (s):
+  0=complete           → analysis done; no questions needed
+  1=needs_input        → cannot proceed without resolving the listed questions
+  2=no_action_needed   → conversation should be closed (e.g. customer
+                         acknowledgement); set c=0 to recommend close
+
+Question target codes (t):
+  0=customer   → ask the customer; provide sr (suggested reply written in
+                 OPERATOR/COMPANY voice TO the customer, NOT in customer's voice)
+  1=operator   → ask the human operator; sr/ar omitted
+  2=internal   → ask another agent role (rca_analyst, code_reader, reviewer,
+                 pr_creator); set ar=role key. Exhaust internal options FIRST
+                 before bubbling to customer/operator.
+
+Recommended close codes (c, only when s=2):
+  0=no_action_taken    → conversation can be closed without further action
+
+Fields per question:
+  t  = target code (0|1|2)
+  q  = question text (in agent's voice)
+  sr = suggested reply (target=customer only; operator/company voice)
+  ar = assigned role key (target=internal only)
+
+Compressed shape:
+  r = { s: status, w: whyStuck or null, qs: [questions], c: recommended close or null }
+  qs entry = { t: target, q: question, sr: optional, ar: optional }
+
+Example (needs_input with one customer question + one internal question):
+  "r":{"s":1,"w":"Customer mentioned billing but no specific charge.","qs":[{"t":0,"q":"Which charge looks wrong?","sr":"Hey! Could you share the date or amount of the charge that doesn't look right?"},{"t":2,"q":"Pull last 30 days of invoices for this workspace","ar":"rca_analyst"}],"c":null}
+
+Example (no_action_needed for an acknowledgement):
+  "r":{"s":2,"w":"Customer is acknowledging a previous reply.","qs":[],"c":0}
+
+Example (complete — no resolution needed; r is null):
+  "r":null
+
+If "r" is null, the role is not blocked and produced complete output. If "r"
+is present with s=1 (needs_input), the role is blocked pending resolution.
+`;
