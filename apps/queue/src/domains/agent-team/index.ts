@@ -4,6 +4,7 @@ export {
   MAX_ROLE_TURNS,
   assertValidMessageRouting,
   collectQueuedTargets,
+  partitionMessagesByRouting,
   selectInitialRole,
   shouldCreateOpenQuestion,
   shouldWakeTarget,

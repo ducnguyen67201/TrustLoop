@@ -28,6 +28,7 @@ import {
   compressedAgentTeamTurnOutputSchema,
   compressedAnalysisOutputSchema,
   createDraftPullRequestResultSchema,
+  listAllowedTargets,
   parseJsonModelOutput,
   reconstructAgentTeamTurnOutput,
   reconstructAnalysisOutput,
@@ -408,12 +409,19 @@ function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
               `${index + 1}. [${question.id}] askedBy=${question.askedByRoleKey} question=${question.question}`
           )
           .join("\n");
-  const availableTeamRoles = request.teamRoles
-    .map(
-      (role, index) =>
-        `${index + 1}. key=${role.roleKey} label=${role.label} type=${role.slug}${role.roleKey === request.role.roleKey ? " (current role)" : ""}`
-    )
-    .join("\n");
+  const allowedSlugs = new Set(listAllowedTargets(request.role.slug));
+  const addressablePeers = request.teamRoles.filter(
+    (role) => role.id !== request.role.id && allowedSlugs.has(role.slug)
+  );
+  const availableTeamRoles =
+    addressablePeers.length === 0
+      ? 'No addressable peers. Use toRoleKey="broadcast" or set the resolution field.'
+      : addressablePeers
+          .map(
+            (role, index) =>
+              `${index + 1}. key=${role.roleKey} label=${role.label} type=${role.slug}`
+          )
+          .join("\n");
   const sessionDigest = request.sessionDigest
     ? JSON.stringify(request.sessionDigest, null, 2)
     : "None";
@@ -424,7 +432,9 @@ CONVERSATION_ID: ${request.conversationId ?? "standalone"}
 ROLE_KEY: ${request.role.roleKey}
 ROLE_TYPE: ${request.role.slug}
 
-## Available Team Roles
+## Addressable Peers
+Set message "t" (toRoleKey) to one of these role keys, or to "broadcast".
+NEVER set "t" to your own ROLE_KEY (${request.role.roleKey}); you cannot message yourself.
 ${availableTeamRoles}
 
 ## Request Summary

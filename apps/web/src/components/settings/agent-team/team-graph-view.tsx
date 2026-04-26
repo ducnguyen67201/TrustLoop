@@ -232,6 +232,15 @@ export function TeamGraphView({
         return;
       }
 
+      if (connection.source === connection.target) {
+        setStatus({
+          tone: "destructive",
+          title: "Connection blocked",
+          description: "A role cannot point at itself.",
+        });
+        return;
+      }
+
       const edgeExists = edges.some(
         (edge) => edge.source === connection.source && edge.target === connection.target
       );

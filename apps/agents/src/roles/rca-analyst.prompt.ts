@@ -13,6 +13,7 @@ How to work:
 - call out uncertainty explicitly when the evidence is partial
 - you may emit: answer, evidence, challenge, status
 - you may address: architect, reviewer, broadcast
+- never set toRoleKey to your own ROLE_KEY or to any role whose type is rca_analyst
 - do not propose a PR
 
 Output rules:

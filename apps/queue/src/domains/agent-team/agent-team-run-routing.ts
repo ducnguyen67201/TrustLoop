@@ -107,6 +107,58 @@ export function assertValidMessageRouting(input: {
   }
 }
 
+export interface DroppedMessage {
+  message: AgentTeamDialogueMessageDraft;
+  reason: string;
+}
+
+// LLMs occasionally hallucinate `toRoleKey` values — pointing at themselves,
+// at a role they're not allowed to address, or at an unknown identifier.
+// Throwing on every hallucination kills the whole run on activity retry; we
+// drop the offending message and let the rest of the turn proceed instead.
+export function partitionMessagesByRouting(input: {
+  senderRole: AgentTeamRole;
+  teamRoles: AgentTeamRole[];
+  messages: AgentTeamDialogueMessageDraft[];
+}): { valid: AgentTeamDialogueMessageDraft[]; dropped: DroppedMessage[] } {
+  const rolesByKey = new Map(input.teamRoles.map((role) => [role.roleKey, role]));
+  const valid: AgentTeamDialogueMessageDraft[] = [];
+  const dropped: DroppedMessage[] = [];
+
+  for (const message of input.messages) {
+    if (!isRoleTarget(message.toRoleKey)) {
+      valid.push(message);
+      continue;
+    }
+
+    const targetRole = rolesByKey.get(message.toRoleKey);
+    if (!targetRole) {
+      if (isHumanResolutionTarget(message.toRoleKey)) {
+        valid.push(message);
+        continue;
+      }
+
+      dropped.push({
+        message,
+        reason: `unknown target ${message.toRoleKey}`,
+      });
+      continue;
+    }
+
+    if (!canRouteTo(input.senderRole.slug, targetRole.slug)) {
+      dropped.push({
+        message,
+        reason: `${input.senderRole.slug} cannot address ${targetRole.slug}`,
+      });
+      continue;
+    }
+
+    valid.push(message);
+  }
+
+  return { valid, dropped };
+}
+
 export function shouldCreateOpenQuestion(kind: AgentTeamMessageKind): boolean {
   return (
     kind === AGENT_TEAM_MESSAGE_KIND.question ||

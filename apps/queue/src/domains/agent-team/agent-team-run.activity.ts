@@ -1,8 +1,8 @@
 import {
   MAX_AGENT_TEAM_MESSAGES,
-  assertValidMessageRouting,
   collectQueuedTargets,
   isHumanResolutionTarget,
+  partitionMessagesByRouting,
   selectInitialRole,
   shouldCreateOpenQuestion,
 } from "@/domains/agent-team/agent-team-run-routing";
@@ -271,11 +271,25 @@ export async function persistRoleTurnResult(
   heartbeat();
 
   const normalizedMessages = normalizeTurnMessages(input.role, input.result, input.teamRoles);
-  assertValidMessageRouting({
+  const { valid: routedMessages, dropped: droppedMessages } = partitionMessagesByRouting({
     senderRole: input.role,
     teamRoles: input.teamRoles,
     messages: normalizedMessages,
   });
+  if (droppedMessages.length > 0) {
+    console.warn("[agent-team] Dropped invalidly routed LLM messages", {
+      runId: input.runId,
+      turnIndex: input.turnIndex,
+      senderRoleKey: input.role.roleKey,
+      senderSlug: input.role.slug,
+      droppedCount: droppedMessages.length,
+      dropped: droppedMessages.map((entry) => ({
+        toRoleKey: entry.message.toRoleKey,
+        kind: entry.message.kind,
+        reason: entry.reason,
+      })),
+    });
+  }
 
   const { snapshot, recordedEvents } = await prisma.$transaction(async (tx) => {
     // workspaceId is required on every event. Fetch once per turn so callers
@@ -284,7 +298,7 @@ export async function persistRoleTurnResult(
       where: { id: input.runId },
       select: { workspaceId: true },
     });
-    const parentMessageIds = normalizedMessages.flatMap((message) =>
+    const parentMessageIds = routedMessages.flatMap((message) =>
       message.parentMessageId ? [message.parentMessageId] : []
     );
     const existingParentMessageRows =
@@ -298,7 +312,7 @@ export async function persistRoleTurnResult(
             select: { id: true },
           });
     const persistableMessages = clearUnknownParentMessageIds(
-      normalizedMessages,
+      routedMessages,
       new Set(existingParentMessageRows.map((message) => message.id))
     );
 

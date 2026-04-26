@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertValidMessageRouting,
   collectQueuedTargets,
+  partitionMessagesByRouting,
   selectInitialRole,
 } from "../src/domains/agent-team/agent-team-run-routing";
 
@@ -196,5 +197,100 @@ describe("assertValidMessageRouting", () => {
         ],
       })
     ).toThrow(/unknown target/i);
+  });
+});
+
+describe("partitionMessagesByRouting", () => {
+  it("drops self-addressed messages without throwing", () => {
+    const snapshot = makeSnapshot();
+    const architect = snapshot.roles[0]!;
+
+    const { valid, dropped } = partitionMessagesByRouting({
+      senderRole: architect,
+      teamRoles: snapshot.roles,
+      messages: [
+        {
+          toRoleKey: architect.roleKey,
+          kind: "question",
+          subject: "Self ping",
+          content: "Talking to myself.",
+          refs: [],
+        },
+        {
+          toRoleKey: "reviewer",
+          kind: "proposal",
+          subject: "Real handoff",
+          content: "Please review.",
+          refs: [],
+        },
+      ],
+    });
+
+    expect(valid.map((m) => m.toRoleKey)).toEqual(["reviewer"]);
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]!.reason).toMatch(/architect cannot address architect/i);
+  });
+
+  it("drops unknown targets and disallowed cross-role pairs", () => {
+    const snapshot = makeSnapshot();
+
+    const { valid, dropped } = partitionMessagesByRouting({
+      senderRole: snapshot.roles[2]!,
+      teamRoles: snapshot.roles,
+      messages: [
+        {
+          toRoleKey: "pr_creator",
+          kind: "proposal",
+          subject: "Bad routing",
+          content: "code_reader cannot directly address pr_creator.",
+          refs: [],
+        },
+        {
+          toRoleKey: "made_up_role",
+          kind: "question",
+          subject: "Unknown",
+          content: "Where does this go?",
+          refs: [],
+        },
+        {
+          toRoleKey: "operator",
+          kind: "question",
+          subject: "Human escalation",
+          content: "Need operator input.",
+          refs: [],
+        },
+      ],
+    });
+
+    expect(valid.map((m) => m.toRoleKey)).toEqual(["operator"]);
+    expect(dropped.map((entry) => entry.message.toRoleKey)).toEqual(["pr_creator", "made_up_role"]);
+  });
+
+  it("passes broadcast and human resolution targets through unchanged", () => {
+    const snapshot = makeSnapshot();
+
+    const { valid, dropped } = partitionMessagesByRouting({
+      senderRole: snapshot.roles[0]!,
+      teamRoles: snapshot.roles,
+      messages: [
+        {
+          toRoleKey: "broadcast",
+          kind: "status",
+          subject: "Heartbeat",
+          content: "Still working.",
+          refs: [],
+        },
+        {
+          toRoleKey: "customer",
+          kind: "question",
+          subject: "Need clarification",
+          content: "Please confirm the failing endpoint.",
+          refs: [],
+        },
+      ],
+    });
+
+    expect(valid.map((m) => m.toRoleKey)).toEqual(["broadcast", "customer"]);
+    expect(dropped).toEqual([]);
   });
 });
