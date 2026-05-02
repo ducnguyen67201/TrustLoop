@@ -1,7 +1,7 @@
-# Graph Report - tehsudihfsdhfjsdfbj  (2026-04-26)
+# Graph Report - tehsudihfsdhfjsdfbj  (2026-05-02)
 
 ## Corpus Check
-- 555 files · ~296,009 words
+- 556 files · ~296,604 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -350,11 +350,11 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.076) - this node is a cross-community bridge._
 - **Why does `resolveApiKeyAuth()` connect `Community 0` to `Community 1`?**
   _High betweenness centrality (0.028) - this node is a cross-community bridge._
-- **Are the 48 inferred relationships involving `GET()` (e.g. with `main()` and `sendWithRetry()`) actually correct?**
+- **Are the 48 inferred relationships involving `GET()` (e.g. with `authorizeWorkspaceMembership()` and `handleSupportStream()`) actually correct?**
   _`GET()` has 48 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 45 inferred relationships involving `update()` (e.g. with `softUpsert()` and `main()`) actually correct?**
   _`update()` has 45 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 31 inferred relationships involving `create()` (e.g. with `softUpsert()` and `main()`) actually correct?**
   _`create()` has 31 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 10 inferred relationships involving `handleGoogleOAuthCallback()` (e.g. with `GET()` and `consumeOauthStateCookie()`) actually correct?**
+- **Are the 10 inferred relationships involving `handleGoogleOAuthCallback()` (e.g. with `consumeOauthStateCookie()` and `getSessionRequestMeta()`) actually correct?**
   _`handleGoogleOAuthCallback()` has 10 INFERRED edges - model-reasoned connections that need verification._
