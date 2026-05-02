@@ -19,9 +19,6 @@ All notable changes to TrustLoop will be documented in this file.
   their values redacted, any 32+ char hex string gets stripped, and URLs
   drop their query string. Operators can paste evidence into a customer
   reply without manually scrubbing PII.
-- **YC demo page at `/demo/yc`** that walks through the support evidence
-  capsule end-to-end, paired with new `tl-demo-*` keyframes so the visual
-  story matches the product shape.
 - **Session-evidence schema unit tests** covering severity ranking, the
   redaction rules, the `repro`/`escalation` copy generation, and the
   truncation behavior of the events window.
