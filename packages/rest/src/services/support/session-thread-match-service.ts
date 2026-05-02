@@ -25,6 +25,8 @@ import {
   type SessionReplayMatchSource,
   type SessionTimelineEvent,
   type SupportCustomerIdentitySource,
+  type SupportEvidence,
+  buildSupportEvidence,
 } from "@shared/types";
 import { TRPCError } from "@trpc/server";
 
@@ -167,7 +169,12 @@ export async function getConversationSessionContext(input: {
     primaryCandidate.record.id,
     input.eventLimit ?? MAX_TIMELINE_EVENTS
   );
-  const failurePointId = findFailurePointId(events);
+  const timelineEvents = events.map(toSessionTimelineEvent);
+  const supportEvidence = buildSupportEvidence({
+    events: timelineEvents,
+    totalEventCount: primaryCandidate.record.eventCount,
+  });
+  const failurePointId = supportEvidenceFailurePointId(supportEvidence);
   const sessionDigest = compileDigest(primaryCandidate.record, events);
   const sessionBrief = buildSessionBrief(sessionDigest);
 
@@ -175,7 +182,8 @@ export async function getConversationSessionContext(input: {
     match,
     session: toSessionRecordResponse(primaryCandidate.record),
     sessionBrief,
-    events: events.map(toSessionTimelineEvent),
+    supportEvidence,
+    events: timelineEvents,
     failurePointId,
     sessionDigest,
     shouldAttachToAnalysis:
@@ -658,9 +666,9 @@ async function loadSessionEvents(
   sessionRecordId: string,
   limit: number
 ): Promise<SessionEventWithId[]> {
-  return prisma.sessionEvent.findMany({
+  const events = await prisma.sessionEvent.findMany({
     where: { sessionRecordId },
-    orderBy: { timestamp: "asc" },
+    orderBy: { timestamp: "desc" },
     take: limit,
     select: {
       id: true,
@@ -670,24 +678,7 @@ async function loadSessionEvents(
       payload: true,
     },
   });
-}
-
-function findFailurePointId(events: SessionEventWithId[]): string | null {
-  for (let index = events.length - 1; index >= 0; index--) {
-    const event = events[index];
-    if (!event) {
-      continue;
-    }
-
-    if (
-      event.eventType === SESSION_EVENT_TYPE.exception ||
-      event.eventType === SESSION_EVENT_TYPE.networkError
-    ) {
-      return event.id;
-    }
-  }
-
-  return null;
+  return events.reverse();
 }
 
 function buildSessionBrief(sessionDigest: SessionDigest): SessionBrief {
@@ -721,7 +712,12 @@ async function buildConversationSessionContext(input: {
   shouldAttachToAnalysis: boolean;
 }): Promise<ConversationSessionContext> {
   const events = await loadSessionEvents(input.session.id, input.eventLimit ?? MAX_TIMELINE_EVENTS);
-  const failurePointId = findFailurePointId(events);
+  const timelineEvents = events.map(toSessionTimelineEvent);
+  const supportEvidence = buildSupportEvidence({
+    events: timelineEvents,
+    totalEventCount: input.session.eventCount,
+  });
+  const failurePointId = supportEvidenceFailurePointId(supportEvidence);
   const sessionDigest = compileDigest(input.session, events);
   const sessionBrief = buildSessionBrief(sessionDigest);
 
@@ -729,11 +725,25 @@ async function buildConversationSessionContext(input: {
     match: input.match,
     session: toSessionRecordResponse(input.session),
     sessionBrief,
-    events: events.map(toSessionTimelineEvent),
+    supportEvidence,
+    events: timelineEvents,
     failurePointId,
     sessionDigest,
     shouldAttachToAnalysis: input.shouldAttachToAnalysis,
   };
+}
+
+function supportEvidenceFailurePointId(supportEvidence: SupportEvidence): string | null {
+  const primary = supportEvidence.primaryFailure;
+  if (
+    primary?.eventId &&
+    primary.type !== SESSION_EVENT_TYPE.route &&
+    primary.type !== SESSION_EVENT_TYPE.click
+  ) {
+    return primary.eventId;
+  }
+
+  return null;
 }
 
 function toSessionTimelineEvent(event: SessionEventWithId): SessionTimelineEvent {
@@ -1020,6 +1030,7 @@ export function emptyConversationSessionContext(): ConversationSessionContext {
     match: null,
     session: null,
     sessionBrief: null,
+    supportEvidence: null,
     events: [],
     failurePointId: null,
     sessionDigest: null,
