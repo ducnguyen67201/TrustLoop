@@ -2,6 +2,25 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.16.1] - 2026-05-02
+
+### Security
+- **PII and credentials are now redacted at SDK capture time, before they
+  ever leave the customer's browser.** Schema-side `sanitizeText` /
+  `sanitizeUrl` only ran when building operator-facing evidence; the raw
+  `SessionEvent` rows in the database still carried unredacted click
+  text, route URLs, console messages, network URLs, exception messages
+  and stack traces. Anyone with DB access could see them. The new
+  `redactText` / `redactUrl` in `packages/sdk-browser/src/redact.ts`
+  applies the same email / Bearer / Basic / `token=` / `secret=` /
+  `password=` / `authorization=` / `api[_-]?key=` / 32+ char hex
+  patterns at capture time, so the data hits the wire pre-scrubbed.
+- Adds 9 SDK redaction tests and 5 adversarial schema-side tests
+  covering naming-convention variants (`apiKey` / `api-key` / `api_key`),
+  Bearer/Basic auth, plus-aliased emails, 32+ char hex, and the 220-char
+  per-field cap. SDK and schema patterns are documented as a parity
+  contract — divergence means a leak slips one net.
+
 ## [0.2.16.0] - 2026-05-02
 
 ### Added
