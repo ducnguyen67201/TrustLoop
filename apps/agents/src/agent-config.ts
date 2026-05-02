@@ -1,11 +1,13 @@
-import { AGENT_PROVIDER, type AgentProviderConfig, agentProviderConfigSchema } from "@shared/types";
+import { type LlmOverride, llmOverrideSchema } from "@shared/types";
 
 export function resolveProviderConfig(config?: {
   provider?: unknown;
   model?: unknown;
-}): AgentProviderConfig {
-  return agentProviderConfigSchema.parse({
-    provider: config?.provider ?? AGENT_PROVIDER.openai,
+}): LlmOverride | undefined {
+  const override = llmOverrideSchema.parse({
+    provider: config?.provider,
     model: config?.model,
   });
+
+  return override.provider || override.model ? override : undefined;
 }
