@@ -2,6 +2,52 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.16.0] - 2026-05-02
+
+### Added
+- **Operators see a redacted Support Evidence Capsule on every conversation
+  that has session-replay attached.** A new card in the conversation sidebar
+  ranks the session's signals (uncaught exception > 5xx fetch > 4xx fetch >
+  console error) and shows the primary failure, the last route, the last 3
+  user actions, the last 8 failed fetches, and the last 8 console/exception
+  entries. Two pre-rendered copy strings ship with the capsule: a `repro`
+  block for engineering handoff and an `escalation` block for a customer
+  reply, both auto-redacted before they reach the operator.
+- **Customer-safe redaction is enforced at the schema layer.** Emails become
+  `[email]`, `Bearer`/`Basic` tokens become `[redacted]`, query params
+  matching `token=`/`secret=`/`password=`/`authorization=`/`api_key=` get
+  their values redacted, any 32+ char hex string gets stripped, and URLs
+  drop their query string. Operators can paste evidence into a customer
+  reply without manually scrubbing PII.
+- **YC demo page at `/demo/yc`** that walks through the support evidence
+  capsule end-to-end, paired with new `tl-demo-*` keyframes so the visual
+  story matches the product shape.
+- **Session-evidence schema unit tests** covering severity ranking, the
+  redaction rules, the `repro`/`escalation` copy generation, and the
+  truncation behavior of the events window.
+
+### Changed
+- Conversation properties sidebar and support conversation sheet now mount
+  the Support Evidence Capsule above the existing replay timeline so the
+  failure signal is the first thing operators see.
+- `useSessionReplay` and the session-replay router expose the evidence
+  payload alongside the timeline events so the capsule renders without an
+  extra fetch.
+- `session-thread-match-service` and the support-analysis activity test get
+  the new evidence shape so backend and queue-side flows stay coherent.
+- `apps/agents/src/server.ts` binds to `::` for IPv6 dual-stack so the
+  agent service is reachable on every interface in dev.
+- `apps/web/next.config.ts` sets `devIndicators: false` to hide Next's
+  bottom-left dev badge during demo recordings.
+- `.skills/gstack` submodule pointer rolls forward from v1.12.2.0 to
+  v1.26.0.0 so the canonical and project-local gstack copies match.
+- `resolveProviderConfig` (apps/agents) finishes the centralized LLM
+  routing migration started in #68: it now returns `LlmOverride |
+  undefined` (was `AgentProviderConfig` with a hardcoded openai fallback)
+  so the route's default policy applies when the caller doesn't override.
+  Adds focused vitest coverage for the empty-override and explicit-override
+  paths.
+
 ## [0.2.15.2] - 2026-04-26
 
 ### Changed
