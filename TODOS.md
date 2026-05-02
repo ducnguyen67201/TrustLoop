@@ -248,20 +248,6 @@ When you pick this up: add a `hostedDomain String?` field to `Workspace`, pass i
 
 ## Slack Ingestion
 
-### Session-ingest upsert race retry
-
-**What:** `apps/web/src/server/http/rest/sessions/ingest.ts:120-156` replaced Prisma's `upsert()` with a manual `findFirst → update | create` because `upsert()` can't target the partial unique index on `(workspaceId, sessionId) WHERE deletedAt IS NULL`. The manual version introduces a race: two concurrent flushes for the same sessionId can both see "not found" and both try to create, leading to a unique-constraint violation on the second one.
-
-**Why:** Currently caught in the `console.error` path at line 191 and logged as `[session-ingest] Async write failed`. The SDK will retry on next flush (10s later) so session data converges eventually. This is acceptable for now — the worst case is a 10-second delay on new session creation under extreme concurrency. But in production under load, this will fill the logs with unique-violation errors.
-
-**Context:** Landed from `/plan-eng-review` on 2026-04-11. The original Prisma `upsert()` was broken (ON CONFLICT doesn't target partial unique indexes — see CLAUDE.md → Soft Delete Rules). The replacement is correct for the soft-delete case but loses Prisma's atomic upsert semantics.
-
-When you pick this up: wrap the `tx.sessionRecord.create(...)` in a try/catch on `Prisma.PrismaClientKnownRequestError` with code `P2002`, and on that specific error, retry the entire transaction from the `findFirst`. Two attempts max. Alternative: use a Postgres advisory lock keyed on `(workspaceId, sessionId)` to serialize concurrent creates. The retry approach is simpler and matches the rest of the codebase's conflict handling.
-
-**Effort:** S (human: ~1 hour / CC: ~10 min)
-**Priority:** P2 — not blocking, but will surface as log noise under production load.
-**Depends on:** None.
-
 ### Projection Replay and Backfill Tooling
 
 **What:** Build scoped replay tooling to rebuild conversation projections from immutable event logs with dry-run support.

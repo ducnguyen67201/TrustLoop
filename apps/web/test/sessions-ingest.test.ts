@@ -251,6 +251,102 @@ describe("session ingest: async write failure", () => {
   });
 });
 
+// ── P2002 Race Retry ───────────────────────────────────────────────
+
+describe("session ingest: concurrent flush race", () => {
+  beforeEach(() => {
+    stubValidApiKey();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("retries when create races on P2002 and converges to update", async () => {
+    // Simulates two concurrent flushes for the same (workspaceId, sessionId):
+    // attempt 1 — findFirst → null, create → P2002 (winner created in parallel)
+    // attempt 2 — findFirst → existing row, takes the update branch
+    mockSessionFindFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: "sr_winner",
+      eventCount: 0,
+    });
+
+    const p2002 = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    mockSessionCreate.mockRejectedValueOnce(p2002);
+    mockSessionUpdate.mockResolvedValue({ id: "sr_winner", eventCount: 1 });
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const req = makeRequest(validPayload(), "tlk_testprefix.secret");
+    const res = await handleSessionIngest(req, routeContext);
+
+    expect(res.status).toBe(202);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // findFirst ran twice (once per attempt), create ran once (failed),
+    // update ran once (the convergence path on retry).
+    expect(mockSessionFindFirst).toHaveBeenCalledTimes(2);
+    expect(mockSessionCreate).toHaveBeenCalledTimes(1);
+    expect(mockSessionUpdate).toHaveBeenCalledTimes(1);
+
+    // Successful retry → no async-write error log.
+    expect(consoleSpy).not.toHaveBeenCalledWith(
+      "[session-ingest] Async write failed",
+      expect.anything()
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("logs and gives up after MAX_INGEST_TX_ATTEMPTS unique-violation retries", async () => {
+    // Pathological case: both attempts hit P2002 (e.g. three+ concurrent
+    // flushes interleaved). After MAX_INGEST_TX_ATTEMPTS, we surface to the
+    // existing async-write error log path so it shows up in observability.
+    mockSessionFindFirst.mockResolvedValue(null);
+    const p2002 = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    mockSessionCreate.mockRejectedValue(p2002);
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const req = makeRequest(validPayload(), "tlk_testprefix.secret");
+    const res = await handleSessionIngest(req, routeContext);
+
+    expect(res.status).toBe(202);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(mockSessionFindFirst).toHaveBeenCalledTimes(2);
+    expect(mockSessionCreate).toHaveBeenCalledTimes(2);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "[session-ingest] Async write failed",
+      expect.objectContaining({ sessionId: "sess_abc" })
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("does not retry on non-P2002 errors", async () => {
+    // A generic DB error should fail fast without consuming the retry budget.
+    mockSessionFindFirst.mockResolvedValue(null);
+    mockSessionCreate.mockRejectedValue(new Error("Connection refused"));
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const req = makeRequest(validPayload(), "tlk_testprefix.secret");
+    const res = await handleSessionIngest(req, routeContext);
+
+    expect(res.status).toBe(202);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(mockSessionFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockSessionCreate).toHaveBeenCalledTimes(1);
+
+    consoleSpy.mockRestore();
+  });
+});
+
 // ── Rate Limiter Unit Tests ────────────────────────────────────────
 
 describe("ingest rate limiter", () => {

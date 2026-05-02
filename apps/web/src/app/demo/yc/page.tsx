@@ -114,7 +114,7 @@ export const metadata = {
 
 export default function YcDemoPage() {
   return (
-    <main className="relative h-svh overflow-hidden bg-white text-slate-950">
+    <main className="relative h-svh overflow-hidden bg-white font-sans text-slate-950">
       <IntroScene />
       <TypingScene />
       <PipelineScene />
@@ -163,7 +163,7 @@ function FloatingIssueCard({ issue }: { issue: FloatingIssue }) {
 function TypingScene() {
   return (
     <section className="tl-video-scene tl-video-scene-2 flex items-center justify-center bg-white">
-      <div className="tl-video-type text-center text-5xl font-medium tracking-normal text-slate-950 md:text-6xl">
+      <div className="tl-video-type text-center font-mono text-5xl font-medium tracking-normal text-slate-950 md:text-6xl">
         Manual triage does not scale.
       </div>
     </section>
