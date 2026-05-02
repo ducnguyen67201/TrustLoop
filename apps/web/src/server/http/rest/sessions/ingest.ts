@@ -2,12 +2,13 @@ import { type Prisma, prisma } from "@shared/database";
 import { consumeIngestAttempt } from "@shared/rest/security/ingest-rate-limit";
 import type { RouteContext } from "@shared/rest/security/rest-auth";
 import { withWorkspaceApiKeyAuth } from "@shared/rest/security/rest-auth";
-import { sessionIngestPayloadSchema } from "@shared/types";
+import { type SessionIngestPayload, sessionIngestPayloadSchema } from "@shared/types";
 import { NextResponse } from "next/server";
 import { jsonWithCors, sessionCorsHeaders, withCorsHeaders } from "./cors";
 
 const MAX_BODY_BYTES = 1_048_576; // 1 MB
 const MAX_EVENTS_PER_SESSION = 10_000;
+const MAX_INGEST_TX_ATTEMPTS = 2;
 
 export async function handleSessionIngestOptions(): Promise<NextResponse> {
   return new NextResponse(null, { status: 204, headers: sessionCorsHeaders() });
@@ -105,100 +106,7 @@ const innerHandler = withWorkspaceApiKeyAuth(async (request, ctx) => {
 
   void (async () => {
     try {
-      // Use actual event timestamps instead of flush time for accuracy
-      const eventTimestamps = payload.structuredEvents.map((e) => e.timestamp);
-      const earliestEventTime =
-        eventTimestamps.length > 0
-          ? new Date(Math.min(...eventTimestamps))
-          : new Date(payload.timestamp);
-      const latestEventTime =
-        eventTimestamps.length > 0
-          ? new Date(Math.max(...eventTimestamps))
-          : new Date(payload.timestamp);
-      const hasRrweb = payload.rrwebEvents !== undefined;
-
-      await prisma.$transaction(async (tx) => {
-        // Find-or-create manually: upsert cannot target the partial unique
-        // index on (workspaceId, sessionId) WHERE deletedAt IS NULL. Postgres
-        // rejects ON CONFLICT against partial indexes, so Prisma's upsert
-        // helper fails at runtime even though the schema's @@unique compiles.
-        // See CLAUDE.md → Soft Delete Rules.
-        const existing = await tx.sessionRecord.findFirst({
-          where: { workspaceId, sessionId: payload.sessionId, deletedAt: null },
-          select: { id: true, eventCount: true },
-        });
-
-        const sessionRecord = existing
-          ? await tx.sessionRecord.update({
-              where: { id: existing.id },
-              data: {
-                lastEventAt: latestEventTime,
-                eventCount: { increment: payload.structuredEvents.length },
-                ...(hasRrweb ? { hasReplayData: true } : {}),
-                ...(payload.userId ? { userId: payload.userId } : {}),
-                ...(payload.userEmail ? { userEmail: payload.userEmail } : {}),
-              },
-              select: { id: true, eventCount: true },
-            })
-          : await tx.sessionRecord.create({
-              data: {
-                workspaceId,
-                sessionId: payload.sessionId,
-                userId: payload.userId ?? null,
-                userEmail: payload.userEmail ?? null,
-                startedAt: earliestEventTime,
-                lastEventAt: latestEventTime,
-                eventCount: payload.structuredEvents.length,
-                hasReplayData: hasRrweb,
-              },
-              select: { id: true, eventCount: true },
-            });
-
-        // Enforce per-session event cap to prevent unbounded growth
-        if (sessionRecord.eventCount >= MAX_EVENTS_PER_SESSION) {
-          return;
-        }
-
-        // Batch insert structured events
-        if (payload.structuredEvents.length > 0) {
-          await tx.sessionEvent.createMany({
-            data: payload.structuredEvents.map((event) => ({
-              workspaceId,
-              sessionRecordId: sessionRecord.id,
-              eventType: event.eventType,
-              timestamp: new Date(event.timestamp),
-              url: "url" in event ? (event.url ?? null) : null,
-              payload: event.payload as Prisma.InputJsonValue,
-            })),
-          });
-        }
-
-        // Insert replay chunk with unique constraint protection
-        if (hasRrweb) {
-          const rrwebString =
-            typeof payload.rrwebEvents === "string"
-              ? payload.rrwebEvents
-              : JSON.stringify(payload.rrwebEvents);
-
-          const lastChunk = await tx.sessionReplayChunk.findFirst({
-            where: { sessionRecordId: sessionRecord.id },
-            orderBy: { sequenceNumber: "desc" },
-            select: { sequenceNumber: true },
-          });
-
-          await tx.sessionReplayChunk.create({
-            data: {
-              workspaceId,
-              sessionRecordId: sessionRecord.id,
-              sequenceNumber: (lastChunk?.sequenceNumber ?? -1) + 1,
-              compressedData: Buffer.from(rrwebString, "utf-8"),
-              eventCount: Array.isArray(payload.rrwebEvents) ? payload.rrwebEvents.length : 0,
-              startTimestamp: earliestEventTime,
-              endTimestamp: latestEventTime,
-            },
-          });
-        }
-      });
+      await runIngestWithRetry(workspaceId, payload);
     } catch (error) {
       console.error("[session-ingest] Async write failed", {
         workspaceId,
@@ -210,6 +118,132 @@ const innerHandler = withWorkspaceApiKeyAuth(async (request, ctx) => {
 
   return response;
 });
+
+// Retry the whole transaction on P2002. Two concurrent flushes for the same
+// (workspaceId, sessionId) can both see findFirst → null and both attempt
+// create; the loser's create raises a unique-violation. On retry, the loser's
+// findFirst sees the winner's row and takes the update branch instead.
+async function runIngestWithRetry(
+  workspaceId: string,
+  payload: SessionIngestPayload
+): Promise<void> {
+  for (let attempt = 1; attempt <= MAX_INGEST_TX_ATTEMPTS; attempt++) {
+    try {
+      await runIngestTransaction(workspaceId, payload);
+      return;
+    } catch (error) {
+      if (attempt < MAX_INGEST_TX_ATTEMPTS && isUniqueConstraintError(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+async function runIngestTransaction(
+  workspaceId: string,
+  payload: SessionIngestPayload
+): Promise<void> {
+  // Use actual event timestamps instead of flush time for accuracy
+  const eventTimestamps = payload.structuredEvents.map((e) => e.timestamp);
+  const earliestEventTime =
+    eventTimestamps.length > 0
+      ? new Date(Math.min(...eventTimestamps))
+      : new Date(payload.timestamp);
+  const latestEventTime =
+    eventTimestamps.length > 0
+      ? new Date(Math.max(...eventTimestamps))
+      : new Date(payload.timestamp);
+  const hasRrweb = payload.rrwebEvents !== undefined;
+
+  await prisma.$transaction(async (tx) => {
+    // Find-or-create manually: upsert cannot target the partial unique
+    // index on (workspaceId, sessionId) WHERE deletedAt IS NULL. Postgres
+    // rejects ON CONFLICT against partial indexes, so Prisma's upsert
+    // helper fails at runtime even though the schema's @@unique compiles.
+    // See CLAUDE.md → Soft Delete Rules.
+    const existing = await tx.sessionRecord.findFirst({
+      where: { workspaceId, sessionId: payload.sessionId, deletedAt: null },
+      select: { id: true, eventCount: true },
+    });
+
+    const sessionRecord = existing
+      ? await tx.sessionRecord.update({
+          where: { id: existing.id },
+          data: {
+            lastEventAt: latestEventTime,
+            eventCount: { increment: payload.structuredEvents.length },
+            ...(hasRrweb ? { hasReplayData: true } : {}),
+            ...(payload.userId ? { userId: payload.userId } : {}),
+            ...(payload.userEmail ? { userEmail: payload.userEmail } : {}),
+          },
+          select: { id: true, eventCount: true },
+        })
+      : await tx.sessionRecord.create({
+          data: {
+            workspaceId,
+            sessionId: payload.sessionId,
+            userId: payload.userId ?? null,
+            userEmail: payload.userEmail ?? null,
+            startedAt: earliestEventTime,
+            lastEventAt: latestEventTime,
+            eventCount: payload.structuredEvents.length,
+            hasReplayData: hasRrweb,
+          },
+          select: { id: true, eventCount: true },
+        });
+
+    // Enforce per-session event cap to prevent unbounded growth
+    if (sessionRecord.eventCount >= MAX_EVENTS_PER_SESSION) {
+      return;
+    }
+
+    // Batch insert structured events
+    if (payload.structuredEvents.length > 0) {
+      await tx.sessionEvent.createMany({
+        data: payload.structuredEvents.map((event) => ({
+          workspaceId,
+          sessionRecordId: sessionRecord.id,
+          eventType: event.eventType,
+          timestamp: new Date(event.timestamp),
+          url: "url" in event ? (event.url ?? null) : null,
+          payload: event.payload as Prisma.InputJsonValue,
+        })),
+      });
+    }
+
+    // Insert replay chunk with unique constraint protection
+    if (hasRrweb) {
+      const rrwebString =
+        typeof payload.rrwebEvents === "string"
+          ? payload.rrwebEvents
+          : JSON.stringify(payload.rrwebEvents);
+
+      const lastChunk = await tx.sessionReplayChunk.findFirst({
+        where: { sessionRecordId: sessionRecord.id },
+        orderBy: { sequenceNumber: "desc" },
+        select: { sequenceNumber: true },
+      });
+
+      await tx.sessionReplayChunk.create({
+        data: {
+          workspaceId,
+          sessionRecordId: sessionRecord.id,
+          sequenceNumber: (lastChunk?.sequenceNumber ?? -1) + 1,
+          compressedData: Buffer.from(rrwebString, "utf-8"),
+          eventCount: Array.isArray(payload.rrwebEvents) ? payload.rrwebEvents.length : 0,
+          startTimestamp: earliestEventTime,
+          endTimestamp: latestEventTime,
+        },
+      });
+    }
+  });
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  return (error as { code?: unknown }).code === "P2002";
+}
 
 /** POST handler — wraps auth handler to ensure CORS on every response (including 401). */
 export async function handleSessionIngest(req: Request, ctx: RouteContext): Promise<NextResponse> {

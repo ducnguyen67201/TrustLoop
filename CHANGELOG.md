@@ -2,6 +2,17 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.15.3] - 2026-05-02
+
+### Fixed
+- **Session ingest no longer spams unique-violation errors under concurrent
+  flushes.** Two parallel flushes from the same browser session would both
+  see `findFirst` → null and both attempt `create`, raising `P2002` on the
+  loser. The transaction now retries once on `P2002`; the retry's
+  `findFirst` finds the winner's row and converges to the update branch.
+  Customer-visible noise in logs goes away; data convergence is unchanged
+  (the SDK's flush retry was already covering the eventual case).
+
 ## [0.2.15.2] - 2026-04-26
 
 ### Changed

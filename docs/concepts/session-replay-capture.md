@@ -96,7 +96,7 @@ Shipped as `@trustloop/sdk-browser` from `packages/sdk-browser/src/`:
 
 - Returns `202 Accepted` immediately; writes happen asynchronously in an after-response task
 - Transaction:
-  1. `findFirst({ where: { workspaceId, sessionId, deletedAt: null } })` → if missing, `create`. This manual pattern exists because Prisma's `upsert()` can't target the partial unique index `(workspaceId, sessionId) WHERE deletedAt IS NULL`. See `TODOS.md` → "Session-ingest upsert race retry" for the known race.
+  1. `findFirst({ where: { workspaceId, sessionId, deletedAt: null } })` → if missing, `create`. This manual pattern exists because Prisma's `upsert()` can't target the partial unique index `(workspaceId, sessionId) WHERE deletedAt IS NULL`. The whole transaction is wrapped in a P2002 retry (max two attempts) so concurrent flushes from the same session converge: the loser's create raises a unique-violation, retry's `findFirst` sees the winner's row and takes the update branch.
   2. Upsert `SessionEvent` rows per structured event
   3. Insert `SessionReplayChunk` rows for each rrweb batch, compressed, sequence-numbered
 
@@ -163,7 +163,6 @@ Wiring rrweb chunks into the prompt is flagged as P2 in `TODOS.md` → "Wire rrw
 
 - **Manual linking is still missing.** Operators can see the selected session and match provenance, but cannot override the primary session from the inbox yet.
 - **No direct `sessionId` on `SupportConversation`.** The durable link is `SupportConversationSessionMatch`, which preserves candidate history and avoids mutating `SessionRecord` with one conversation-specific foreign key.
-- **Ingest race on concurrent first-batch-ever.** Two flushes from the same session in the same second can both see "no SessionRecord yet" and both try to create, leading to a unique-violation error on the second. Currently logged and the SDK's next retry recovers. Known TODO.
 
 ## Invariants
 
