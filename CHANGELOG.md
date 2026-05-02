@@ -2,6 +2,18 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.16.3] - 2026-05-03
+
+### Tests
+- **Adds an integration test for the operator session-tab composition.**
+  Renders the real `SessionTab` + `SupportEvidenceCapsule` together,
+  mocks only the heavy children (timeline, replay modal, manual-attach
+  dialog), and exercises the full client-side happy path: empty-state
+  rendering, populated capsule, copy-to-clipboard, "View proof" →
+  replay-modal-open + chunk-load callback, in-flight loading early
+  return, and the "no DOM replay" sub-state. Catches breakage in the
+  composition that the capsule unit test can't see.
+
 ## [0.2.16.2] - 2026-05-03
 
 ### Fixed
