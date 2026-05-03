@@ -64,4 +64,22 @@ describe("session replay config", () => {
       });
     }
   });
+
+  it("appends the sessions ingest route when configured with an app origin", () => {
+    const config = resolveConfig({
+      apiKey: "tlk_test.secret",
+      ingestUrl: "https://staging3.gettrustloop.app",
+    });
+
+    expect(config.ingestUrl).toBe("https://staging3.gettrustloop.app/api/rest/sessions/ingest");
+  });
+
+  it("preserves an explicit ingest endpoint", () => {
+    const config = resolveConfig({
+      apiKey: "tlk_test.secret",
+      ingestUrl: "https://staging3.gettrustloop.app/api/rest/sessions/ingest",
+    });
+
+    expect(config.ingestUrl).toBe("https://staging3.gettrustloop.app/api/rest/sessions/ingest");
+  });
 });

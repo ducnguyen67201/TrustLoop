@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RiEyeLine, RiEyeOffLine } from "@remixicon/react";
+import { RiCheckLine, RiEyeLine, RiEyeOffLine, RiFileCopyLine } from "@remixicon/react";
 import type { ApiKeyExpiryDays, WorkspaceApiKeyCreateResponse } from "@shared/types";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -46,6 +46,7 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [createdPrefix, setCreatedPrefix] = useState<string | null>(null);
   const [isSecretVisible, setIsSecretVisible] = useState(false);
+  const [secretCopied, setSecretCopied] = useState(false);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,6 +60,7 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
       });
       setCreatedSecret(created.secret);
       setCreatedPrefix(created.key.keyPrefix);
+      setSecretCopied(false);
       setName("");
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Failed to create API key");
@@ -73,9 +75,23 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
       setCreatedSecret(null);
       setCreatedPrefix(null);
       setIsSecretVisible(false);
+      setSecretCopied(false);
       setError(null);
       setName("");
       setExpiresInDays(30);
+    }
+  }
+
+  async function handleCopySecret(): Promise<void> {
+    if (!createdSecret) return;
+
+    try {
+      setError(null);
+      await navigator.clipboard.writeText(createdSecret);
+      setSecretCopied(true);
+      window.setTimeout(() => setSecretCopied(false), 2000);
+    } catch {
+      setError("Failed to copy API key secret");
     }
   }
 
@@ -98,8 +114,9 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
             <AlertDescription className="space-y-2">
               <p>
                 {createdPrefix} created. This secret is shown once and will not be retrievable
-                later.
+                later; the API key table only shows the prefix.
               </p>
+              {error ? <p className="text-destructive text-sm">{error}</p> : null}
               <div className="flex items-start gap-2">
                 <code className="bg-muted block flex-1 overflow-x-auto rounded p-2 text-xs">
                   {isSecretVisible ? createdSecret : "•".repeat(Math.min(64, createdSecret.length))}
@@ -119,9 +136,10 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => navigator.clipboard.writeText(createdSecret)}
+                onClick={() => void handleCopySecret()}
               >
-                Copy secret
+                {secretCopied ? <RiCheckLine /> : <RiFileCopyLine />}
+                {secretCopied ? "Copied" : "Copy full secret"}
               </Button>
             </AlertDescription>
           </Alert>
