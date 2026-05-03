@@ -21,6 +21,25 @@ function inferIngestUrl(apiKey: string): string {
   return `https://app.trustloop.ai${DEFAULT_INGEST_PATH}`;
 }
 
+function normalizeIngestUrl(ingestUrl: string): string {
+  const trimmed = ingestUrl.trim();
+  if (!trimmed) {
+    return inferIngestUrl("");
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.pathname === "/" && !parsed.search && !parsed.hash) {
+      parsed.pathname = DEFAULT_INGEST_PATH;
+      return parsed.toString();
+    }
+  } catch {
+    return trimmed;
+  }
+
+  return trimmed;
+}
+
 function extractWorkspaceId(apiKey: string): string {
   // API keys follow format: tlk_<prefixHex>.<secretHex>
   // Extract the key prefix (everything before the dot) as the workspace identifier.
@@ -42,7 +61,9 @@ export function resolveConfig(config: TrustLoopConfig): ResolvedConfig {
 
   return {
     apiKey: config.apiKey,
-    ingestUrl: config.ingestUrl ?? inferIngestUrl(config.apiKey),
+    ingestUrl: config.ingestUrl
+      ? normalizeIngestUrl(config.ingestUrl)
+      : inferIngestUrl(config.apiKey),
     userId: config.userId,
     userEmail: config.userEmail,
     release: config.release,
