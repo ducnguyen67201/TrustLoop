@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RiEyeLine, RiEyeOffLine } from "@remixicon/react";
+import { ApiKeyOneTimeSecretDisplay } from "@/components/workspace/api-key-secret-display";
 import type { ApiKeyExpiryDays, WorkspaceApiKeyCreateResponse } from "@shared/types";
 import { useState } from "react";
 import type { FormEvent } from "react";
@@ -45,7 +45,6 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [createdPrefix, setCreatedPrefix] = useState<string | null>(null);
-  const [isSecretVisible, setIsSecretVisible] = useState(false);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,7 +71,6 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
     if (!nextOpen) {
       setCreatedSecret(null);
       setCreatedPrefix(null);
-      setIsSecretVisible(false);
       setError(null);
       setName("");
       setExpiresInDays(30);
@@ -98,31 +96,10 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
             <AlertDescription className="space-y-2">
               <p>
                 {createdPrefix} created. This secret is shown once and will not be retrievable
-                later.
+                later; the API key table only shows the prefix.
               </p>
-              <div className="flex items-start gap-2">
-                <code className="bg-muted block flex-1 overflow-x-auto rounded p-2 text-xs">
-                  {isSecretVisible ? createdSecret : "•".repeat(Math.min(64, createdSecret.length))}
-                </code>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => setIsSecretVisible((value) => !value)}
-                  aria-label={isSecretVisible ? "Hide secret" : "Show secret"}
-                  title={isSecretVisible ? "Hide secret" : "Show secret"}
-                >
-                  {isSecretVisible ? <RiEyeOffLine /> : <RiEyeLine />}
-                </Button>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => navigator.clipboard.writeText(createdSecret)}
-              >
-                Copy secret
-              </Button>
+              {error ? <p className="text-destructive text-sm">{error}</p> : null}
+              <ApiKeyOneTimeSecretDisplay secret={createdSecret} onCopyError={setError} />
             </AlertDescription>
           </Alert>
         ) : (
