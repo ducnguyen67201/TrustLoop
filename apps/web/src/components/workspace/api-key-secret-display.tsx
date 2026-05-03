@@ -17,7 +17,33 @@ interface ApiKeyOneTimeSecretDisplayProps {
  * Prefix-only display for persisted API key rows.
  */
 export function ApiKeyPrefixDisplay({ keyPrefix }: ApiKeyPrefixDisplayProps) {
-  return <code className="text-xs">{keyPrefix}</code>;
+  const [prefixCopied, setPrefixCopied] = useState(false);
+
+  async function handleCopyPrefix(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(keyPrefix);
+      setPrefixCopied(true);
+      window.setTimeout(() => setPrefixCopied(false), 2000);
+    } catch {
+      // Prefix copy is a convenience; the full secret remains one-time only.
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <code className="text-xs">{keyPrefix}</code>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        onClick={() => void handleCopyPrefix()}
+        aria-label="Copy key prefix"
+        title="Copy key prefix"
+      >
+        {prefixCopied ? <RiCheckLine /> : <RiFileCopyLine />}
+      </Button>
+    </div>
+  );
 }
 
 /**

@@ -58,8 +58,8 @@ export default function WorkspaceApiKeysPage() {
               <div>
                 <CardTitle>Keys</CardTitle>
                 <CardDescription>
-                  Secret values are shown once at creation. Revoked or expired keys are rejected
-                  server-side.
+                  Secret values are shown once at creation. Table rows show prefixes only. Revoked
+                  or expired keys are rejected server-side.
                 </CardDescription>
               </div>
               {canManage ? <CreateApiKeyDialog onCreate={apiKeys.createKey} /> : null}
