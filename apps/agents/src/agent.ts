@@ -6,7 +6,6 @@ import {
   AGENT_TEAM_MESSAGE_KIND,
   AGENT_TEAM_ROLE_SLUG,
   AGENT_TEAM_TARGET,
-  type AgentProviderConfig,
   type AgentTeamDialogueMessageDraft,
   type AgentTeamRole,
   type AgentTeamRoleTurnInput,

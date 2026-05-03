@@ -1,7 +1,12 @@
 import { prisma } from "@shared/database";
 import * as sessionThreadMatch from "@shared/rest/services/support/session-thread-match-service";
 import { router, workspaceRoleProcedure } from "@shared/rest/trpc";
-import { SESSION_MATCH_CONFIDENCE, WORKSPACE_ROLE } from "@shared/types";
+import {
+  SESSION_EVENT_TYPE,
+  SESSION_MATCH_CONFIDENCE,
+  WORKSPACE_ROLE,
+  buildSupportEvidence,
+} from "@shared/types";
 import { z } from "zod";
 
 const operatorProcedure = workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER);
@@ -61,21 +66,31 @@ export const sessionReplayRouter = router({
           sessionRecordId: input.sessionRecordId,
           workspaceId: ctx.workspaceId,
         },
-        orderBy: { timestamp: "asc" },
+        orderBy: { timestamp: "desc" },
         take: input.limit,
       });
+      const timelineEvents = events.reverse().map((event) => ({
+        id: event.id,
+        eventType: event.eventType,
+        timestamp: event.timestamp.toISOString(),
+        url: event.url,
+        payload:
+          event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
+            ? event.payload
+            : {},
+      }));
+      const supportEvidence = buildSupportEvidence({
+        events: timelineEvents,
+        totalEventCount: timelineEvents.length,
+      });
+      const failurePointId =
+        supportEvidence.primaryFailure &&
+        supportEvidence.primaryFailure.type !== SESSION_EVENT_TYPE.route &&
+        supportEvidence.primaryFailure.type !== SESSION_EVENT_TYPE.click
+          ? supportEvidence.primaryFailure.eventId
+          : null;
 
-      // Find the last exception or network error as the failure point
-      let failurePointId: string | null = null;
-      for (let i = events.length - 1; i >= 0; i--) {
-        const event = events[i];
-        if (event && (event.eventType === "EXCEPTION" || event.eventType === "NETWORK_ERROR")) {
-          failurePointId = event.id;
-          break;
-        }
-      }
-
-      return { events, failurePointId };
+      return { events: timelineEvents, failurePointId };
     }),
 
   correlate: operatorProcedure
@@ -171,6 +186,7 @@ export const sessionReplayRouter = router({
         match: context.match,
         session: context.session,
         sessionBrief: context.sessionBrief,
+        supportEvidence: context.supportEvidence,
         events: context.events,
         failurePointId: context.failurePointId,
       };
@@ -194,6 +210,7 @@ export const sessionReplayRouter = router({
         match: context.match,
         session: context.session,
         sessionBrief: context.sessionBrief,
+        supportEvidence: context.supportEvidence,
         events: context.events,
         failurePointId: context.failurePointId,
       };

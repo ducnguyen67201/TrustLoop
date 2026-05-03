@@ -141,6 +141,20 @@ Confirmed matches from `userId`, conversation email, or Slack profile email are 
 
 The support inbox uses the same service through `sessionReplay.getForConversation({ conversationId })`, so the UI and AI analysis agree on the chosen session.
 
+## Operator evidence capsule
+
+The support inbox shows an operator-first `SupportEvidence` capsule before the raw event timeline. The capsule is derived in `session-thread-match-service` from the same latest structured-event window used by the replay timeline, so support, analysis, and proof drilldown share one source of truth.
+
+`SupportEvidence` includes:
+
+- Primary signal: exception, failed network request, console error, or latest route/click fallback
+- Last user actions before the primary signal
+- Failed network requests and console/exception entries
+- Last route and event-window metadata (`returned`, `total`, `isTruncated`, `mode: "latest"`)
+- Copy-safe repro and escalation snippets with URLs, emails, credentials, and long token-like values redacted
+
+The UI treats the capsule as the summary and the rrweb player as proof. Operators can copy repro/escalation text, open the replay at the primary signal or a listed event, and manually attach or change the selected session. Fuzzy matches remain visibly marked so operators verify the match before quoting session evidence to a customer.
+
 ## What the agent sees
 
 The agent gets **SessionDigest**, not raw rrweb. Digest shape:
@@ -161,7 +175,7 @@ Wiring rrweb chunks into the prompt is flagged as P2 in `TODOS.md` → "Wire rrw
 
 ## Known thin spots
 
-- **Manual linking is still missing.** Operators can see the selected session and match provenance, but cannot override the primary session from the inbox yet.
+- **Manual linking is operator-only.** Operators can override the primary session from the inbox, and manual matches are treated as strong enough for analysis attachment. There is no customer-facing self-serve correction path.
 - **No direct `sessionId` on `SupportConversation`.** The durable link is `SupportConversationSessionMatch`, which preserves candidate history and avoids mutating `SessionRecord` with one conversation-specific foreign key.
 
 ## Invariants
@@ -187,6 +201,7 @@ Update when you:
 - Change the transport batching/compression/retry behavior
 - Move from polling ingest to a true streaming ingest
 - Change conversation/session matching precedence or confidence rules
-- Add manual session linking or overrides
+- Change manual session linking or overrides
+- Change the operator evidence capsule contract or redaction behavior
 - Wire raw rrweb chunks into the agent prompt (would also update `ai-analysis-pipeline.md`)
 - Change the correlation signal (email → something else)

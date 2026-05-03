@@ -112,6 +112,7 @@ describe("buildThreadSnapshot", () => {
       },
       session: null,
       sessionBrief: null,
+      supportEvidence: null,
       events: [],
       failurePointId: null,
       sessionDigest: digest,
