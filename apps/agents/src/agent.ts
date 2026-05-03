@@ -13,6 +13,8 @@ import {
   type AgentTeamToolId,
   type AnalyzeRequest,
   type AnalyzeResponse,
+  type FailureFrame,
+  type FailureFrameCaption,
   LLM_USE_CASE,
   type LlmUseCase,
   type SessionDigest,
@@ -70,11 +72,14 @@ const AVAILABLE_TOOLS = {
 
 function createSupportAgent(
   target: llmManager.LlmResolvedTarget,
-  options?: { toneConfig?: ToneConfig; sessionDigest?: SessionDigest }
+  options?: { toneConfig?: ToneConfig; sessionDigest?: SessionDigest; hasVisualEvidence?: boolean }
 ) {
   let instructions: string;
   if (options?.sessionDigest) {
-    instructions = buildAnalysisPromptWithContext({ sessionDigest: options.sessionDigest });
+    instructions = buildAnalysisPromptWithContext({
+      sessionDigest: options.sessionDigest,
+      hasVisualEvidence: options.hasVisualEvidence,
+    });
   } else if (options?.toneConfig) {
     instructions = buildSupportAgentSystemPrompt(options.toneConfig);
   } else {
@@ -109,11 +114,16 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
   const providerConfig = resolveProviderConfig(request.config);
   const route = llmManager.requireRoute(LLM_USE_CASE.supportAnalysis, providerConfig);
 
+  const hasVisualEvidence =
+    (request.failureFrames?.length ?? 0) > 0 || (request.failureFrameCaptions?.length ?? 0) > 0;
+
   console.log("[agents] Starting analysis", {
     conversationId: request.conversationId,
     provider: route.targets[0].provider,
     model: route.targets[0].model,
     maxSteps,
+    failureFrames: request.failureFrames?.length ?? 0,
+    failureFrameCaptions: request.failureFrameCaptions?.length ?? 0,
   });
   logLocalAgentDebug("[agents:debug] Agent selected", {
     endpoint: "/analyze",
@@ -125,14 +135,23 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     availableTools: ["searchCode", "createPullRequest"],
   });
 
-  const userMessage = `WORKSPACE_ID: ${request.workspaceId}\n\n${renderThreadSnapshotPrompt(request.threadSnapshot)}`;
+  const messages = buildAgentMessages({
+    workspaceId: request.workspaceId,
+    threadSnapshot: renderThreadSnapshotPrompt(request.threadSnapshot),
+    failureFrames: request.failureFrames,
+    failureFrameCaptions: request.failureFrameCaptions,
+  });
   const { result, target } = await llmManager.executeWithFallback(route, async (candidate) => {
     const agent = createSupportAgent(candidate, {
       toneConfig: request.config?.toneConfig,
       sessionDigest: request.sessionDigest,
+      hasVisualEvidence,
     });
-
-    return agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
+    // Mastra's `agent.generate` accepts either a string (legacy text path) or
+    // a messages array (multimodal path). Cast at the boundary because the
+    // public type doesn't model multimodal content parts in every alpha; we
+    // forward what the LLM SDK natively understands.
+    return agent.generate(messages as never, { maxSteps, toolChoice: "auto" });
   });
 
   const output = parseAgentOutput(result.text);
@@ -534,4 +553,72 @@ function formatDialogueMessages(
         `${index + 1}. [${message.fromRoleLabel} (${message.fromRoleKey}) -> ${message.toRoleKey} :: ${message.kind}] ${message.subject}\n${message.content}`
     )
     .join("\n\n");
+}
+
+interface BuildMessagesInput {
+  workspaceId: string;
+  threadSnapshot: string;
+  failureFrames?: FailureFrame[];
+  failureFrameCaptions?: FailureFrameCaption[];
+}
+
+type MessagePart = { type: "text"; text: string } | { type: "image"; image: string };
+
+/**
+ * Build the user message(s) sent to `agent.generate`. When visual evidence is
+ * available we deliver it via two distinct channels depending on what the
+ * caller computed:
+ *
+ *   - `failureFrames` (raw base64 PNGs): vision-capable model path. Each
+ *     frame is appended as an `image` content part so the analyzing model
+ *     sees the pixels directly. A short text caption labels each one.
+ *   - `failureFrameCaptions` (text descriptions from the captioner pipeline):
+ *     text-only model path. Each caption is appended as a text part. The
+ *     analyzing model never receives an image.
+ *
+ * Callers MUST pass at most one of these — the workflow already enforces
+ * mutual exclusivity. When neither is present we fall back to the original
+ * single-string user message for behavioural parity with pre-frames code.
+ */
+function buildAgentMessages(
+  input: BuildMessagesInput
+): string | Array<{ role: "user"; content: MessagePart[] }> {
+  const baseText = `WORKSPACE_ID: ${input.workspaceId}\n\n${input.threadSnapshot}`;
+
+  if (input.failureFrames && input.failureFrames.length > 0) {
+    const content: MessagePart[] = [{ type: "text", text: baseText }];
+    content.push({
+      type: "text",
+      text: "\n\n## Visual evidence at the failure point\n\nThe screenshots below show the customer's screen around the moment of the failure. Cite specific UI elements you can see. Do not invent visual details.",
+    });
+    for (const frame of input.failureFrames) {
+      content.push({
+        type: "text",
+        text: `\n[${frame.captionHint} — offset ${frame.offsetMs}ms from failure, timestamp ${frame.timestamp}]`,
+      });
+      content.push({
+        type: "image",
+        image: `data:image/png;base64,${frame.base64Png}`,
+      });
+    }
+    return [{ role: "user", content }];
+  }
+
+  if (input.failureFrameCaptions && input.failureFrameCaptions.length > 0) {
+    const lines: string[] = [
+      baseText,
+      "",
+      "## Visual evidence at the failure point (described in text)",
+      "",
+      "These captions describe screenshots of the customer's screen around the moment of the failure. They are produced by an automated vision model — treat them as evidence but acknowledge the captioner can miss details.",
+    ];
+    for (const caption of input.failureFrameCaptions) {
+      lines.push(
+        `\n- ${caption.captionHint} (offset ${caption.offsetMs}ms, ${caption.timestamp}): ${caption.captionText}`
+      );
+    }
+    return lines.join("\n");
+  }
+
+  return baseText;
 }

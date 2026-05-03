@@ -75,6 +75,7 @@ model SupportAnalysis {
   conversation      SupportConversation         @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   evidence          AnalysisEvidence[]
   drafts            SupportDraft[]
+  frames            SupportAnalysisFrame[]
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
 
@@ -95,6 +96,24 @@ model AnalysisEvidence {
   createdAt      DateTime                    @default(now())
 
   @@index([analysisId])
+}
+
+// Rendered keyframes from rrweb session replay shown to the support agent at
+// analysis time. Persisted so the human reviewer (and any future re-analysis
+// flow) can see exactly what the agent saw. base64Png stays on the row for
+// v1; if blob volume grows past acceptable OLTP size, migrate to S3 keys.
+model SupportAnalysisFrame {
+  id           String           @id @default(cuid())
+  analysisId   String
+  timestamp    DateTime
+  offsetMs     Int
+  base64Png    String           @db.Text
+  captionHint  String           @db.Text
+  captionText  String?          @db.Text
+  createdAt    DateTime         @default(now())
+  analysis     SupportAnalysis  @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId, offsetMs])
 }
 
 model SupportDraft {
