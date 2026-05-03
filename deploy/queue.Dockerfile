@@ -54,8 +54,22 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Playwright's Chromium needs system libs (libnss3, libatk, libxkb, fonts).
+# Install browser + system deps as root using the playwright already in
+# node_modules from the builder. Cache lives at a system-wide path so the
+# non-root worker user can still launch the browser at runtime.
+# Adds ~250 MB to the image. Used by the render activity at
+# apps/queue/src/domains/support/support-frames.activity.ts to capture rrweb
+# visual replay keyframes for the AI agent.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY --from=builder /app/node_modules /tmp/_pw_modules
+RUN PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH} \
+      npx --prefix /tmp/_pw_modules playwright install --with-deps chromium \
+    && rm -rf /tmp/_pw_modules /var/lib/apt/lists/*
+
 RUN groupadd --system --gid 1001 nodejs && \
-    useradd --system --uid 1001 --gid nodejs worker
+    useradd --system --uid 1001 --gid nodejs worker \
+    && chmod -R a+rx ${PLAYWRIGHT_BROWSERS_PATH}
 
 COPY --from=builder --chown=worker:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=worker:nodejs /app/package.json ./package.json

@@ -15,11 +15,19 @@ export const SUPPORT_AGENT_SYSTEM_PROMPT = buildSupportAgentSystemPrompt();
 /**
  * Build the complete analysis prompt, injecting session replay context
  * when a correlated browser session was found.
+ *
+ * `hasVisualEvidence` tells the agent that it will receive rendered rrweb
+ * frames (or text captions of them) as separate user-message parts so it
+ * cites what it can actually see instead of hallucinating UI details.
  */
 export function buildAnalysisPromptWithContext(options: {
   sessionDigest?: SessionDigest;
+  hasVisualEvidence?: boolean;
 }): string {
   return renderPromptDocument(
-    buildSupportAnalysisPromptDocument({ sessionDigest: options.sessionDigest })
+    buildSupportAnalysisPromptDocument({
+      sessionDigest: options.sessionDigest,
+      hasVisualEvidence: options.hasVisualEvidence,
+    })
   );
 }
