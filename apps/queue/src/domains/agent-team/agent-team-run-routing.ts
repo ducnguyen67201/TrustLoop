@@ -1,10 +1,14 @@
 import {
   AGENT_TEAM_MESSAGE_KIND,
+  AGENT_TEAM_ROLE_INBOX_STATE,
   AGENT_TEAM_ROLE_SLUG,
   type AgentTeamDialogueMessageDraft,
   type AgentTeamMessageKind,
   type AgentTeamRole,
+  type AgentTeamRoleInboxState,
+  type AgentTeamRoleTurnOutput,
   type AgentTeamSnapshot,
+  RESOLUTION_STATUS,
   RESOLUTION_TARGET,
   canRouteTo,
   isRoleTarget,
@@ -105,6 +109,100 @@ export function assertValidMessageRouting(input: {
       );
     }
   }
+}
+
+export interface DroppedMessage {
+  message: AgentTeamDialogueMessageDraft;
+  reason: string;
+}
+
+// LLMs occasionally hallucinate `toRoleKey` values — pointing at themselves,
+// at a role they're not allowed to address, or at an unknown identifier.
+// Throwing on every hallucination kills the whole run on activity retry; we
+// drop the offending message and let the rest of the turn proceed instead.
+export function partitionMessagesByRouting(input: {
+  senderRole: AgentTeamRole;
+  teamRoles: AgentTeamRole[];
+  messages: AgentTeamDialogueMessageDraft[];
+}): { valid: AgentTeamDialogueMessageDraft[]; dropped: DroppedMessage[] } {
+  const rolesByKey = new Map(input.teamRoles.map((role) => [role.roleKey, role]));
+  const valid: AgentTeamDialogueMessageDraft[] = [];
+  const dropped: DroppedMessage[] = [];
+
+  for (const message of input.messages) {
+    if (!isRoleTarget(message.toRoleKey)) {
+      valid.push(message);
+      continue;
+    }
+
+    const targetRole = rolesByKey.get(message.toRoleKey);
+    if (!targetRole) {
+      if (isHumanResolutionTarget(message.toRoleKey)) {
+        valid.push(message);
+        continue;
+      }
+
+      dropped.push({
+        message,
+        reason: `unknown target ${message.toRoleKey}`,
+      });
+      continue;
+    }
+
+    if (!canRouteTo(input.senderRole.slug, targetRole.slug)) {
+      dropped.push({
+        message,
+        reason: `${input.senderRole.slug} cannot address ${targetRole.slug}`,
+      });
+      continue;
+    }
+
+    valid.push(message);
+  }
+
+  return { valid, dropped };
+}
+
+export interface ResolveSelfTurnStateInput {
+  resolution: AgentTeamRoleTurnOutput["resolution"];
+  messageResolutionQuestionCount: number;
+  done: boolean;
+}
+
+export interface ResolveSelfTurnStateResult {
+  state: AgentTeamRoleInboxState;
+  // True when the role asked to block (status=needs_input or kind=blocked
+  // message) but dispatched zero customer/operator-targeted questions. With
+  // no human-actionable signal the operator panel has nothing to offer, so
+  // the run would loop between waiting and resume forever. Downgrade to idle
+  // and log a warning so the next claimNextQueuedInbox cycle can drain.
+  hallucinatedBlock: boolean;
+}
+
+export function resolveSelfTurnState(input: ResolveSelfTurnStateInput): ResolveSelfTurnStateResult {
+  const isResolutionBlocked =
+    input.resolution !== null &&
+    input.resolution !== undefined &&
+    input.resolution.status === RESOLUTION_STATUS.needsInput;
+  const wantsBlock = isResolutionBlocked || input.messageResolutionQuestionCount > 0;
+  const humanQuestionCount =
+    (input.resolution?.questionsToResolve.filter(
+      (question) =>
+        question.target === RESOLUTION_TARGET.customer ||
+        question.target === RESOLUTION_TARGET.operator
+    ).length ?? 0) + input.messageResolutionQuestionCount;
+  const hallucinatedBlock = wantsBlock && humanQuestionCount === 0;
+
+  let state: AgentTeamRoleInboxState;
+  if (wantsBlock && !hallucinatedBlock) {
+    state = AGENT_TEAM_ROLE_INBOX_STATE.blocked;
+  } else if (input.done) {
+    state = AGENT_TEAM_ROLE_INBOX_STATE.done;
+  } else {
+    state = AGENT_TEAM_ROLE_INBOX_STATE.idle;
+  }
+
+  return { state, hallucinatedBlock };
 }
 
 export function shouldCreateOpenQuestion(kind: AgentTeamMessageKind): boolean {

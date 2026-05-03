@@ -13,6 +13,7 @@ How to work:
 - only use searchSentry if it helps confirm an execution path
 - you may emit: answer, evidence, challenge, status
 - you may address: architect, reviewer, broadcast
+- never set toRoleKey to your own ROLE_KEY or to any role whose type is code_reader
 - do not emit proposal or approval
 
 Output rules:

@@ -1,8 +1,9 @@
 import {
   MAX_AGENT_TEAM_MESSAGES,
-  assertValidMessageRouting,
   collectQueuedTargets,
   isHumanResolutionTarget,
+  partitionMessagesByRouting,
+  resolveSelfTurnState,
   selectInitialRole,
   shouldCreateOpenQuestion,
 } from "@/domains/agent-team/agent-team-run-routing";
@@ -271,11 +272,25 @@ export async function persistRoleTurnResult(
   heartbeat();
 
   const normalizedMessages = normalizeTurnMessages(input.role, input.result, input.teamRoles);
-  assertValidMessageRouting({
+  const { valid: routedMessages, dropped: droppedMessages } = partitionMessagesByRouting({
     senderRole: input.role,
     teamRoles: input.teamRoles,
     messages: normalizedMessages,
   });
+  if (droppedMessages.length > 0) {
+    console.warn("[agent-team] Dropped invalidly routed LLM messages", {
+      runId: input.runId,
+      turnIndex: input.turnIndex,
+      senderRoleKey: input.role.roleKey,
+      senderSlug: input.role.slug,
+      droppedCount: droppedMessages.length,
+      dropped: droppedMessages.map((entry) => ({
+        toRoleKey: entry.message.toRoleKey,
+        kind: entry.message.kind,
+        reason: entry.reason,
+      })),
+    });
+  }
 
   const { snapshot, recordedEvents } = await prisma.$transaction(async (tx) => {
     // workspaceId is required on every event. Fetch once per turn so callers
@@ -284,7 +299,7 @@ export async function persistRoleTurnResult(
       where: { id: input.runId },
       select: { workspaceId: true },
     });
-    const parentMessageIds = normalizedMessages.flatMap((message) =>
+    const parentMessageIds = routedMessages.flatMap((message) =>
       message.parentMessageId ? [message.parentMessageId] : []
     );
     const existingParentMessageRows =
@@ -298,7 +313,7 @@ export async function persistRoleTurnResult(
             select: { id: true },
           });
     const persistableMessages = clearUnknownParentMessageIds(
-      normalizedMessages,
+      routedMessages,
       new Set(existingParentMessageRows.map((message) => message.id))
     );
 
@@ -498,16 +513,21 @@ export async function persistRoleTurnResult(
       teamRoles: input.teamRoles,
     });
 
-    const isResolutionBlocked =
-      input.result.resolution !== null &&
-      input.result.resolution !== undefined &&
-      input.result.resolution.status === RESOLUTION_STATUS.needsInput;
-    const selfBlocked = isResolutionBlocked || messageResolutionQuestions.length > 0;
-    const selfState = selfBlocked
-      ? AGENT_TEAM_ROLE_INBOX_STATE.blocked
-      : input.result.done
-        ? AGENT_TEAM_ROLE_INBOX_STATE.done
-        : AGENT_TEAM_ROLE_INBOX_STATE.idle;
+    const { state: selfState, hallucinatedBlock } = resolveSelfTurnState({
+      resolution: input.result.resolution,
+      messageResolutionQuestionCount: messageResolutionQuestions.length,
+      done: input.result.done,
+    });
+    if (hallucinatedBlock) {
+      console.warn("[agent-team] Downgraded blocked-without-questions to idle", {
+        runId: input.runId,
+        turnIndex: input.turnIndex,
+        roleKey: input.role.roleKey,
+        roleSlug: input.role.slug,
+        resolutionStatus: input.result.resolution?.status ?? null,
+        whyStuck: input.result.resolution?.whyStuck ?? null,
+      });
+    }
 
     const wakeReasonText =
       input.result.resolution?.whyStuck ?? messageResolutionQuestions.at(0)?.question ?? null;

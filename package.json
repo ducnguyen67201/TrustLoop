@@ -1,13 +1,16 @@
 {
   "name": "trustloop",
-  "version": "0.2.15.1",
+  "version": "0.2.16.3",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.6.2",
   "engines": {
     "node": ">=24.0.0"
   },
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",

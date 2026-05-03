@@ -233,7 +233,7 @@ export function ConversationPropertiesSidebar({
           error={sessionReplay.error}
           match={sessionReplay.match}
           session={sessionReplay.session}
-          sessionBrief={sessionReplay.sessionBrief}
+          supportEvidence={sessionReplay.supportEvidence}
           matchConfidence={sessionReplay.matchConfidence}
           events={sessionReplay.events}
           isLoadingEvents={sessionReplay.isLoadingEvents}

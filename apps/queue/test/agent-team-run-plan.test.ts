@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   assertValidMessageRouting,
   collectQueuedTargets,
+  partitionMessagesByRouting,
+  resolveSelfTurnState,
   selectInitialRole,
 } from "../src/domains/agent-team/agent-team-run-routing";
 
@@ -196,5 +198,216 @@ describe("assertValidMessageRouting", () => {
         ],
       })
     ).toThrow(/unknown target/i);
+  });
+});
+
+describe("partitionMessagesByRouting", () => {
+  it("drops self-addressed messages without throwing", () => {
+    const snapshot = makeSnapshot();
+    const architect = snapshot.roles[0]!;
+
+    const { valid, dropped } = partitionMessagesByRouting({
+      senderRole: architect,
+      teamRoles: snapshot.roles,
+      messages: [
+        {
+          toRoleKey: architect.roleKey,
+          kind: "question",
+          subject: "Self ping",
+          content: "Talking to myself.",
+          refs: [],
+        },
+        {
+          toRoleKey: "reviewer",
+          kind: "proposal",
+          subject: "Real handoff",
+          content: "Please review.",
+          refs: [],
+        },
+      ],
+    });
+
+    expect(valid.map((m) => m.toRoleKey)).toEqual(["reviewer"]);
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]!.reason).toMatch(/architect cannot address architect/i);
+  });
+
+  it("drops unknown targets and disallowed cross-role pairs", () => {
+    const snapshot = makeSnapshot();
+
+    const { valid, dropped } = partitionMessagesByRouting({
+      senderRole: snapshot.roles[2]!,
+      teamRoles: snapshot.roles,
+      messages: [
+        {
+          toRoleKey: "pr_creator",
+          kind: "proposal",
+          subject: "Bad routing",
+          content: "code_reader cannot directly address pr_creator.",
+          refs: [],
+        },
+        {
+          toRoleKey: "made_up_role",
+          kind: "question",
+          subject: "Unknown",
+          content: "Where does this go?",
+          refs: [],
+        },
+        {
+          toRoleKey: "operator",
+          kind: "question",
+          subject: "Human escalation",
+          content: "Need operator input.",
+          refs: [],
+        },
+      ],
+    });
+
+    expect(valid.map((m) => m.toRoleKey)).toEqual(["operator"]);
+    expect(dropped.map((entry) => entry.message.toRoleKey)).toEqual(["pr_creator", "made_up_role"]);
+  });
+
+  it("passes broadcast and human resolution targets through unchanged", () => {
+    const snapshot = makeSnapshot();
+
+    const { valid, dropped } = partitionMessagesByRouting({
+      senderRole: snapshot.roles[0]!,
+      teamRoles: snapshot.roles,
+      messages: [
+        {
+          toRoleKey: "broadcast",
+          kind: "status",
+          subject: "Heartbeat",
+          content: "Still working.",
+          refs: [],
+        },
+        {
+          toRoleKey: "customer",
+          kind: "question",
+          subject: "Need clarification",
+          content: "Please confirm the failing endpoint.",
+          refs: [],
+        },
+      ],
+    });
+
+    expect(valid.map((m) => m.toRoleKey)).toEqual(["broadcast", "customer"]);
+    expect(dropped).toEqual([]);
+  });
+});
+
+describe("resolveSelfTurnState", () => {
+  it("blocks when the resolution dispatches a customer-targeted question", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "needs_input",
+        whyStuck: "Need customer to clarify the issue",
+        questionsToResolve: [
+          {
+            id: "run-0-0",
+            target: "customer",
+            question: "What can we help you with today?",
+            suggestedReply: "Hi! Could you share what you're running into?",
+            assignedRole: null,
+          },
+        ],
+      },
+      messageResolutionQuestionCount: 0,
+      done: false,
+    });
+
+    expect(result.state).toBe("blocked");
+    expect(result.hallucinatedBlock).toBe(false);
+  });
+
+  it("blocks when a message-targeted question reaches the operator", () => {
+    const result = resolveSelfTurnState({
+      resolution: null,
+      messageResolutionQuestionCount: 1,
+      done: false,
+    });
+
+    expect(result.state).toBe("blocked");
+    expect(result.hallucinatedBlock).toBe(false);
+  });
+
+  it("downgrades to idle when needs_input dispatches zero human-targeted questions", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "needs_input",
+        whyStuck: "Customer message has no actionable issue",
+        questionsToResolve: [],
+      },
+      messageResolutionQuestionCount: 0,
+      done: false,
+    });
+
+    expect(result.state).toBe("idle");
+    expect(result.hallucinatedBlock).toBe(true);
+  });
+
+  it("downgrades to idle when needs_input only routes to internal peers", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "needs_input",
+        whyStuck: "Asking the RCA analyst",
+        questionsToResolve: [
+          {
+            id: "run-0-0",
+            target: "internal",
+            question: "Did Sentry surface anything related?",
+            suggestedReply: null,
+            assignedRole: "rca_analyst",
+          },
+        ],
+      },
+      messageResolutionQuestionCount: 0,
+      done: false,
+    });
+
+    expect(result.state).toBe("idle");
+    expect(result.hallucinatedBlock).toBe(true);
+  });
+
+  it("returns done when the role marks itself complete and is not blocked", () => {
+    const result = resolveSelfTurnState({
+      resolution: null,
+      messageResolutionQuestionCount: 0,
+      done: true,
+    });
+
+    expect(result.state).toBe("done");
+    expect(result.hallucinatedBlock).toBe(false);
+  });
+
+  it("treats no_action_needed as not-blocked and returns idle", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "no_action_needed",
+        whyStuck: null,
+        questionsToResolve: [],
+        recommendedClose: "no_action_taken",
+      },
+      messageResolutionQuestionCount: 0,
+      done: false,
+    });
+
+    expect(result.state).toBe("idle");
+    expect(result.hallucinatedBlock).toBe(false);
+  });
+
+  it("prefers done over blocked when the role flags itself complete with no questions", () => {
+    const result = resolveSelfTurnState({
+      resolution: {
+        status: "needs_input",
+        whyStuck: "Still wrapping up but technically finished",
+        questionsToResolve: [],
+      },
+      messageResolutionQuestionCount: 0,
+      done: true,
+    });
+
+    expect(result.state).toBe("done");
+    expect(result.hallucinatedBlock).toBe(true);
   });
 });

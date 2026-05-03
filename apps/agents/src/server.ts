@@ -42,7 +42,7 @@ app.post("/team-turn", async (c) => {
 const PORT = Number(process.env.PORT ?? process.env.AGENT_SERVICE_PORT ?? 3100);
 
 if (process.env.VITEST !== "true") {
-  serve({ fetch: app.fetch, port: PORT }, (info) => {
+  serve({ fetch: app.fetch, port: PORT, hostname: "::" }, (info) => {
     console.log(`[agents] Agent service running on http://localhost:${info.port}`);
   });
 }

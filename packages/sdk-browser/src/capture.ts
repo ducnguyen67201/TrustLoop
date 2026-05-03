@@ -1,4 +1,5 @@
 import { debugLog, warnLog } from "./logger";
+import { redactText, redactUrl } from "./redact";
 import type { RingBuffer } from "./ring-buffer";
 import type { StructuredEvent } from "./types";
 
@@ -14,7 +15,8 @@ const EVENT_TYPE = {
 
 function currentUrl(): string | undefined {
   try {
-    return globalThis.location?.href;
+    const href = globalThis.location?.href;
+    return redactUrl(href) ?? undefined;
   } catch {
     return undefined;
   }
@@ -63,7 +65,8 @@ export function captureClicks(buffer: RingBuffer): CleanupFn {
       if (!(target instanceof Element)) return;
 
       const selector = buildSelectorPath(target);
-      const text = truncateText(target.textContent?.trim() ?? "");
+      // Redact before truncation so we never persist a half-cut secret.
+      const text = truncateText(redactText(target.textContent?.trim() ?? ""));
 
       const event: StructuredEvent = {
         eventType: EVENT_TYPE.click,
@@ -93,6 +96,8 @@ export function captureClicks(buffer: RingBuffer): CleanupFn {
 }
 
 export function captureRouteChanges(buffer: RingBuffer): CleanupFn {
+  // currentUrl() applies redactUrl, so the seed and every subsequent value
+  // is already safe to persist as payload.from / payload.to.
   let previousUrl = currentUrl() ?? "";
 
   function emitRouteEvent(method: string): void {
@@ -181,7 +186,7 @@ export function captureConsoleErrors(buffer: RingBuffer): CleanupFn {
           url: currentUrl(),
           payload: {
             level: "ERROR",
-            message: message.slice(0, 1000),
+            message: redactText(message).slice(0, 1000),
           },
         };
 
@@ -212,7 +217,7 @@ export function captureConsoleErrors(buffer: RingBuffer): CleanupFn {
           url: currentUrl(),
           payload: {
             level: "WARN",
-            message: message.slice(0, 1000),
+            message: redactText(message).slice(0, 1000),
           },
         };
 
@@ -233,15 +238,20 @@ export function captureConsoleErrors(buffer: RingBuffer): CleanupFn {
 export function captureExceptions(buffer: RingBuffer): CleanupFn {
   function errorHandler(e: ErrorEvent): void {
     try {
+      const rawStack = e.error?.stack;
       const event: StructuredEvent = {
         eventType: EVENT_TYPE.exception,
         timestamp: Date.now(),
         url: currentUrl(),
         payload: {
-          message: e.message ?? "Unknown error",
-          stack: e.error?.stack?.slice(0, 2000),
+          message: redactText(e.message ?? "Unknown error"),
+          // Stack frames frequently embed query-stringed source URLs and
+          // closure-captured variable values — redact before truncation.
+          stack: rawStack ? redactText(rawStack).slice(0, 2000) : undefined,
           name: e.error?.name ?? "Error",
-          source: e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : undefined,
+          source: e.filename
+            ? `${redactUrl(e.filename) ?? "unknown"}:${e.lineno}:${e.colno}`
+            : undefined,
         },
       };
 
@@ -256,14 +266,18 @@ export function captureExceptions(buffer: RingBuffer): CleanupFn {
     try {
       const reason = e.reason;
       const message = reason?.message ?? String(reason ?? "Unhandled rejection");
-      const stack = reason?.stack?.slice(0, 2000);
+      const rawStack = reason?.stack;
       const name = reason?.name ?? "UnhandledRejection";
 
       const event: StructuredEvent = {
         eventType: EVENT_TYPE.exception,
         timestamp: Date.now(),
         url: currentUrl(),
-        payload: { message, stack, name },
+        payload: {
+          message: redactText(message),
+          stack: rawStack ? redactText(rawStack).slice(0, 2000) : undefined,
+          name,
+        },
       };
 
       pushEvent(buffer, event);
@@ -297,7 +311,8 @@ export function captureNetworkFailures(buffer: RingBuffer, excludeUrl?: string):
       url = String(input);
     }
 
-    // Skip capturing SDK's own ingest requests to prevent feedback loops
+    // Skip capturing SDK's own ingest requests to prevent feedback loops.
+    // Match against the raw URL — excludeUrl is internal config, not user data.
     if (excludeUrl && url.startsWith(excludeUrl)) {
       return originalFetch.call(globalThis, input, init);
     }
@@ -308,20 +323,23 @@ export function captureNetworkFailures(buffer: RingBuffer, excludeUrl?: string):
       if (!response.ok) {
         try {
           const durationMs = Date.now() - startTime;
+          // redactUrl strips query+fragment and applies the same secret
+          // patterns we use elsewhere; truncate after to fit our budget.
+          const safeUrl = (redactUrl(url) ?? "unknown").slice(0, 500);
           const event: StructuredEvent = {
             eventType: EVENT_TYPE.networkError,
             timestamp: Date.now(),
             url: currentUrl(),
             payload: {
               method: method.toUpperCase(),
-              url: url.slice(0, 500),
+              url: safeUrl,
               status: response.status,
               durationMs,
             },
           };
 
           pushEvent(buffer, event);
-          debugLog("Network failure captured", response.status, url);
+          debugLog("Network failure captured", response.status, safeUrl);
         } catch {
           // Fault isolation
         }
@@ -332,13 +350,14 @@ export function captureNetworkFailures(buffer: RingBuffer, excludeUrl?: string):
       // Network-level failure (DNS, timeout, CORS, etc.)
       try {
         const durationMs = Date.now() - startTime;
+        const safeUrl = (redactUrl(url) ?? "unknown").slice(0, 500);
         const event: StructuredEvent = {
           eventType: EVENT_TYPE.networkError,
           timestamp: Date.now(),
           url: currentUrl(),
           payload: {
             method: method.toUpperCase(),
-            url: url.slice(0, 500),
+            url: safeUrl,
             status: 0,
             durationMs,
           },

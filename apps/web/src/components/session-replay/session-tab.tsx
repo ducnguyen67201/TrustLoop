@@ -1,17 +1,17 @@
 "use client";
 
-import { SessionContextBar } from "@/components/session-replay/session-context-bar";
 import { SessionEventTimeline } from "@/components/session-replay/session-event-timeline";
 import { SessionManualAttachDialog } from "@/components/session-replay/session-manual-attach-dialog";
 import { SessionReplayModal } from "@/components/session-replay/session-replay-modal";
+import { SupportEvidenceCapsule } from "@/components/session-replay/support-evidence-capsule";
 import { Button } from "@/components/ui/button";
 import type {
   ReplayChunkResponse,
-  SessionBrief,
   SessionConversationMatch,
   SessionMatchConfidence,
   SessionRecordResponse,
   SessionTimelineEvent,
+  SupportEvidence,
 } from "@shared/types";
 import { useState } from "react";
 
@@ -21,7 +21,7 @@ interface SessionTabProps {
   error: string | null;
   match: SessionConversationMatch | null;
   session: SessionRecordResponse | null;
-  sessionBrief: SessionBrief | null;
+  supportEvidence: SupportEvidence | null;
   matchConfidence: SessionMatchConfidence;
   events: SessionTimelineEvent[];
   isLoadingEvents: boolean;
@@ -37,27 +37,14 @@ interface SessionTabProps {
   onLoadReplayChunks: () => void;
 }
 
-function formatDuration(startIso: string, endIso: string): string {
-  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes === 0) return `${seconds}s`;
-  return `${minutes}m ${seconds}s`;
-}
-
-/**
- * Session tab content for the conversation sheet.
- * Shows context bar + event timeline + replay open button.
- * Per design review: tab-based navigation, replay opens in full-width modal.
- */
+// Session tab content for conversation-linked browser evidence and proof replay.
 export function SessionTab({
   workspaceId,
   isLoading,
   error,
   match,
   session,
-  sessionBrief,
+  supportEvidence,
   matchConfidence,
   events,
   isLoadingEvents,
@@ -83,22 +70,35 @@ export function SessionTab({
     setIsReplayOpen(true);
   }
 
-  // No session data at all
-  if (!isLoading && !error && !session) {
+  const manualAttachControl = (
+    <SessionManualAttachDialog
+      workspaceId={workspaceId}
+      triggerLabel={session ? "Change session" : "Browse sessions"}
+      isAttaching={isAttachingSession}
+      attachError={attachSessionError}
+      onAttach={onAttachSession}
+    />
+  );
+
+  // Don't drop into the "no session, show SDK setup guide" branch while a
+  // manual attach is in flight — the operator already picked a session,
+  // surface the loading state instead so the click feels acknowledged.
+  if (!isLoading && !isAttachingSession && !error && !session) {
     return (
       <div className="space-y-3 p-4">
-        <p className="text-muted-foreground text-sm">
-          No session was automatically matched to this thread. If the SDK captured the browser
-          session, browse recent sessions and attach the right one manually.
-        </p>
+        <SupportEvidenceCapsule
+          isLoading={isLoading}
+          isAttachingSession={isAttachingSession}
+          error={error}
+          match={match}
+          session={session}
+          supportEvidence={supportEvidence}
+          matchConfidence={matchConfidence}
+          manualAttachControl={manualAttachControl}
+          canViewProof={false}
+          onViewProof={handleOpenReplay}
+        />
         <div className="flex flex-wrap gap-2">
-          <SessionManualAttachDialog
-            workspaceId={workspaceId}
-            triggerLabel="Browse sessions"
-            isAttaching={isAttachingSession}
-            attachError={attachSessionError}
-            onAttach={onAttachSession}
-          />
           <Button variant="outline" size="sm" asChild>
             <a href="/docs/sdk-install" target="_blank" rel="noopener noreferrer">
               SDK setup guide
@@ -111,29 +111,19 @@ export function SessionTab({
 
   return (
     <div className="space-y-3">
-      {/* Session context bar */}
-      <SessionContextBar
+      <SupportEvidenceCapsule
         isLoading={isLoading}
-        userEmail={session?.userEmail ?? null}
-        duration={session ? formatDuration(session.startedAt, session.lastEventAt) : null}
-        userAgent={session?.userAgent ?? null}
-        match={match}
-        sessionBrief={sessionBrief}
-        matchConfidence={matchConfidence}
+        isAttachingSession={isAttachingSession}
         error={error}
+        match={match}
+        session={session}
+        supportEvidence={supportEvidence}
+        matchConfidence={matchConfidence}
+        manualAttachControl={manualAttachControl}
+        canViewProof={Boolean(session?.hasReplayData)}
+        onViewProof={handleOpenReplay}
       />
 
-      <div className="flex justify-end">
-        <SessionManualAttachDialog
-          workspaceId={workspaceId}
-          triggerLabel="Change attached session"
-          isAttaching={isAttachingSession}
-          attachError={attachSessionError}
-          onAttach={onAttachSession}
-        />
-      </div>
-
-      {/* Event timeline */}
       <div className="border">
         <div className="px-3 py-2">
           <h3 className="text-xs font-medium text-muted-foreground">
@@ -154,7 +144,6 @@ export function SessionTab({
         />
       </div>
 
-      {/* Open replay button */}
       {session?.hasReplayData ? (
         <Button variant="outline" className="w-full" onClick={() => handleOpenReplay()}>
           Open Replay
@@ -165,7 +154,6 @@ export function SessionTab({
         </p>
       ) : null}
 
-      {/* Replay modal */}
       <SessionReplayModal
         isOpen={isReplayOpen}
         onClose={() => setIsReplayOpen(false)}

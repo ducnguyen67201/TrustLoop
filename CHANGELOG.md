@@ -2,6 +2,116 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.16.3] - 2026-05-03
+
+### Tests
+- **Adds an integration test for the operator session-tab composition.**
+  Renders the real `SessionTab` + `SupportEvidenceCapsule` together,
+  mocks only the heavy children (timeline, replay modal, manual-attach
+  dialog), and exercises the full client-side happy path: empty-state
+  rendering, populated capsule, copy-to-clipboard, "View proof" →
+  replay-modal-open + chunk-load callback, in-flight loading early
+  return, and the "no DOM replay" sub-state. Catches breakage in the
+  composition that the capsule unit test can't see.
+
+## [0.2.16.2] - 2026-05-03
+
+### Fixed
+- **Clicking "attach session" now feels acknowledged.** When the operator
+  picked a session from the picker, the capsule kept showing the old
+  "No browser session matched" copy until the mutation returned —
+  `isAttachingSession` set the spinner on the picker dialog but never
+  reached the capsule, so the click felt dropped. The capsule now
+  treats `isAttachingSession` the same as `isLoading` and shows the
+  skeleton with an `aria-live="polite"` "Attaching session" label, then
+  flips to the populated capsule when the mutation lands. Same for the
+  initial-load path: `aria-live` "Loading session evidence" so screen
+  readers get a status update.
+- Adds 6 capsule unit tests covering loading, attaching, no-match,
+  populated, error, and "loading wins over stale error" — the last is
+  a regression guard for retry-after-error flicker.
+
+## [0.2.16.1] - 2026-05-02
+
+### Security
+- **PII and credentials are now redacted at SDK capture time, before they
+  ever leave the customer's browser.** Schema-side `sanitizeText` /
+  `sanitizeUrl` only ran when building operator-facing evidence; the raw
+  `SessionEvent` rows in the database still carried unredacted click
+  text, route URLs, console messages, network URLs, exception messages
+  and stack traces. Anyone with DB access could see them. The new
+  `redactText` / `redactUrl` in `packages/sdk-browser/src/redact.ts`
+  applies the same email / Bearer / Basic / `token=` / `secret=` /
+  `password=` / `authorization=` / `api[_-]?key=` / 32+ char hex
+  patterns at capture time, so the data hits the wire pre-scrubbed.
+- Adds 9 SDK redaction tests and 5 adversarial schema-side tests
+  covering naming-convention variants (`apiKey` / `api-key` / `api_key`),
+  Bearer/Basic auth, plus-aliased emails, 32+ char hex, and the 220-char
+  per-field cap. SDK and schema patterns are documented as a parity
+  contract — divergence means a leak slips one net.
+
+## [0.2.16.0] - 2026-05-02
+
+### Added
+- **Operators see a redacted Support Evidence Capsule on every conversation
+  that has session-replay attached.** A new card in the conversation sidebar
+  ranks the session's signals (uncaught exception > 5xx fetch > 4xx fetch >
+  console error) and shows the primary failure, the last route, the last 3
+  user actions, the last 8 failed fetches, and the last 8 console/exception
+  entries. Two pre-rendered copy strings ship with the capsule: a `repro`
+  block for engineering handoff and an `escalation` block for a customer
+  reply, both auto-redacted before they reach the operator.
+- **Customer-safe redaction is enforced at the schema layer.** Emails become
+  `[email]`, `Bearer`/`Basic` tokens become `[redacted]`, query params
+  matching `token=`/`secret=`/`password=`/`authorization=`/`api_key=` get
+  their values redacted, any 32+ char hex string gets stripped, and URLs
+  drop their query string. Operators can paste evidence into a customer
+  reply without manually scrubbing PII.
+- **Session-evidence schema unit tests** covering severity ranking, the
+  redaction rules, the `repro`/`escalation` copy generation, and the
+  truncation behavior of the events window.
+
+### Changed
+- Conversation properties sidebar and support conversation sheet now mount
+  the Support Evidence Capsule above the existing replay timeline so the
+  failure signal is the first thing operators see.
+- `useSessionReplay` and the session-replay router expose the evidence
+  payload alongside the timeline events so the capsule renders without an
+  extra fetch.
+- `session-thread-match-service` and the support-analysis activity test get
+  the new evidence shape so backend and queue-side flows stay coherent.
+- `apps/agents/src/server.ts` binds to `::` for IPv6 dual-stack so the
+  agent service is reachable on every interface in dev.
+- `apps/web/next.config.ts` sets `devIndicators: false` to hide Next's
+  bottom-left dev badge during demo recordings.
+- `.skills/gstack` submodule pointer rolls forward from v1.12.2.0 to
+  v1.26.0.0 so the canonical and project-local gstack copies match.
+- `resolveProviderConfig` (apps/agents) finishes the centralized LLM
+  routing migration started in #68: it now returns `LlmOverride |
+  undefined` (was `AgentProviderConfig` with a hardcoded openai fallback)
+  so the route's default policy applies when the caller doesn't override.
+  Adds focused vitest coverage for the empty-override and explicit-override
+  paths.
+
+## [0.2.15.3] - 2026-05-02
+
+### Fixed
+- **Session ingest no longer spams unique-violation errors under concurrent
+  flushes.** Two parallel flushes from the same browser session would both
+  see `findFirst` → null and both attempt `create`, raising `P2002` on the
+  loser. The transaction now retries once on `P2002`; the retry's
+  `findFirst` finds the winner's row and converges to the update branch.
+  Customer-visible noise in logs goes away; data convergence is unchanged
+  (the SDK's flush retry was already covering the eventual case).
+
+## [0.2.15.2] - 2026-04-26
+
+### Changed
+- Tracked the deferred session replay evidence follow-ups from the approved
+  Support Evidence Capsule plan, including standalone sessions-page
+  convergence, reply-composer evidence insertion, and future full
+  console/network capture.
+
 ## [0.2.15.1] - 2026-04-25
 
 ### Fixed

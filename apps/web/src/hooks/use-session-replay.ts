@@ -10,6 +10,7 @@ import {
   type SessionMatchConfidence,
   type SessionRecordResponse,
   type SessionTimelineEvent,
+  type SupportEvidence,
 } from "@shared/types";
 import { useCallback, useEffect, useState } from "react";
 
@@ -19,6 +20,7 @@ export interface UseSessionReplayResult {
   match: SessionConversationMatch | null;
   session: SessionRecordResponse | null;
   sessionBrief: SessionBrief | null;
+  supportEvidence: SupportEvidence | null;
   matchConfidence: SessionMatchConfidence;
   events: SessionTimelineEvent[];
   isLoadingEvents: boolean;
@@ -48,6 +50,7 @@ export function useSessionReplay(
   const [match, setMatch] = useState<SessionConversationMatch | null>(null);
   const [session, setSession] = useState<SessionRecordResponse | null>(null);
   const [sessionBrief, setSessionBrief] = useState<SessionBrief | null>(null);
+  const [supportEvidence, setSupportEvidence] = useState<SupportEvidence | null>(null);
   const [matchConfidence, setMatchConfidence] = useState<SessionMatchConfidence>(
     SESSION_MATCH_CONFIDENCE.none
   );
@@ -65,6 +68,7 @@ export function useSessionReplay(
     setMatch(result.match);
     setSession(result.session);
     setSessionBrief(result.sessionBrief);
+    setSupportEvidence(result.supportEvidence);
     setEvents(result.events);
     setFailurePointId(result.failurePointId);
     setMatchConfidence(result.match?.matchConfidence ?? SESSION_MATCH_CONFIDENCE.none);
@@ -85,6 +89,7 @@ export function useSessionReplay(
       setMatch(null);
       setSession(null);
       setSessionBrief(null);
+      setSupportEvidence(null);
       setEvents([]);
       setFailurePointId(null);
       setReplayChunks([]);
@@ -192,6 +197,7 @@ export function useSessionReplay(
     match,
     session,
     sessionBrief,
+    supportEvidence,
     matchConfidence,
     events,
     isLoadingEvents,

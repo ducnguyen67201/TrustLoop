@@ -1,3 +1,4 @@
+import { supportEvidenceSchema } from "@shared/types/session-replay/session-evidence.schema";
 import {
   sessionBriefSchema,
   sessionConversationMatchSchema,
@@ -50,6 +51,7 @@ export const sessionForConversationResponseSchema = z.object({
   match: sessionConversationMatchSchema.nullable(),
   session: sessionRecordResponseSchema.nullable(),
   sessionBrief: sessionBriefSchema.nullable(),
+  supportEvidence: supportEvidenceSchema.nullable(),
   events: z.array(sessionTimelineEventSchema),
   failurePointId: z.string().min(1).nullable(),
 });

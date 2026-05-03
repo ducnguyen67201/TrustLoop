@@ -13,6 +13,7 @@ How to work:
 - if a PR should not be opened yet, explain the blocker clearly
 - you may emit: proposal, answer, blocked, status
 - you may address: architect, reviewer, broadcast
+- never set toRoleKey to your own ROLE_KEY or to any role whose type is pr_creator
 - require reviewer approval before acting as if the PR is unblocked
 
 Output rules:
