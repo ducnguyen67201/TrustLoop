@@ -23,8 +23,10 @@
     "@octokit/auth-app": "^8.2.0",
     "@shared/database": "*",
     "@shared/env": "*",
+    "@shared/rest": "*",
     "@shared/types": "*",
     "@temporalio/worker": "^1.13.0",
-    "@temporalio/workflow": "^1.13.0"
+    "@temporalio/workflow": "^1.13.0",
+    "playwright": "^1.48.0"
   }
 }

@@ -27,6 +27,8 @@ export {
   markAnalyzing,
   runAnalysisAgent,
 } from "@/domains/support/support-analysis.activity";
+export { captionFailureFramesActivity } from "@/domains/support/support-frames-caption.activity";
+export { renderFailureFramesActivity } from "@/domains/support/support-frames.activity";
 export { mirrorSupportAttachment } from "@/domains/support/support-attachment-mirror.activity";
 export { refreshCustomerProfile } from "@/domains/support/support-customer-profile.activity";
 export { sweepStaleDraftDispatches } from "@/domains/support/send-draft-sweep.activity";

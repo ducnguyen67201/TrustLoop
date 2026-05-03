@@ -8,6 +8,7 @@ import {
 export function buildSupportAnalysisPromptDocument(options?: {
   sessionDigest?: SessionDigest;
   toneConfig?: ToneConfig;
+  hasVisualEvidence?: boolean;
 }): PromptDocument {
   const sections: PromptDocument["sections"] = [
     {
@@ -15,6 +16,14 @@ export function buildSupportAnalysisPromptDocument(options?: {
       type: "prose",
     },
   ];
+
+  if (options?.hasVisualEvidence) {
+    sections.push({
+      body: "You will receive 3-7 screenshots (or text captions of those screenshots) of the customer's screen around the moment of the failure, included as separate user-message parts. Treat them as primary evidence: cite specific UI elements you can see (button states, visible text, modal contents, error toasts, partially-filled forms). Do not hallucinate visual elements that are not in the frames or captions.",
+      title: "Visual evidence will be attached",
+      type: "prose",
+    });
+  }
 
   if (options?.sessionDigest) {
     sections.push(...buildSessionDigestPromptSections(options.sessionDigest));

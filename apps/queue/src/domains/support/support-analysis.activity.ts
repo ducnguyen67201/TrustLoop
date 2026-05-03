@@ -38,6 +38,12 @@ interface ThreadSnapshotResult {
   threadSnapshot: ThreadSnapshot;
   customerEmail: string | null;
   sessionDigest: SessionDigest | null;
+  // Surfaced so the workflow can drive the failure-frame render activity
+  // without re-fetching the digest. Both null when no correlated session
+  // was found or the session has no failurePoint.
+  sessionRecordId: string | null;
+  failurePointTimestamp: string | null;
+  precedingActionsCount: number;
 }
 
 interface AnalysisAgentInput {
@@ -46,6 +52,8 @@ interface AnalysisAgentInput {
   analysisId: string;
   threadSnapshot: ThreadSnapshot;
   sessionDigest?: SessionDigest | null;
+  failureFrames?: import("@shared/types").FailureFrame[];
+  failureFrameCaptions?: import("@shared/types").FailureFrameCaption[];
 }
 
 interface EscalateInput {
@@ -81,6 +89,10 @@ export async function buildThreadSnapshot(
   const sessionDigest: SessionDigest | null = sessionContext.shouldAttachToAnalysis
     ? sessionContext.sessionDigest
     : null;
+  // sessionRecordId is surfaced even when shouldAttachToAnalysis is false so
+  // the workflow can still drive the failure-frame render activity for fuzzy
+  // matches — frames are still useful evidence even if the digest is gated.
+  const sessionRecordId = sessionContext.session?.id ?? null;
 
   const analysis = await prisma.supportAnalysis.create({
     data: {
@@ -98,6 +110,9 @@ export async function buildThreadSnapshot(
     threadSnapshot: snapshot,
     customerEmail,
     sessionDigest,
+    sessionRecordId,
+    failurePointTimestamp: sessionDigest?.failurePoint?.timestamp ?? null,
+    precedingActionsCount: sessionDigest?.failurePoint?.precedingActions.length ?? 0,
   };
 }
 
@@ -315,6 +330,12 @@ async function callAgentService(input: AnalysisAgentInput, config: { toneConfig:
       conversationId: input.conversationId,
       threadSnapshot: input.threadSnapshot,
       ...(input.sessionDigest ? { sessionDigest: input.sessionDigest } : {}),
+      ...(input.failureFrames && input.failureFrames.length > 0
+        ? { failureFrames: input.failureFrames }
+        : {}),
+      ...(input.failureFrameCaptions && input.failureFrameCaptions.length > 0
+        ? { failureFrameCaptions: input.failureFrameCaptions }
+        : {}),
       config,
     }),
     signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
