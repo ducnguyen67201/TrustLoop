@@ -1,7 +1,6 @@
 "use client";
 
 import ducPhoto from "@shared/brand/team/duc.jpg";
-import nhatAnhPhoto from "@shared/brand/team/nhat-anh.jpg";
 import type { StaticImageData } from "next/image";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
@@ -25,17 +24,7 @@ const TEAM: TeamMember[] = [
     link: { label: "LinkedIn", href: "https://www.linkedin.com/in/ducnguyen6721/" },
     photo: ducPhoto,
   },
-  {
-    initials: "NA",
-    name: "Nhat Anh Tran",
-    role: "Co-founder & Engineering",
-    bio: "Full-stack engineer obsessed with the craft of shipping tools engineers actually want to use. Building the retrieval and agent pipeline that makes every TrustLoop AI draft grounded in real code.",
-    link: { label: "LinkedIn", href: "https://www.linkedin.com/in/nhatanhpgm/" },
-    photo: nhatAnhPhoto,
-  },
 ];
-
-const PADDING = ["md:pr-8 lg:pr-12", "md:pl-8 lg:pl-12"];
 
 function TeamCard({
   initials,
@@ -129,19 +118,19 @@ export function Team() {
 
         <div className="max-w-3xl mb-16 md:mb-20">
           <h2 className="text-2xl md:text-3xl font-medium text-[#1C1917] leading-tight tracking-tight mb-4">
-            Built by engineers who lived the on-call
+            Built by an engineer who lived the on-call
             <br />
             support nightmare.
           </h2>
           <p className="text-base md:text-lg text-[#8B7E74] leading-relaxed">
-            Small team, opinionated product. We ship fast because every feature comes from a real
+            Solo founder, opinionated product. I ship fast because every feature comes from a real
             2am Slack ping.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 md:items-stretch divide-y md:divide-y-0 md:divide-x divide-[#EAE5E0] border-y border-[#EAE5E0]">
+        <div className="grid grid-cols-1 border-y border-[#EAE5E0]">
           {TEAM.map((member, i) => (
-            <div key={member.name} className={`h-full ${PADDING[i]}`}>
+            <div key={member.name} className="h-full">
               <TeamCard {...member} delay={i * 200} />
             </div>
           ))}
