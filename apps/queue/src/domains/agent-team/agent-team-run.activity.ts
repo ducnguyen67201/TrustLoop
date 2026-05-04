@@ -44,6 +44,7 @@ import {
   agentTeamRoleInboxSchema,
   agentTeamRoleTurnInputSchema,
   agentTeamRoleTurnOutputSchema,
+  agentTeamRunStatusSchema,
   restoreAgentTeamRunContext,
   restoreDraftContext,
   transitionAgentTeamRun,
@@ -104,10 +105,29 @@ export async function initializeRunState(
   const recordedEvent = await prisma.$transaction(async (tx) => {
     const current = await tx.agentTeamRun.findUniqueOrThrow({
       where: { id: input.runId },
-      select: { id: true, status: true, errorMessage: true },
+      select: {
+        id: true,
+        status: true,
+        errorMessage: true,
+        workspaceId: true,
+        teamId: true,
+        conversationId: true,
+        analysisId: true,
+      },
     });
+    // Temporal-retry idempotency: if a previous attempt already committed the
+    // start transition, the run is already in `running`. Skip the FSM call
+    // (which would throw on running -> start) and skip re-emitting the
+    // run_started event (already in the log).
+    if (current.status === AGENT_TEAM_RUN_STATUS.running) {
+      return null;
+    }
     const next = transitionAgentTeamRun(
-      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      restoreAgentTeamRunContext(
+        input.runId,
+        agentTeamRunStatusSchema.parse(current.status),
+        current.errorMessage
+      ),
       { type: "start" }
     );
     const run = await tx.agentTeamRun.update({
@@ -168,7 +188,9 @@ export async function initializeRunState(
     });
   });
 
-  logRecordedEvents([recordedEvent]);
+  if (recordedEvent) {
+    logRecordedEvents([recordedEvent]);
+  }
 
   return { roleKey: initialRole.roleKey };
 }
@@ -647,8 +669,18 @@ export async function markRunCompleted(runId: string): Promise<void> {
       where: { id: runId },
       select: { id: true, status: true, errorMessage: true },
     });
+    // Temporal-retry idempotency: terminal state already persisted on a prior
+    // attempt. Skip the FSM call (would throw on completed -> complete) and
+    // skip re-emitting the run_succeeded event (already in the log).
+    if (current.status === AGENT_TEAM_RUN_STATUS.completed) {
+      return null;
+    }
     const next = transitionAgentTeamRun(
-      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      restoreAgentTeamRunContext(
+        runId,
+        agentTeamRunStatusSchema.parse(current.status),
+        current.errorMessage
+      ),
       { type: "complete" }
     );
     const run = await tx.agentTeamRun.update({
@@ -707,7 +739,9 @@ export async function markRunCompleted(runId: string): Promise<void> {
 
     return recordedEvent;
   });
-  logRecordedEvents([event]);
+  if (event) {
+    logRecordedEvents([event]);
+  }
 }
 
 // Project a completed agent-team run onto the legacy SupportAnalysis +
@@ -802,14 +836,23 @@ export async function markRunWaiting(runId: string): Promise<void> {
       where: { id: runId },
       select: { id: true, status: true, errorMessage: true },
     });
+    // Temporal-retry idempotency: already in waiting from a prior attempt.
+    if (current.status === AGENT_TEAM_RUN_STATUS.waiting) {
+      return;
+    }
     const next = transitionAgentTeamRun(
-      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      restoreAgentTeamRunContext(
+        runId,
+        agentTeamRunStatusSchema.parse(current.status),
+        current.errorMessage
+      ),
       { type: "waitForResolution" }
     );
     await tx.agentTeamRun.update({
       where: { id: runId },
       data: {
         status: next.status,
+        errorMessage: next.errorMessage,
         completedAt: null,
       },
     });
@@ -822,8 +865,21 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
       where: { id: input.runId },
       select: { id: true, status: true, errorMessage: true },
     });
+    // Terminal-state idempotency: failed and completed are both terminal — a
+    // retry of markRunFailed should not throw or rewrite. We treat completed
+    // as a stronger terminal (don't downgrade success to failure on retry).
+    if (
+      current.status === AGENT_TEAM_RUN_STATUS.failed ||
+      current.status === AGENT_TEAM_RUN_STATUS.completed
+    ) {
+      return null;
+    }
     const next = transitionAgentTeamRun(
-      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      restoreAgentTeamRunContext(
+        input.runId,
+        agentTeamRunStatusSchema.parse(current.status),
+        current.errorMessage
+      ),
       { type: "fail", error: input.errorMessage }
     );
     const run = await tx.agentTeamRun.update({
@@ -862,7 +918,9 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
 
     return recordedEvent;
   });
-  logRecordedEvents([event]);
+  if (event) {
+    logRecordedEvents([event]);
+  }
 }
 
 function computeDurationMs(startedAt: Date | null, completedAt: Date | null): number {

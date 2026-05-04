@@ -2,6 +2,35 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.17.4] - 2026-05-04
+
+### Fixed
+- **AgentTeamRun status mutators are now idempotent under Temporal retries.**
+  After v0.2.17.3 introduced the FSM, `markRunCompleted` / `markRunFailed` /
+  `markRunWaiting` / `initializeRunState` would throw
+  `InvalidAgentTeamRunTransitionError` if Temporal retried the activity after
+  a successful DB commit (e.g. a network blip between commit and ack). The
+  retry would treat the activity as failed and could trigger a cascade. Each
+  function now early-returns when the run is already in the target state — no
+  FSM call, no double-emit of terminal events.
+- **Replaces `current.status as never` casts with
+  `agentTeamRunStatusSchema.parse(current.status)`** at all 5 FSM-driven write
+  sites (4 in `agent-team-run.activity.ts`, 1 in `resume-run.ts`). Per
+  CLAUDE.md "no `any`, no `as unknown as`" rule. The cast bypassed Zod
+  validation on the way in; the parse catches a malformed status at the
+  boundary with a typed error instead of letting an invalid value reach the
+  FSM as "unknown status".
+- **`markRunWaiting` now writes `errorMessage: next.errorMessage`** for
+  consistency with the other four FSM-driven update sites. Runtime effect
+  was a no-op (the `waitForResolution` handler preserves errorMessage), but
+  the inconsistency read as a bug.
+
+### Notes
+- Activity-level idempotency tests are not included in this PR. The
+  FSM-rejection tests in `state-machines.test.ts` already cover the
+  underlying transition rules; the activity-layer guards are best validated
+  by integration tests against a real DB. Worth a follow-up.
+
 ## [0.2.17.3] - 2026-05-04
 
 ### Changed
