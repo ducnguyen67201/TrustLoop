@@ -1,245 +1,121 @@
 ---
-summary: "End-to-end analysis flow: trigger, Temporal workflow, agent service call, positional JSON output, SSE progress"
+summary: "AI Analysis is the compact SupportAnalysis projection of an Agent Team run, not a separate execution pipeline."
 read_when:
   - Working on analysis triggers (debounce or manual)
-  - Touching the queue ↔ agents HTTP boundary
-  - Changing the analysis agent prompt or tool set
-  - Debugging analysis latency, failures, or missing drafts
-title: "AI Analysis Pipeline"
+  - Changing how Agent Team runs surface in the support right rail
+  - Debugging missing/stale AI Analysis summaries
+  - Touching SupportAnalysis projection writes
+title: "AI Analysis Projection Pipeline"
 ---
 
-# AI Analysis Pipeline
+# AI Analysis Projection Pipeline
 
-End-to-end flow from "new customer message arrives" to "operator sees a drafted reply in the inbox."
+AI Analysis is now a **read-side summary projection** of an Agent Team run.
+The model work happens in `AgentTeamRun`; `SupportAnalysis` exists so the
+support right rail can show a compact status, confidence, problem statement,
+reasoning trace, and draft/PR affordances without rendering the whole team
+transcript.
+
+The dedicated Agent Team tab remains the source for detailed role-to-role
+dialogue, tool calls, facts, questions, and resolution steps.
 
 ## Trigger
 
-Two paths into the pipeline:
+Two paths start the same Agent Team engine:
 
 ### AUTO: per-conversation debounce
 
-- `apps/queue/src/domains/support/support-analysis-trigger.workflow.ts:33-65`
-- Long-lived Temporal workflow per conversation (ID: `analysis-debounce-${conversationId}`)
-- Receives `newMessageSignal` from the ingress activity on every new customer message
-- Each signal resets a 5-minute sleep timer
-- When the timer expires (silence), the workflow calls `dispatchAnalysis()` which spawns the main analysis workflow
-- Exits if the conversation is archived or no LLM route is configured for analysis
-
-This pattern (one long-lived workflow per conversation, accumulating signals) is cheaper than kicking off a new analysis per message and lets operators actually finish a customer's incoming burst before the model sees it.
+- `apps/queue/src/domains/support/support-analysis-trigger.workflow.ts`
+- Long-lived Temporal workflow per conversation: `analysis-debounce-${conversationId}`
+- Each new message signal resets the debounce timer.
+- When the customer stops typing, `dispatchAnalysis()` calls
+  `agentTeamRuns.start({ workspaceId, conversationId, teamConfig: DEEP })`.
 
 ### MANUAL: UI trigger
 
-- `packages/rest/src/services/support/support-analysis-service.ts:67-123` → `supportAnalysis.trigger()`
-- Called from the inbox UI when an operator hits "Re-analyze" or when a brand-new conversation needs an immediate analysis
-- Dispatches the main workflow directly, bypassing the debounce
+- `apps/web/src/hooks/use-analysis.ts`
+- The AI Analysis button calls `agentTeam.startRun({ conversationId, teamConfig: DEEP })`.
+- `apps/web/src/hooks/use-agent-team-run.ts` uses the same `DEEP` team config for
+  the Agent Team tab.
 
-## Guards (before dispatch)
+`agentTeam.startRun` defaults `teamConfig` to `DEEP` at the shared schema
+boundary. Callers must explicitly request `FAST` if they want the legacy
+single-drafter compatibility path.
 
-Both trigger paths share the same guards in `supportAnalysis.trigger`:
+## Execution
 
-- At least one analysis route must be configured (`OPENAI_API_KEY` primary, `OPENROUTER_API_KEY` fallback)
-- Conversation exists and is in the caller's workspace (`support-analysis-service.ts:79-84`)
-- Workspace has at least one indexed repository (`:87-94`) — no code context, no analysis
-- **Dedupe:** if an analysis for this conversation is already in `GATHERING_CONTEXT` or `ANALYZING`, return `{ alreadyInProgress: true }` without spawning a new workflow (`:96-109`)
+The trigger creates an `AgentTeamRun` and dispatches
+`agentTeamRunWorkflow`. See `docs/concepts/agent-team.md` for the full turn
+loop, routing policy, role inboxes, tool calls, and event log.
 
-## Main workflow
+Important execution facts for AI Analysis:
 
-- `apps/queue/src/domains/support/support-analysis.workflow.ts:16-39`
-- Workflow ID: `support-analysis-${analysisId}` for idempotency on retry
-- Three sequential activities:
+- The run stores a `teamSnapshot`, so editing the live team does not change an
+  already-started run.
+- The default `DEEP` path uses the workspace's configured default team.
+- `FAST` still exists as an explicit compatibility mode. Its synthetic
+  `drafter` delegates to the old `/analyze` prompt path.
 
-```
-┌──────────────────────────────────────────────┐
-│ 1. buildThreadSnapshot                       │
-│    timeout: 30s, retries: 2                  │
-├──────────────────────────────────────────────┤
-│    • Create SupportAnalysis (GATHERING_      │
-│      CONTEXT)                                │
-│    • Load conversation events from DB        │
-│    • Resolve customer email                  │
-│       ├─ Slack API users.info (preferred)    │
-│       └─ regex-scrape email from body        │
-│    • sessionCorrelation.findByEmails         │
-│      (30-min lookback)                       │
-│    Output: analysisId, threadSnapshot (JSON),│
-│    sessionDigest (if matched)                │
-└──────────────────────────────────────────────┘
-                    ↓
-┌──────────────────────────────────────────────┐
-│ 2. markAnalyzing                             │
-│    timeout: 30s                              │
-├──────────────────────────────────────────────┤
-│    Transition SupportAnalysis status →       │
-│    ANALYZING via FSM                         │
-└──────────────────────────────────────────────┘
-                    ↓
-┌──────────────────────────────────────────────┐
-│ 3. runAnalysisAgent                          │
-│    timeout: 5 min, heartbeat: 45s, retries: 2│
-├──────────────────────────────────────────────┤
-│    HTTP POST apps/agents /analyze            │
-│    persist result + draft to DB              │
-│    emit ANALYSIS_COMPLETED event             │
-└──────────────────────────────────────────────┘
-```
+## Projection
 
-- `apps/queue/src/domains/support/support-analysis.activity.ts:56-161`
+Projection happens inside `apps/queue/src/domains/agent-team/agent-team-run.activity.ts`.
 
-## Agent service call
+| Run state | SupportAnalysis status | Projection behavior |
+|---|---|---|
+| `completed` | `ANALYZED` | Summarizes facts and key messages, computes confidence, records tool-call count. |
+| `waiting` | `NEEDS_CONTEXT` | Summarizes the current transcript and open questions so the right rail stops spinning. |
+| `failed` | `FAILED` | Records the failure as the analysis summary with confidence `0`. |
 
-### Request shape
+The projection is idempotent per `agentTeamRunId`. A `waiting` projection can
+later be updated to `ANALYZED` when the same run resumes and completes.
 
-`packages/types/src/support/support-analysis.schema.ts:194-207`:
+`SupportDraft` creation is now compatibility-only: if a `FAST` drafter proposal
+exists, the projection still creates a draft and drives it through the draft
+FSM. Normal `DEEP` runs project summary only; reply and PR actions are surfaced
+through the Agent Team transcript and PR records.
 
-```ts
-{
-  workspaceId: string,
-  conversationId: string,
-  threadSnapshot: string,        // JSON string of events
-  sessionDigest?: SessionDigest, // browser session context (if correlated)
-  config?: {
-    maxSteps?: number,
-    provider?: "openai" | "openrouter",
-    model?: string,              // e.g. "gpt-4o"
-    toneConfig?: ToneConfig      // workspace response guidelines
-  }
-}
-```
+## UI Read Path
 
-### Agent server entry
+- `packages/rest/src/support-analysis-router.ts` exposes
+  `supportAnalysis.getLatestAnalysis`.
+- `packages/rest/src/services/support/support-analysis-service.ts` reads the
+  latest `SupportAnalysis` projection and its newest draft, if any.
+- `apps/web/src/components/support/analysis-panel.tsx` renders the compact
+  summary.
+- `apps/web/src/components/support/agent-team-run-view.tsx` renders the detailed
+  team transcript.
 
-- `apps/agents/src/server.ts:14-26` — minimal HTTP server exposing `POST /analyze`
-- Auth: `withServiceAuth` (internal `tli_` key) — queue → agents is internal traffic
-
-### Reasoning loop
-
-- `apps/agents/src/agent.ts:64-108`
-- Built on Mastra's agent runtime with an OpenAI-compatible model adapter
-- Provider/model selection comes from the centralized LLM manager, not from feature-local config
-- Tools exposed to the model: `searchCode` (codex hybrid search), `createPullRequest` (placeholder — not production)
-- Max steps: configurable, default 8
-- Retry policy: centralized route execution tries the primary target first and then the configured fallback before surfacing failure back to the Temporal activity
-
-## Prompt architecture
-
-- `apps/agents/src/prompts/support-analysis-document.ts:8-116`
-- System prompt is layered:
-
-1. **Base instructions** (lines 14-15) — agent role, investigation strategy, tool usage rules
-2. **Session digest section** (lines 19-20, 26-49) — injected only if `sessionDigest` is present. Includes a structured JSON payload for route history. The plan is to render this section via TOON (per positional-format spec) for token savings; currently mixed (auto-selecting format per `PROMPT_INPUT_FORMAT.auto`).
-3. **Tone config** (lines 52-61) — workspace-specific response guidelines (tone, signature, max length, code reference policy)
-
-User message: `WORKSPACE_ID: ${id}\n\n${threadSnapshot}` (agent.ts:81).
-
-**What's NOT in the prompt (yet):** raw rrweb chunks. Only the digested summary (actions, errors, network failures, console errors, failure point, environment) is passed. Wiring raw rrweb chunks in is flagged as P2 in `TODOS.md` → "Wire rrweb chunks into the agent prompt."
-
-## Output: positional JSON
-
-The agent returns compressed JSON (~70-80% token reduction):
-
-- Format: `packages/types/src/positional-format/support-analysis.ts:1-146`
-- See `docs/conventions/spec-positional-json-format.md` for the spec and reliability layers
-
-```json
-{
-  "a": {
-    "p": "problem statement",
-    "s": "likely subsystem",
-    "v": 2,                // severity: 0=LOW 1=MEDIUM 2=HIGH 3=CRITICAL
-    "c": 0,                // category: 0=BUG 1=QUESTION 2=FEATURE_REQUEST 3=CONFIGURATION 4=UNKNOWN
-    "f": 0.85,             // confidence 0.0-1.0
-    "m": ["missing info"],
-    "t": "reasoning trace"
-  },
-  "d": {                   // draft (null if low confidence)
-    "b": "customer-facing body",
-    "n": "internal notes",
-    "x": ["filepath:line|snippet"],
-    "o": 0                 // tone: 0=professional 1=empathetic 2=technical
-  }
-}
-```
-
-### Validation + reconstruction
-
-- `agent.ts:119-132`
-- Parse JSON → validate against `compressedAnalysisOutputSchema` (Zod) → call `reconstructAnalysisOutput()` to expand enum codes to strings and parse citations
-- Compressed format never leaks past the agent-call boundary. Everything downstream sees the expanded shape.
-- If validation fails (rare — positional format has enough examples in the prompt that the model is reliable), the activity throws, Temporal retries, and the fallback is the model's own ability to emit correct JSON on retry
-
-## DB writes (back in the queue activity)
-
-- `support-analysis.activity.ts:356-434`
-
-```
-1. persistAnalysisResult
-   UPDATE SupportAnalysis
-   SET status = (draft ? ANALYZED : NEEDS_CONTEXT),
-       problemStatement, severity, category, confidence,
-       reasoningTrace, toolCallCount, llmModel, llmLatencyMs
-
-2. persistDraft (only if result.draft exists)
-   INSERT SupportDraft
-   (status: AWAITING_APPROVAL, draftBody, internalNotes,
-    citations, tone, slackClientMsgId: UUID)
-
-3. emitAnalysisCompletedEvent
-   INSERT SupportConversationEvent (ANALYSIS_COMPLETED)
-```
-
-`slackClientMsgId` is generated once at draft creation and later passed to Slack's `chat.postMessage` as `client_msg_id`. If delivery fails ambiguously (request dropped mid-flight), a reconciliation workflow can detect whether the message actually landed by that ID.
-
-See `ai-draft-generation.md` for the draft lifecycle after this point.
-
-## Stream to the UI
-
-The inbox UI polls an SSE endpoint to see analysis progress in near-realtime:
-
-- Route: `apps/web/src/app/api/[workspaceId]/analysis/[analysisId]/stream/route.ts:12-47`
-- Service: `packages/rest/src/services/support/analysis-stream-service.ts:52-134`
-- Implementation: **500ms DB poll** (not `pg_notify` + LISTEN). Prisma's connection pool doesn't expose raw connections for LISTEN cleanly, so we accept ~500ms latency. The inbox list uses true pg_notify (see `slack-ingestion.md`); analysis progress uses this poll.
-- Event types: `tool_call`, `tool_result`, `thinking`, `complete`, `error`
-- Client hook: `apps/web/src/hooks/use-analysis-stream.ts:33-94` — connects EventSource, accumulates events into React state, closes on `complete`
-
-## Failure modes
-
-| Failure | Behavior |
-|---------|----------|
-| Primary LLM provider down | The agents service retries on the configured fallback route (OpenRouter today). If every configured provider fails, the activity retries (2x), then throws into workflow — analysis stays ANALYZING, alert fires |
-| Agent returns non-JSON / invalid positional | Zod validate throws, activity retries; if still bad, workflow fails, analysis → FAILED |
-| Conversation archived mid-flight | Activity checks on entry; if archived, returns early, analysis → CANCELLED |
-| Operator marked conversation DONE mid-analysis | `analysisEscalated` event throws from FSM, caught in service layer, analysis still persists (status unchanged) |
-| Draft generated but DB insert fails | Activity retries; on permanent failure, analysis → FAILED (with partial `SupportAnalysis` row still present) |
-
-## Known thin spots (not docs debt, actual behavior to know)
-
-- **Polling stream has 500ms latency floor.** Acceptable for pilot; a future migration to true pg_notify would require either exposing a dedicated LISTEN client or moving this out of the Prisma connection pool.
-- **Session replay content is digested, not raw.** Model sees actions/errors/console output, not rrweb DOM snapshots. This was a conscious tradeoff on token cost + complexity.
-- **No guardrail on agent cost per conversation.** `maxSteps` (default 8) is the only knob. A runaway conversation could spend $10+ on a single analysis. Add a per-workspace budget if volume picks up.
+While a team run is queued/running and no new projection exists yet, the AI
+Analysis panel shows its analyzing state. Terminal, waiting, and failed states
+write a projection so the panel can settle.
 
 ## Invariants
 
-- **The analysis workflow gates on three preconditions: at least one configured analysis route, workspace has ≥1 indexed repository, no existing analysis is in-progress for this conversation.** Any trigger that bypasses these gates is a bug.
-- **The agent receives `SessionDigest` (summary), not raw rrweb chunks.** Raw rrweb is stored but does not reach the prompt. Changing this is a prompt-shape migration, not a flag flip.
-- **All LLM structured output uses the positional JSON format** in `packages/types/src/positional-format/support-analysis.ts`. The compressed shape is validated by Zod and reconstructed immediately after parse — it never leaks past the agent-call boundary.
-- **The 3-activity workflow breakdown (buildThreadSnapshot → markAnalyzing → runAnalysisAgent) is stable.** Changing the activity list or their order requires a Temporal workflow version bump; in-flight workflows continue on the old version.
-- **The queue → agents call is internal traffic authenticated with `tli_` service keys via `withServiceAuth`.** Never expose `/analyze` publicly, never validate with `withWorkspaceApiKeyAuth`.
-- **The SSE progress stream has a 500ms poll floor.** Latency below that requires migrating to true pg_notify + LISTEN, which is a non-trivial connection-pool change.
+- **Agent Team is the execution source of truth.** Do not reintroduce a separate
+  `support-analysis.workflow` dispatch path for normal analysis.
+- **SupportAnalysis is a projection.** It should be written from Agent Team run
+  state, not treated as the primary execution table.
+- **Manual and auto analysis use `DEEP`.** `FAST` is explicit compatibility, not
+  the default.
+- **Waiting and failed runs must project.** Otherwise the right rail can spin
+  forever or show stale analysis.
+- **Draft status transitions still use the draft FSM.** If compatibility
+  projection creates a `SupportDraft`, move it through `transitionDraft`.
 
 ## Related concepts
 
-- `slack-ingestion.md` — how a new message arrives and triggers the debounce
-- `ai-draft-generation.md` — what happens to the draft after persist
-- `session-replay-capture.md` — how SessionDigest is built
+- `agent-team.md` — run workflow, role routing, event log, SSE stream
+- `ai-draft-generation.md` — what happens after a projected draft is approved
+- `session-replay-capture.md` — session context attached to support analysis
 - `codex-search.md` — what the `searchCode` tool does
-- `llm-routing-and-provider-fallback.md` — how provider/model selection and fallback routing work across apps
+- `llm-routing-and-provider-fallback.md` — provider/model selection and fallback
 
 ## Keep this doc honest
 
 Update when you change:
-- The debounce window or signal shape
-- Any of the three activity contracts
-- The agent service request/response schema
-- The positional JSON format (also update `docs/conventions/spec-positional-json-format.md`)
-- The stream implementation (poll → notify migration would be a big deal)
-- Any guard in `supportAnalysis.trigger()`
+
+- Whether manual or auto analysis starts `FAST`, `STANDARD`, or `DEEP`
+- The Agent Team terminal/waiting/failed projection logic
+- The shape or meaning of `SupportAnalysis.agentTeamRunId`
+- Whether `DEEP` runs create `SupportDraft` rows
+- The UI read path for AI Analysis summaries

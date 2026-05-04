@@ -10,9 +10,17 @@ title: "Agent Team (Addressed Dialogue)"
 
 # Agent Team (Addressed Dialogue)
 
-A second AI pipeline that sits alongside the single-agent analysis flow. Instead of one model producing a draft, a **team of specialist role instances** collaborate via **addressed dialogue** — each role instance has a behavior preset (`slug`, such as `architect` or `reviewer`) plus a unique runtime identity (`roleKey`, such as `architect` or `architect_2`). Each role instance has its own inbox and sends directed messages rather than sharing a single chat log. The whole conversation is event-sourced: projections feed the UI, the raw log feeds metrics and retention.
+The primary AI execution pipeline for support analysis. A **team of specialist
+role instances** collaborate via **addressed dialogue** — each role instance has
+a behavior preset (`slug`, such as `architect` or `reviewer`) plus a unique
+runtime identity (`roleKey`, such as `architect` or `architect_2`). Each role
+instance has its own inbox and sends directed messages rather than sharing a
+single chat log. The whole conversation is event-sourced: projections feed the
+UI, the raw log feeds metrics and retention.
 
-Where the analysis pipeline answers _"what is this ticket about, and what should we reply?"_, the agent team answers _"multiple people need to look at this — let them work it out."_
+The support AI Analysis panel is a compact `SupportAnalysis` projection of the
+team run. The Agent Team tab is where operators inspect the detailed transcript,
+tool calls, facts, open questions, and handoffs.
 
 ## Trigger
 
@@ -21,15 +29,15 @@ The agent team is now the **only** AI pipeline. Two trigger paths:
 ### AUTO: per-conversation debounce
 
 - `apps/queue/src/domains/support/support-analysis-trigger.workflow.ts` — one debounce workflow per active conversation (5-minute default). Resets on every new message. When the customer stops typing, dispatches the agent team via `dispatchAnalysis`.
-- `apps/queue/src/domains/support/support-analysis-trigger.activity.ts` — `dispatchAnalysis` calls `agentTeamRuns.start({ workspaceId, conversationId, teamConfig: 'FAST' })`. The `support-analysis` workflow is no longer dispatched.
+- `apps/queue/src/domains/support/support-analysis-trigger.activity.ts` — `dispatchAnalysis` calls `agentTeamRuns.start({ workspaceId, conversationId, teamConfig: 'DEEP' })`. The `support-analysis` workflow is no longer dispatched.
 - The legacy `support-analysis.workflow` and `supportAnalysis.triggerAnalysis` mutation are kept in the tree for one release as a rollback artifact (revert the cutover commits to fall back). They are not reached by the live code path.
 
 ### MANUAL: UI button
 
-- `apps/web/src/hooks/use-analysis.ts` — the right-rail draft panel hook. `triggerAnalysis()` calls `agentTeam.startRun({ teamConfig: 'FAST' })`.
-- `apps/web/src/components/support/agent-team-panel.tsx:14` — the dedicated team-runs panel (still renders the live SSE stream when an operator wants to inspect a DEEP run).
+- `apps/web/src/hooks/use-analysis.ts` — the right-rail summary hook. `triggerAnalysis()` calls `agentTeam.startRun({ teamConfig: 'DEEP' })`.
+- `apps/web/src/components/support/agent-team-panel.tsx:14` — the dedicated team-runs panel renders the live SSE stream for the same DEEP run shape.
 - tRPC router: `packages/rest/src/agent-team-router.ts`
-- Input: `{ conversationId, teamId?, analysisId?, teamConfig? }` — defaults to the workspace's default team. `teamConfig` defaults to `FAST` for new runs.
+- Input: `{ conversationId, teamId?, analysisId?, teamConfig? }` — defaults to the workspace's default team. `teamConfig` defaults to `DEEP` for new runs.
 
 ### Direct API
 
@@ -46,11 +54,13 @@ Input schema: `packages/types/src/agent-team/agent-team.schema.ts`. `analysisId`
 
 | Config | Roles | When |
 |---|---|---|
-| `FAST` (default) | drafter only | Auto-triggered runs. Replaces the legacy single-agent analysis. |
-| `STANDARD` | drafter + reviewer | Drafts go through a review gate before exposure. |
-| `DEEP` | architect, reviewer, code-reader, pr-creator, rca-analyst | Operator opt-in for full team deliberation including code search and draft PR creation. |
+| `FAST` | drafter only | Explicit compatibility mode for the legacy single-agent analysis prompt. |
+| `STANDARD` | drafter + reviewer | Explicit compatibility mode for reviewed draft generation. |
+| `DEEP` (default) | workspace default team blueprint | Normal support analysis: full team deliberation, code search, review, and draft PR creation when approved. |
 
-`run-service.start()` synthesizes the `teamSnapshot` based on `teamConfig` rather than reading from the workspace's team blueprint, so workspaces don't need a teams-table migration to use FAST.
+`run-service.start()` synthesizes the `teamSnapshot` for `FAST` and `STANDARD`.
+For `DEEP`, it snapshots the workspace's configured team blueprint (`roles` and
+`edges`) so the run reflects the team visible in settings.
 
 ## Drafter delegation
 
@@ -62,18 +72,33 @@ The `AnalyzeResponse` is mapped onto a single `proposal` message and 2 facts in 
 
 ## SupportAnalysis projection
 
-When a FAST run completes (`markRunCompleted` in `agent-team-run.activity.ts`), the activity projects the drafter's output onto the legacy `SupportAnalysis` + `SupportDraft` tables in the same Prisma transaction. This keeps the existing right-rail panel UI, the approve/dismiss flow, and any downstream consumers of `SupportAnalysis` working unchanged after the cutover.
+`SupportAnalysis` is a summary projection of `AgentTeamRun`, not a separate
+execution table.
 
-The `SupportAnalysis.agentTeamRunId` column makes the projection idempotent — re-running `markRunCompleted` for the same run does not double-write.
+Projection is written from `agent-team-run.activity.ts`:
 
-The projection uses `transitionDraft` from `packages/types/src/support/state-machines/draft-state-machine.ts` to drive the SupportDraft status (`generating → awaitingApproval`) rather than writing the literal status string. Required by the project's state-machine convention.
+| Run state | SupportAnalysis status | Behavior |
+|---|---|---|
+| `completed` | `ANALYZED` | Summarizes facts and key team messages, computes confidence, records tool-call count. |
+| `waiting` | `NEEDS_CONTEXT` | Surfaces open questions so the AI Analysis panel does not spin forever. |
+| `failed` | `FAILED` | Records the failure message and confidence `0`. |
+
+The `SupportAnalysis.agentTeamRunId` column makes the projection idempotent per
+run. A waiting projection can later be updated to analyzed if the same run is
+resumed and completed.
+
+`SupportDraft` projection is compatibility-only. If an explicit `FAST` run
+produces a drafter proposal, the projection creates a draft and uses
+`transitionDraft` from `packages/types/src/support/state-machines/draft-state-machine.ts`
+to move `generating → awaitingApproval`. Normal `DEEP` runs project summary
+only; reply/PR actions live in the team transcript and `AgentPullRequest` rows.
 
 ## Guards (before dispatch)
 
 - `packages/rest/src/services/agent-team/run-service.ts:31-97`
 - Workspace has a team (explicit `teamId` or the workspace's `isDefault` team). Throws `ValidationError` if neither is found.
 - Conversation exists in this workspace.
-- No dedupe on concurrent runs. A second click with a run already in-flight will start a second run — this differs from `supportAnalysis.trigger()` which dedupes on `GATHERING_CONTEXT|ANALYZING`. Worth knowing when debugging duplicate runs.
+- A queued or running run for the same `(workspaceId, conversationId)` dedupes and is returned instead of starting a duplicate.
 
 On success: inserts `AgentTeamRun` (status = `queued`) with a **`teamSnapshot` JSON** of the team's roles + edges at dispatch time. Editing the team later does not mutate this run.
 
@@ -325,15 +350,14 @@ Metrics run **3 hours before** archive by design — archive refuses to drop any
 | Role tries to address a role it can't reach | `assertValidMessageRouting` throws, activity retries; persistent → `failed` |
 | Run has open questions and no queued inboxes | `waiting` — not a failure, but terminal until a follow-up turn is triggered |
 | Partition drop attempted with incomplete metrics | Archive skips the partition, logs `rollup-incomplete`, retries tomorrow |
-| Double-click on Start run | Starts a second run in parallel (no dedupe). Both run to completion independently. |
+| Double-click on Start run | Returns the queued/running run for that conversation because `run-service.start()` dedupes in-flight runs. |
 
 ## Known thin spots
 
-- **No dedupe on concurrent runs** for the same conversation. Analysis has this; agent-team does not.
-- **`analysisId` is plumbed through the schema and DB but not through the UI hook.** Linking a team run to the prior analysis' context is not in the prompt yet.
+- **`analysisId` is plumbed through the schema and DB but not through the UI hook.** Linking a team run to a prior projection row is not in the prompt yet.
 - **PR creator gating is hardcoded** (`hasReviewerApproval`). There is no general approval/signing primitive.
 - **Metrics rollup has no UI.** Exposed to SQL only today.
-- **Team graph edges are builder-visual only.** Runtime routing uses the routing policy + role hints, not the edge set. Editing edges does not change turn order.
+- **Team graph edges seed the DEEP snapshot but runtime routing still uses the routing policy + role hints.** Editing edges changes the recorded blueprint, but role-to-role delivery is still validated by policy.
 - **Single task queue (`TASK_QUEUES.CODEX`).** All three agent-team workflows (run, metrics, archive) share the codex queue. If codex indexing saturates the queue, agent-team runs wait.
 
 ## Invariants
@@ -349,7 +373,7 @@ Metrics run **3 hours before** archive by design — archive refuses to drop any
 
 ## Related concepts
 
-- `ai-analysis-pipeline.md` — the single-agent sibling pipeline; agent team reuses the same agents-service deployment, prompt conventions, and service-auth pattern
+- `ai-analysis-pipeline.md` — how Agent Team runs project compact summaries back into the AI Analysis panel
 - `architecture.md` — overall three-service topology and the two Temporal task queues
 - `slack-ingestion.md` — how the `SupportConversation` the team runs against gets created
 

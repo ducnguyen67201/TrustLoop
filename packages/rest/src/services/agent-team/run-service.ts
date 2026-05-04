@@ -42,7 +42,7 @@ export async function start(
   dispatcher: WorkflowDispatcher
 ): Promise<AgentTeamRunSummary> {
   const parsed = startAgentTeamRunInputSchema.parse(input);
-  const teamConfig = parsed.teamConfig ?? AGENT_TEAM_CONFIG.FAST;
+  const teamConfig = parsed.teamConfig;
 
   // Dedupe: a queued or running run for this (workspace, conversation) wins.
   // Mirrors the GATHERING_CONTEXT|ANALYZING dedupe in supportAnalysis. Race on

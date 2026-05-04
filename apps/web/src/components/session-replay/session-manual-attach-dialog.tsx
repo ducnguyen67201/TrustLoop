@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { trpcQuery } from "@/lib/trpc-http";
 import { workspaceSessionsPath } from "@/lib/workspace-paths";
+import { RiSearchLine } from "@remixicon/react";
 import type { SessionRecordResponse } from "@shared/types";
 import { useEffect, useMemo, useState } from "react";
 
@@ -126,6 +127,7 @@ export function SessionManualAttachDialog({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
+          <RiSearchLine className="size-3.5" />
           {triggerLabel}
         </Button>
       </DialogTrigger>

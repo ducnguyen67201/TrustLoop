@@ -1,5 +1,6 @@
 "use client";
 
+import { ActionMenuButton, type ActionMenuButtonItem } from "@/components/ui/action-menu-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +12,7 @@ import {
   RiFileCopyLine,
   RiLinkUnlink,
   RiMagicLine,
+  RiMore2Line,
   RiPlayCircleLine,
   RiShieldCheckLine,
 } from "@remixicon/react";
@@ -193,11 +195,33 @@ export function SupportEvidenceCapsule({
   const primary = supportEvidence?.primaryFailure ?? null;
   const isFuzzy = matchConfidence === SESSION_MATCH_CONFIDENCE.fuzzy;
   const isManual = match?.matchSource === SESSION_REPLAY_MATCH_SOURCE.manual;
+  const evidenceActionItems: ActionMenuButtonItem[] = [
+    {
+      label: copiedAction === "repro" ? "Copied repro" : "Copy repro",
+      icon: <RiFileCopyLine className="size-3.5" />,
+      disabled: !supportEvidence,
+      onSelect: () => void handleCopy("repro"),
+    },
+    {
+      label: copiedAction === "escalation" ? "Copied escalation" : "Copy escalation",
+      icon: <RiFileCopyLine className="size-3.5" />,
+      disabled: !supportEvidence,
+      onSelect: () => void handleCopy("escalation"),
+    },
+  ];
+
+  if (onDetachSession) {
+    evidenceActionItems.push({
+      label: "Detach",
+      icon: <RiLinkUnlink className="size-3.5" />,
+      onSelect: () => void onDetachSession(),
+    });
+  }
 
   return (
     <Card size="sm">
       <CardHeader className="gap-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-3">
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <MatchBadge matchConfidence={matchConfidence} isManual={isManual} />
@@ -213,27 +237,7 @@ export function SupportEvidenceCapsule({
               {session.userEmail ?? session.userId ?? session.sessionId}
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!supportEvidence}
-              onClick={() => void handleCopy("repro")}
-            >
-              <RiFileCopyLine className="size-3.5" />
-              {copiedAction === "repro" ? "Copied" : "Copy repro"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!supportEvidence}
-              onClick={() => void handleCopy("escalation")}
-            >
-              <RiFileCopyLine className="size-3.5" />
-              {copiedAction === "escalation" ? "Copied" : "Copy escalation"}
-            </Button>
+          <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,8.75rem),1fr))] gap-2 border bg-muted/30 p-2 [&>button]:w-full [&>button]:justify-center [&>button]:whitespace-nowrap">
             <Button
               type="button"
               size="sm"
@@ -245,17 +249,13 @@ export function SupportEvidenceCapsule({
               <RiPlayCircleLine className="size-3.5" />
               View proof
             </Button>
-            {onDetachSession ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void onDetachSession()}
-              >
-                <RiLinkUnlink className="size-3.5" />
-                Detach
-              </Button>
-            ) : null}
+            <ActionMenuButton
+              label="Evidence actions"
+              icon={<RiMore2Line className="size-3.5" />}
+              items={evidenceActionItems}
+              variant="outline"
+              className="w-full"
+            />
             {manualAttachControl}
           </div>
         </div>

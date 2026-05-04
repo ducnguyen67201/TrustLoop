@@ -27,6 +27,8 @@ import {
   AGENT_TEAM_ROLE_SLUG,
   AGENT_TEAM_RUN_STATUS,
   AGENT_TEAM_TARGET,
+  ANALYSIS_STATUS,
+  ANALYSIS_TRIGGER_TYPE,
   type AgentTeamDialogueMessage,
   type AgentTeamDialogueMessageDraft,
   type AgentTeamFact,
@@ -699,6 +701,7 @@ export async function markRunCompleted(runId: string): Promise<void> {
         id: true,
         workspaceId: true,
         conversationId: true,
+        errorMessage: true,
         startedAt: true,
         completedAt: true,
       },
@@ -730,15 +733,16 @@ export async function markRunCompleted(runId: string): Promise<void> {
       data: { summary: serializeRunRollup(rollup) },
     });
 
-    // Project the drafter's proposal onto the SupportAnalysis + SupportDraft
-    // tables so the existing approve/dismiss flow keeps working. Pre-cutover
-    // these rows came from the standalone support-analysis workflow; post-
-    // cutover they're a derived projection of the agent-team event log.
+    // Project the completed team transcript onto SupportAnalysis so the
+    // properties rail can render a compact summary while Agent Team remains the
+    // detailed source of truth.
     if (run.conversationId) {
-      await projectFastRunToSupportAnalysis(tx, {
+      await projectRunToSupportAnalysis(tx, {
         runId: run.id,
         workspaceId: run.workspaceId,
         conversationId: run.conversationId,
+        status: ANALYSIS_STATUS.analyzed,
+        errorMessage: run.errorMessage,
       });
     }
 
@@ -749,69 +753,101 @@ export async function markRunCompleted(runId: string): Promise<void> {
   }
 }
 
-// Project a completed agent-team run onto the legacy SupportAnalysis +
-// SupportDraft tables. Idempotent: if a SupportAnalysis row already exists for
-// this conversation that points back at this run, skip.
-async function projectFastRunToSupportAnalysis(
+// Project an agent-team run onto the legacy SupportAnalysis table. Idempotent
+// per run: waiting runs can later be resumed and completed, so an existing row
+// is updated rather than treated as terminal.
+async function projectRunToSupportAnalysis(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-  args: { runId: string; workspaceId: string; conversationId: string }
+  args: {
+    runId: string;
+    workspaceId: string;
+    conversationId: string;
+    status:
+      | typeof ANALYSIS_STATUS.analyzed
+      | typeof ANALYSIS_STATUS.needsContext
+      | typeof ANALYSIS_STATUS.failed;
+    errorMessage: string | null;
+  }
 ): Promise<void> {
-  const drafterMessage = await tx.agentTeamMessage.findFirst({
+  const messages = await tx.agentTeamMessage.findMany({
     where: {
       runId: args.runId,
-      fromRoleSlug: AGENT_TEAM_ROLE_SLUG.drafter,
-      kind: AGENT_TEAM_MESSAGE_KIND.proposal,
     },
     orderBy: { createdAt: "asc" },
-    select: { id: true, subject: true, content: true, refs: true },
+    select: {
+      id: true,
+      fromRoleSlug: true,
+      fromRoleLabel: true,
+      kind: true,
+      subject: true,
+      content: true,
+      refs: true,
+      toolName: true,
+    },
   });
-  if (!drafterMessage) {
-    return;
-  }
 
   const facts = await tx.agentTeamFact.findMany({
     where: { runId: args.runId },
     orderBy: { createdAt: "asc" },
-    select: { statement: true, confidence: true },
+    select: { statement: true, confidence: true, status: true },
   });
 
-  const problemStatement = facts[0]?.statement ?? "Drafted by agent team.";
-  const likelySubsystem = facts[1]?.statement ?? "agent-team-FAST";
-  const confidence = facts[0]?.confidence ?? 0.5;
-  const hasDraft = drafterMessage.content.trim().length > 0;
-  const isNoDraftMarker = drafterMessage.subject?.includes("Analysis only") ?? false;
+  const openQuestions = await tx.agentTeamOpenQuestion.findMany({
+    where: { runId: args.runId, status: AGENT_TEAM_OPEN_QUESTION_STATUS.open },
+    orderBy: { createdAt: "asc" },
+    select: { question: true },
+  });
 
-  // Idempotency: skip if we've already projected this run.
+  const drafterMessage = findDrafterProposal(messages);
+  const summaryMessage = findSummaryMessage(messages);
+  const problemStatement = buildProjectedProblemStatement(facts, summaryMessage, args.status);
+  const likelySubsystem = findLikelySubsystem(facts) ?? "agent-team";
+  const confidence = computeProjectedConfidence(facts, summaryMessage, args.status);
+  const reasoningTrace = buildProjectedReasoningTrace(facts, messages, openQuestions);
+  const toolCallCount = messages.filter(
+    (message) => message.kind === AGENT_TEAM_MESSAGE_KIND.toolCall
+  ).length;
+  const hasDraft = (drafterMessage?.content.trim().length ?? 0) > 0;
+  const isNoDraftMarker = drafterMessage?.subject.includes("Analysis only") ?? false;
+
   const existing = await tx.supportAnalysis.findFirst({
     where: { conversationId: args.conversationId, agentTeamRunId: args.runId },
-    select: { id: true },
-  });
-  if (existing) {
-    return;
-  }
-
-  const analysis = await tx.supportAnalysis.create({
-    data: {
-      workspaceId: args.workspaceId,
-      conversationId: args.conversationId,
-      agentTeamRunId: args.runId,
-      status: "ANALYZED",
-      triggerType: "AUTO",
-      problemStatement,
-      likelySubsystem,
-      confidence,
-      reasoningTrace: facts.map((fact) => `- ${fact.statement}`).join("\n"),
-      toolCallCount: 0,
-      llmModel: null,
-    },
-    select: { id: true },
+    select: { id: true, drafts: { select: { id: true }, take: 1 } },
   });
 
-  if (hasDraft && !isNoDraftMarker) {
-    // Drive the SupportDraft status through the draft FSM rather than writing
-    // a literal status string. The drafter's proposal is the equivalent of
-    // the legacy single-agent "generated" event, so we create at the default
-    // GENERATING state and immediately transition to AWAITING_APPROVAL.
+  const analysisData = {
+    status: args.status,
+    triggerType: ANALYSIS_TRIGGER_TYPE.auto,
+    problemStatement,
+    likelySubsystem,
+    confidence,
+    reasoningTrace,
+    toolCallCount,
+    llmModel: null,
+    errorMessage: args.errorMessage,
+    missingInfo: openQuestions.map((question) => question.question),
+  };
+
+  const analysis = existing
+    ? await tx.supportAnalysis.update({
+        where: { id: existing.id },
+        data: analysisData,
+        select: { id: true },
+      })
+    : await tx.supportAnalysis.create({
+        data: {
+          ...analysisData,
+          workspaceId: args.workspaceId,
+          conversationId: args.conversationId,
+          agentTeamRunId: args.runId,
+        },
+        select: { id: true },
+      });
+
+  if (drafterMessage && hasDraft && !isNoDraftMarker && !existing?.drafts.length) {
+    // Legacy FAST compatibility: if a drafter proposal exists, keep the
+    // approve/dismiss draft flow working. DEEP team runs normally project only
+    // the summary; reply/PR actions live in the Agent Team transcript.
     const created = await tx.supportDraft.create({
       data: {
         analysisId: analysis.id,
@@ -833,16 +869,193 @@ async function projectFastRunToSupportAnalysis(
   }
 }
 
+function findDrafterProposal(
+  messages: Array<{
+    fromRoleSlug: string;
+    kind: string;
+    subject: string;
+    content: string;
+    refs: unknown;
+  }>
+) {
+  return messages.find(
+    (message) =>
+      message.fromRoleSlug === AGENT_TEAM_ROLE_SLUG.drafter &&
+      message.kind === AGENT_TEAM_MESSAGE_KIND.proposal
+  );
+}
+
+function findSummaryMessage(
+  messages: Array<{
+    fromRoleSlug: string;
+    fromRoleLabel: string;
+    kind: string;
+    subject: string;
+    content: string;
+  }>
+) {
+  const nonToolMessages = messages.filter(
+    (message) =>
+      message.kind !== AGENT_TEAM_MESSAGE_KIND.toolCall &&
+      message.kind !== AGENT_TEAM_MESSAGE_KIND.toolResult
+  );
+  const preferredKinds = [
+    AGENT_TEAM_MESSAGE_KIND.decision,
+    AGENT_TEAM_MESSAGE_KIND.proposal,
+    AGENT_TEAM_MESSAGE_KIND.approval,
+    AGENT_TEAM_MESSAGE_KIND.evidence,
+  ];
+
+  for (const kind of preferredKinds) {
+    const match = [...nonToolMessages].reverse().find((message) => message.kind === kind);
+    if (match) {
+      return match;
+    }
+  }
+
+  return nonToolMessages.at(-1) ?? null;
+}
+
+function buildProjectedProblemStatement(
+  facts: Array<{ statement: string }>,
+  summaryMessage: ReturnType<typeof findSummaryMessage>,
+  status:
+    | typeof ANALYSIS_STATUS.analyzed
+    | typeof ANALYSIS_STATUS.needsContext
+    | typeof ANALYSIS_STATUS.failed
+): string {
+  if (status === ANALYSIS_STATUS.failed) {
+    return summaryMessage
+      ? `Agent team run failed after: ${summaryMessage.subject}`
+      : "Agent team run failed before it could complete the analysis.";
+  }
+
+  const problemFact = facts.find((fact) => /^problem:/i.test(fact.statement));
+  if (problemFact) {
+    return problemFact.statement.replace(/^problem:\s*/i, "");
+  }
+
+  if (summaryMessage) {
+    return `Agent team ${status === ANALYSIS_STATUS.needsContext ? "needs more context" : "completed investigation"}: ${summaryMessage.subject}`;
+  }
+
+  return status === ANALYSIS_STATUS.needsContext
+    ? "Agent team needs more context before it can complete the analysis."
+    : "Agent team completed the investigation.";
+}
+
+function findLikelySubsystem(facts: Array<{ statement: string }>): string | null {
+  const subsystemFact = facts.find((fact) => /^likely subsystem:/i.test(fact.statement));
+  if (!subsystemFact) {
+    return null;
+  }
+
+  const value = subsystemFact.statement.replace(/^likely subsystem:\s*/i, "").trim();
+  return value.length > 0 ? value : null;
+}
+
+function computeProjectedConfidence(
+  facts: Array<{ confidence: number; status: string }>,
+  summaryMessage: ReturnType<typeof findSummaryMessage>,
+  status:
+    | typeof ANALYSIS_STATUS.analyzed
+    | typeof ANALYSIS_STATUS.needsContext
+    | typeof ANALYSIS_STATUS.failed
+): number {
+  if (status === ANALYSIS_STATUS.failed) {
+    return 0;
+  }
+
+  const acceptedFacts = facts.filter((fact) => fact.status === AGENT_TEAM_FACT_STATUS.accepted);
+  const consideredFacts = acceptedFacts.length > 0 ? acceptedFacts : facts;
+  if (consideredFacts.length > 0) {
+    const total = consideredFacts.reduce((sum, fact) => sum + fact.confidence, 0);
+    return Math.round((total / consideredFacts.length) * 100) / 100;
+  }
+
+  if (status === ANALYSIS_STATUS.needsContext) {
+    return 0.35;
+  }
+
+  return summaryMessage ? 0.6 : 0.5;
+}
+
+function buildProjectedReasoningTrace(
+  facts: Array<{ statement: string; confidence: number; status: string }>,
+  messages: Array<{
+    fromRoleLabel: string;
+    kind: string;
+    subject: string;
+    content: string;
+  }>,
+  openQuestions: Array<{ question: string }>
+): string {
+  const lines: string[] = [];
+
+  if (facts.length > 0) {
+    lines.push("Facts:");
+    for (const fact of facts) {
+      lines.push(`- (${fact.status}, ${Math.round(fact.confidence * 100)}%) ${fact.statement}`);
+    }
+  }
+
+  const keyMessages = messages
+    .filter(
+      (message) =>
+        message.kind !== AGENT_TEAM_MESSAGE_KIND.toolCall &&
+        message.kind !== AGENT_TEAM_MESSAGE_KIND.toolResult
+    )
+    .slice(-8);
+  if (keyMessages.length > 0) {
+    if (lines.length > 0) {
+      lines.push("");
+    }
+    lines.push("Team transcript summary:");
+    for (const message of keyMessages) {
+      lines.push(
+        `- [${message.fromRoleLabel} ${message.kind}] ${message.subject}: ${message.content.slice(0, 280)}`
+      );
+    }
+  }
+
+  if (openQuestions.length > 0) {
+    if (lines.length > 0) {
+      lines.push("");
+    }
+    lines.push("Open questions:");
+    for (const question of openQuestions) {
+      lines.push(`- ${question.question}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 export async function markRunWaiting(runId: string): Promise<void> {
   // Waiting is a re-entrant pause, not a terminal state. No event emitted;
   // the next initializeRunState/claimNext cycle will emit role_queued events.
   await prisma.$transaction(async (tx) => {
     const current = await tx.agentTeamRun.findUniqueOrThrow({
       where: { id: runId },
-      select: { id: true, status: true, errorMessage: true },
+      select: {
+        id: true,
+        workspaceId: true,
+        conversationId: true,
+        status: true,
+        errorMessage: true,
+      },
     });
     // Temporal-retry idempotency: already in waiting from a prior attempt.
     if (current.status === AGENT_TEAM_RUN_STATUS.waiting) {
+      if (current.conversationId) {
+        await projectRunToSupportAnalysis(tx, {
+          runId: current.id,
+          workspaceId: current.workspaceId,
+          conversationId: current.conversationId,
+          status: ANALYSIS_STATUS.needsContext,
+          errorMessage: current.errorMessage,
+        });
+      }
       return;
     }
     const next = transitionAgentTeamRun(
@@ -853,14 +1066,24 @@ export async function markRunWaiting(runId: string): Promise<void> {
       ),
       { type: "waitForResolution" }
     );
-    await tx.agentTeamRun.update({
+    const run = await tx.agentTeamRun.update({
       where: { id: runId },
       data: {
         status: next.status,
         errorMessage: next.errorMessage,
         completedAt: null,
       },
+      select: { id: true, workspaceId: true, conversationId: true, errorMessage: true },
     });
+    if (run.conversationId) {
+      await projectRunToSupportAnalysis(tx, {
+        runId: run.id,
+        workspaceId: run.workspaceId,
+        conversationId: run.conversationId,
+        status: ANALYSIS_STATUS.needsContext,
+        errorMessage: run.errorMessage,
+      });
+    }
   });
 }
 
@@ -868,7 +1091,13 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
   const event = await prisma.$transaction(async (tx) => {
     const current = await tx.agentTeamRun.findUniqueOrThrow({
       where: { id: input.runId },
-      select: { id: true, status: true, errorMessage: true },
+      select: {
+        id: true,
+        workspaceId: true,
+        conversationId: true,
+        status: true,
+        errorMessage: true,
+      },
     });
     // Terminal-state idempotency: failed and completed are both terminal — a
     // retry of markRunFailed should not throw or rewrite. We treat completed
@@ -877,6 +1106,15 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
       current.status === AGENT_TEAM_RUN_STATUS.failed ||
       current.status === AGENT_TEAM_RUN_STATUS.completed
     ) {
+      if (current.status === AGENT_TEAM_RUN_STATUS.failed && current.conversationId) {
+        await projectRunToSupportAnalysis(tx, {
+          runId: current.id,
+          workspaceId: current.workspaceId,
+          conversationId: current.conversationId,
+          status: ANALYSIS_STATUS.failed,
+          errorMessage: current.errorMessage,
+        });
+      }
       return null;
     }
     const next = transitionAgentTeamRun(
@@ -894,7 +1132,14 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
         errorMessage: next.errorMessage,
         completedAt: new Date(),
       },
-      select: { id: true, workspaceId: true, startedAt: true, completedAt: true },
+      select: {
+        id: true,
+        workspaceId: true,
+        conversationId: true,
+        errorMessage: true,
+        startedAt: true,
+        completedAt: true,
+      },
     });
     const messageCount = await tx.agentTeamMessage.count({ where: { runId: input.runId } });
 
@@ -920,6 +1165,16 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
       where: { id: run.id },
       data: { summary: serializeRunRollup(rollup) },
     });
+
+    if (run.conversationId) {
+      await projectRunToSupportAnalysis(tx, {
+        runId: run.id,
+        workspaceId: run.workspaceId,
+        conversationId: run.conversationId,
+        status: ANALYSIS_STATUS.failed,
+        errorMessage: run.errorMessage,
+      });
+    }
 
     return recordedEvent;
   });

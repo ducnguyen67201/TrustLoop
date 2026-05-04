@@ -76,9 +76,9 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
 }
 
 /**
- * Dispatch a single conversation for AI processing via the agent-team FAST
- * pipeline. The drafter role delegates to the legacy support-analysis prompt
- * inside the agent service, so quality is identical by construction.
+ * Dispatch a single conversation for AI processing via the configured Agent
+ * Team. SupportAnalysis is a read-side summary projection of the run; the team
+ * transcript remains the source of detailed evidence and handoffs.
  *
  * Idempotent: run-service's queued|running dedupe guard plus the deterministic
  * Temporal workflow ID short-circuit duplicate dispatches.
@@ -97,7 +97,7 @@ export async function dispatchAnalysis(input: {
       {
         workspaceId: input.workspaceId,
         conversationId: input.conversationId,
-        teamConfig: AGENT_TEAM_CONFIG.FAST,
+        teamConfig: AGENT_TEAM_CONFIG.DEEP,
       },
       temporalWorkflowDispatcher
     );
