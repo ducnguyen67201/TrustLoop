@@ -36,6 +36,7 @@ import {
   reconstructAnalysisOutput,
 } from "@shared/types";
 
+import { expandWildcardToolIds, isMcpToolId } from "@shared/types";
 import { resolveProviderConfig } from "./agent-config";
 import {
   SUPPORT_AGENT_SYSTEM_PROMPT,
@@ -46,6 +47,7 @@ import { renderThreadSnapshotPrompt } from "./prompts/thread-snapshot";
 import { resolveModel } from "./providers";
 import { getRoleMaxSteps, getRoleSystemPrompt, getRoleToolIds } from "./roles/role-registry";
 import { buildCreatePullRequestTool } from "./tools/create-pr";
+import { buildMcpToolsForWorkspace } from "./tools/mcp-tools";
 import { buildSearchCodeTool } from "./tools/search-code";
 import { buildSearchSentryTool } from "./tools/search-sentry";
 
@@ -57,18 +59,37 @@ const shouldLogLocalAgentDebug = checkEnv(env.NODE_ENV, NODE_ENV.DEVELOPMENT);
 // conversationId/analysisId). The LLM never sees workspace identity in
 // its tool input schemas — that prevents a hallucinated workspaceId from
 // crossing tenants. Build fresh tools for every agent.generate() call.
+//
+// agentTeamRunId + agentRole are required when MCP tools should be wired
+// in (team-turn path). The standalone /analyze pipeline doesn't use MCP
+// and may omit them.
 interface ToolBuildContext {
   workspaceId: string;
   conversationId?: string;
   analysisId?: string;
+  agentTeamRunId?: string;
+  agentRole?: string;
 }
 
-function buildToolsForAgent(ctx: ToolBuildContext) {
+function buildBuiltinToolsForAgent(ctx: ToolBuildContext) {
   return {
     searchCode: buildSearchCodeTool({ workspaceId: ctx.workspaceId }),
     searchSentry: buildSearchSentryTool({ workspaceId: ctx.workspaceId }),
     createPullRequest: buildCreatePullRequestTool(ctx),
-  } as const;
+  };
+}
+
+async function buildToolsForAgent(ctx: ToolBuildContext) {
+  const builtin = buildBuiltinToolsForAgent(ctx);
+  if (!ctx.agentTeamRunId || !ctx.agentRole) {
+    return builtin as Record<string, unknown>;
+  }
+  const mcpTools = await buildMcpToolsForWorkspace({
+    workspaceId: ctx.workspaceId,
+    agentTeamRunId: ctx.agentTeamRunId,
+    agentRole: ctx.agentRole,
+  });
+  return { ...builtin, ...mcpTools } as Record<string, unknown>;
 }
 
 // ── Agent Factory ───────────────────────────────────────────────────
@@ -100,7 +121,7 @@ function createSupportAgent(
     instructions = SUPPORT_AGENT_SYSTEM_PROMPT;
   }
 
-  const tools = buildToolsForAgent(ctx);
+  const tools = buildBuiltinToolsForAgent(ctx);
   return new Agent({
     id: "trustloop-support-agent",
     name: "TrustLoop AI Support Agent",
@@ -113,17 +134,22 @@ function createSupportAgent(
   });
 }
 
-function createAgentForRole(
+async function createAgentForRole(
   role: AgentTeamRole,
   target: llmManager.LlmResolvedTarget,
   ctx: ToolBuildContext
 ) {
+  // Mastra's Agent.tools type is narrower than the dynamic tools dict we
+  // produce (built-in tools + per-workspace MCP tools whose Zod input shape
+  // varies per server). Cast at the third-party boundary; existing
+  // patterns in this file (line ~197) do the same for messages.
+  const tools = await pickToolsForRole(role, ctx);
   return new Agent({
     id: `trustloop-agent-team-${role.roleKey}`,
     name: role.label,
     instructions: getRoleSystemPrompt(role),
     model: resolveModel(target),
-    tools: pickToolsForRole(role, ctx),
+    tools: tools as never,
   });
 }
 
@@ -234,9 +260,11 @@ export async function runTeamTurn(
   const target = route.targets[0];
   const maxSteps = getRoleMaxSteps(request.role) ?? DEFAULT_TEAM_MAX_STEPS;
 
-  const agent = createAgentForRole(request.role, target, {
+  const agent = await createAgentForRole(request.role, target, {
     workspaceId: request.workspaceId,
     conversationId: request.conversationId ?? undefined,
+    agentTeamRunId: request.runId,
+    agentRole: request.role.slug,
   });
   const userMessage = buildTeamTurnUserMessage(request);
   logLocalAgentDebug("[agents:debug] Starting team turn", {
@@ -507,11 +535,16 @@ function logLocalAgentDebug(label: string, payload: Record<string, unknown>): vo
   console.log(label, payload);
 }
 
-function pickToolsForRole(role: AgentTeamRole, ctx: ToolBuildContext) {
-  const tools = buildToolsForAgent(ctx);
-  return Object.fromEntries(getRoleToolIds(role).map((toolId) => [toolId, tools[toolId]])) as {
-    [Key in AgentTeamToolId]?: ReturnType<typeof buildToolsForAgent>[Key];
-  };
+async function pickToolsForRole(role: AgentTeamRole, ctx: ToolBuildContext) {
+  const tools = await buildToolsForAgent(ctx);
+  const requestedIds = getRoleToolIds(role);
+  const expandedIds = expandWildcardToolIds(requestedIds, Object.keys(tools));
+  const picked: Record<string, unknown> = {};
+  for (const toolId of expandedIds) {
+    const tool = tools[toolId];
+    if (tool) picked[toolId] = tool;
+  }
+  return picked;
 }
 
 function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
@@ -630,23 +663,36 @@ function extractToolStructuredResult(
   toolName: string,
   output: string
 ): Record<string, unknown> | null {
-  if (toolName !== TOOL_STRUCTURED_RESULT_KIND.createPullRequest) {
-    return null;
+  if (toolName === TOOL_STRUCTURED_RESULT_KIND.createPullRequest) {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(output);
+    } catch {
+      return null;
+    }
+    const validated = createDraftPullRequestResultSchema.safeParse(parsedJson);
+    if (!validated.success) {
+      return null;
+    }
+    return {
+      kind: TOOL_STRUCTURED_RESULT_KIND.createPullRequest,
+      result: validated.data,
+    };
   }
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(output);
-  } catch {
-    return null;
+  if (isMcpToolId(toolName)) {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(output);
+    } catch {
+      return null;
+    }
+    return {
+      kind: "mcp",
+      toolId: toolName,
+      result: parsedJson,
+    };
   }
-  const validated = createDraftPullRequestResultSchema.safeParse(parsedJson);
-  if (!validated.success) {
-    return null;
-  }
-  return {
-    kind: TOOL_STRUCTURED_RESULT_KIND.createPullRequest,
-    result: validated.data,
-  };
+  return null;
 }
 
 function formatDialogueMessages(

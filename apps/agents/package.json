@@ -10,12 +10,15 @@
     "build": "tsgo --noEmit",
     "type-check": "tsgo --noEmit",
     "lint": "biome check src/ test/",
-    "test": "vitest run"
+    "test": "vitest run",
+    "mcp:register": "tsx scripts/register-mcp-server.ts",
+    "dev:mcp-postgres": "echo 'For dogfood: docker run --rm -p 3333:3333 -e POSTGRES_URL=$DATABASE_URL trustloop/mcp-postgres-dev:latest (TODO: ship the image)'"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.89",
     "@hono/node-server": "^1.0.0",
     "@mastra/core": "1.22.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@shared/database": "*",
     "@shared/env": "*",
     "@shared/prompting": "*",
