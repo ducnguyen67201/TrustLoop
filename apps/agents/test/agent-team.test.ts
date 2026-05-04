@@ -7,6 +7,7 @@ const envState = {
   OPENROUTER_API_KEY: "",
   APP_BASE_URL: "http://localhost:3000",
   APP_PUBLIC_URL: undefined as string | undefined,
+  INTERNAL_SERVICE_KEY: "tli_test_internal_service_key_value",
 };
 
 vi.mock("@shared/env", () => ({
@@ -22,15 +23,15 @@ vi.mock("@mastra/core/agent", () => ({
 }));
 
 vi.mock("../src/tools/create-pr", () => ({
-  createPullRequestTool: {},
+  buildCreatePullRequestTool: () => ({}),
 }));
 
 vi.mock("../src/tools/search-code", () => ({
-  searchCodeTool: {},
+  buildSearchCodeTool: () => ({}),
 }));
 
 vi.mock("../src/tools/search-sentry", () => ({
-  searchSentryTool: {},
+  buildSearchSentryTool: () => ({}),
 }));
 
 const { runTeamTurn } = await import("../src/agent");
@@ -182,7 +183,7 @@ describe("runTeamTurn", () => {
       toolResults: [
         {
           toolName: "create_pull_request",
-          args: { workspaceId: "ws_1", repositoryFullName: "acme/repo" },
+          args: { repositoryFullName: "acme/repo" },
           result: {
             success: true,
             prUrl: "https://github.com/acme/repo/pull/42",
@@ -271,7 +272,10 @@ describe("/team-turn route", () => {
 
     const response = await app.request("http://localhost/team-turn", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${envState.INTERNAL_SERVICE_KEY}`,
+      },
       body: JSON.stringify(buildRequest()),
     });
 
@@ -280,5 +284,28 @@ describe("/team-turn route", () => {
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0]?.kind).toBe("approval");
     expect(body.nextSuggestedRoleKeys).toEqual(["pr_creator"]);
+  });
+
+  it("rejects requests with no Authorization header", async () => {
+    const response = await app.request("http://localhost/team-turn", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(buildRequest()),
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects requests with a wrong service key", async () => {
+    const response = await app.request("http://localhost/team-turn", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer tli_wrong_service_key_value_for_testing",
+      },
+      body: JSON.stringify(buildRequest()),
+    });
+
+    expect(response.status).toBe(401);
   });
 });

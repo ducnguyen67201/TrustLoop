@@ -222,6 +222,44 @@ All notable changes to TrustLoop will be documented in this file.
   with a persistent alert showing the exact bearer-token shape, so the auth
   format is discoverable without reading docs.
 
+## [0.2.16.4] - 2026-05-03
+
+### Added
+- **Inbox now shows "Draft PR opened: #N →" pills when the AI agent files a PR.**
+  Every successful `createDraftPullRequest` writes an `AgentPullRequest`
+  audit row that links back to the originating conversation and analysis.
+  The analysis panel renders one link per PR, so multi-PR analyses
+  (e.g. fix + tests in separate PRs) are all surfaced.
+
+### Changed
+- **Agent tools no longer accept `workspaceId` from the LLM.** Each tool
+  ships as a factory (`buildSearchCodeTool`, `buildCreatePullRequestTool`,
+  `buildSearchSentryTool`) that closes over the per-request workspaceId.
+  The analyze and team-turn prompts no longer include a `WORKSPACE_ID:`
+  line. A hallucinated workspaceId in tool args can no longer cross
+  tenants.
+- **Agent service `/analyze` and `/team-turn` now require `INTERNAL_SERVICE_KEY`.**
+  The closure-bound workspaceId is only safe if the body it comes from
+  is trusted; without auth the trust boundary just moved upstream. The
+  queue worker forwards the key in both call sites; the agent service
+  rejects unauthenticated calls with 401.
+- **PR creation is idempotent on Temporal activity retry.** If the
+  agent opens a PR but the activity throws after the response, the
+  retry now returns the existing PR URL instead of opening a duplicate
+  draft PR in the customer's repo.
+- **Drops unused `SupportDraft.prUrl`/`prNumber` columns.** Replaced by
+  `AgentPullRequest`; no writers remained.
+
+### Fixed
+- **`createDraftPullRequest` tenant-verifies `conversationId` and
+  `analysisId` against `workspaceId` before persisting** the audit row.
+  Defense-in-depth: rows whose linkages don't belong to the workspace
+  drop the linkage and log; rows with no linkage at all skip persistence
+  rather than becoming invisible to the inbox queries.
+- **Inbox PR-list keeps previously-rendered pills on transient fetch
+  error** instead of silently emptying the panel. Cap of 25 rows per
+  conversation prevents unbounded growth.
+
 ## [0.2.16.3] - 2026-05-03
 
 ### Tests

@@ -282,7 +282,12 @@ export async function runTeamTurnActivity(
 
   const response = await fetch(`${resolveAgentServiceUrl()}/team-turn`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      // Service-key auth: see callAgentService in support-analysis.activity.ts
+      // for the rationale. The agent service treats the body as trusted input.
+      authorization: `Bearer ${env.INTERNAL_SERVICE_KEY}`,
+    },
     body: JSON.stringify(input),
     signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
   });

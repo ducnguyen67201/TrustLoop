@@ -80,6 +80,7 @@ model SupportAnalysis {
   evidence          AnalysisEvidence[]
   drafts            SupportDraft[]
   frames            SupportAnalysisFrame[]
+  agentPullRequests AgentPullRequest[]
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
 
@@ -142,8 +143,6 @@ model SupportDraft {
   sendAttempts     Int                 @default(0)
   slackClientMsgId String?             @unique
   slackMessageTs   String?
-  prUrl          String?
-  prNumber       Int?
   errorMessage   String?             @db.Text
   deletedAt      DateTime?
   analysis       SupportAnalysis     @relation(fields: [analysisId], references: [id], onDelete: Restrict)
