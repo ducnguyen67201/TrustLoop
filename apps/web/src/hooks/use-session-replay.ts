@@ -31,8 +31,13 @@ export interface UseSessionReplayResult {
   replayLoadError: string | null;
   isAttachingSession: boolean;
   attachSessionError: string | null;
+  isDetachingSession: boolean;
+  isRecorrelatingSession: boolean;
+  sessionActionError: string | null;
   hasSessionData: boolean;
   attachSession: (sessionRecordId: string) => Promise<void>;
+  detachSession: () => Promise<void>;
+  recorrelateSession: () => Promise<void>;
   loadReplayChunks: () => void;
   retryReplayLoad: () => void;
 }
@@ -63,6 +68,9 @@ export function useSessionReplay(
   const [replayLoadError, setReplayLoadError] = useState<string | null>(null);
   const [isAttachingSession, setIsAttachingSession] = useState(false);
   const [attachSessionError, setAttachSessionError] = useState<string | null>(null);
+  const [isDetachingSession, setIsDetachingSession] = useState(false);
+  const [isRecorrelatingSession, setIsRecorrelatingSession] = useState(false);
+  const [sessionActionError, setSessionActionError] = useState<string | null>(null);
 
   const applySessionResult = useCallback((result: SessionForConversationResponse) => {
     setMatch(result.match);
@@ -96,6 +104,7 @@ export function useSessionReplay(
       setTotalReplayChunks(0);
       setReplayLoadError(null);
       setAttachSessionError(null);
+      setSessionActionError(null);
 
       try {
         const result = await trpcQuery<SessionForConversationResponse, { conversationId: string }>(
@@ -161,6 +170,56 @@ export function useSessionReplay(
     [applySessionResult, conversationId]
   );
 
+  const detachSession = useCallback(async () => {
+    if (!conversationId) return;
+
+    setIsDetachingSession(true);
+    setSessionActionError(null);
+    setReplayChunks([]);
+    setTotalReplayChunks(0);
+    setReplayLoadError(null);
+
+    try {
+      const result = await trpcMutation<{ conversationId: string }, SessionForConversationResponse>(
+        "sessionReplay.detachFromConversation",
+        { conversationId },
+        { withCsrf: true }
+      );
+
+      applySessionResult(result);
+    } catch (err) {
+      setSessionActionError(err instanceof Error ? err.message : "Failed to detach session");
+      throw err;
+    } finally {
+      setIsDetachingSession(false);
+    }
+  }, [applySessionResult, conversationId]);
+
+  const recorrelateSession = useCallback(async () => {
+    if (!conversationId) return;
+
+    setIsRecorrelatingSession(true);
+    setSessionActionError(null);
+    setReplayChunks([]);
+    setTotalReplayChunks(0);
+    setReplayLoadError(null);
+
+    try {
+      const result = await trpcMutation<{ conversationId: string }, SessionForConversationResponse>(
+        "sessionReplay.recorrelateForConversation",
+        { conversationId },
+        { withCsrf: true }
+      );
+
+      applySessionResult(result);
+    } catch (err) {
+      setSessionActionError(err instanceof Error ? err.message : "Failed to re-run AI match");
+      throw err;
+    } finally {
+      setIsRecorrelatingSession(false);
+    }
+  }, [applySessionResult, conversationId]);
+
   const loadReplayChunks = useCallback(() => {
     if (!session) return;
 
@@ -208,8 +267,13 @@ export function useSessionReplay(
     replayLoadError,
     isAttachingSession,
     attachSessionError,
+    isDetachingSession,
+    isRecorrelatingSession,
+    sessionActionError,
     hasSessionData: session !== null,
     attachSession,
+    detachSession,
+    recorrelateSession,
     loadReplayChunks,
     retryReplayLoad,
   };
