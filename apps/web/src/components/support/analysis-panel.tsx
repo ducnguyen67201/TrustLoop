@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentPrList } from "@/components/support/agent-pr-list";
 import { AgentStream } from "@/components/support/agent-stream";
 import { ConfidenceBadge } from "@/components/support/confidence-badge";
 import { ReasoningTrace } from "@/components/support/reasoning-trace";
@@ -118,17 +119,10 @@ export function AnalysisPanel({
         <p className="text-sm text-foreground">{analysis.problemStatement}</p>
       )}
 
-      {/* PR link */}
-      {draft?.prUrl && (
-        <a
-          href={draft.prUrl as string}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-primary underline underline-offset-2"
-        >
-          Suggested fix: PR #{draft.prNumber} →
-        </a>
-      )}
+      {/* Agent-opened draft PRs for this conversation. Sourced from
+          AgentPullRequest, the audit row written when createDraftPullRequest
+          succeeds. Hides itself when the list is empty. */}
+      <AgentPrList conversationId={conversationId} refetchKey={analysis?.status ?? null} />
 
       <Separator />
 
