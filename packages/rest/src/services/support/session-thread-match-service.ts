@@ -250,6 +250,57 @@ export async function attachSessionToConversation(input: {
   });
 }
 
+// Operator-initiated detach. Flips isPrimary on every primary match for the
+// conversation so the capsule drops back to its empty state. Match rows stay
+// as audit history. Auto-correlation will re-pick a session next time
+// getConversationSessionContext runs.
+export async function detachSessionFromConversation(input: {
+  workspaceId: string;
+  conversationId: string;
+}): Promise<ConversationSessionContext> {
+  const conversation = await prisma.supportConversation.findFirst({
+    where: {
+      id: input.conversationId,
+      workspaceId: input.workspaceId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+
+  if (!conversation) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Conversation not found" });
+  }
+
+  await clearPrimaryMatch(input.workspaceId, input.conversationId);
+  return emptyConversationSessionContext();
+}
+
+// On-demand auto-correlation. Clears any existing primary first so that a
+// manual attachment (which short-circuits getConversationSessionContext) does
+// not block the heuristic from running. Returns whatever auto picks — or the
+// empty context if no candidate matches.
+export async function recorrelateConversationSession(input: {
+  workspaceId: string;
+  conversationId: string;
+  eventLimit?: number;
+}): Promise<ConversationSessionContext> {
+  const conversation = await prisma.supportConversation.findFirst({
+    where: {
+      id: input.conversationId,
+      workspaceId: input.workspaceId,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+
+  if (!conversation) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Conversation not found" });
+  }
+
+  await clearPrimaryMatch(input.workspaceId, input.conversationId);
+  return getConversationSessionContext(input);
+}
+
 export async function resolveConversationIdentity(input: {
   workspaceId: string;
   conversationId: string;
