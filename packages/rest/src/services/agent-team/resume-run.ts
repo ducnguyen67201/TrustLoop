@@ -12,6 +12,7 @@ import {
   ValidationError,
   type WorkflowDispatchResponse,
   agentTeamConfigSchema,
+  agentTeamRunStatusSchema,
   agentTeamSnapshotSchema,
   getPendingResolutionQuestionsInputSchema,
   recordOperatorAnswerInputSchema,
@@ -240,18 +241,34 @@ export async function resumeRun(
       where: { id: run.id },
       select: { id: true, status: true, errorMessage: true },
     });
-    const next = transitionAgentTeamRun(
-      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
-      { type: "resume" }
-    );
-    await tx.agentTeamRun.update({
-      where: { id: run.id },
-      data: {
-        status: next.status,
-        errorMessage: next.errorMessage,
-        workflowId: dispatch.workflowId,
-      },
-    });
+    // Idempotency: a previous resume attempt may have committed the status
+    // flip but failed before the new workflowId was persisted (or before
+    // event log write). On retry we still need to record the new workflowId
+    // and event, but we skip the FSM transition to avoid the running -> resume
+    // throw. Status is already running; just update the workflowId.
+    if (current.status === AGENT_TEAM_RUN_STATUS.running) {
+      await tx.agentTeamRun.update({
+        where: { id: run.id },
+        data: { workflowId: dispatch.workflowId },
+      });
+    } else {
+      const next = transitionAgentTeamRun(
+        restoreAgentTeamRunContext(
+          run.id,
+          agentTeamRunStatusSchema.parse(current.status),
+          current.errorMessage
+        ),
+        { type: "resume" }
+      );
+      await tx.agentTeamRun.update({
+        where: { id: run.id },
+        data: {
+          status: next.status,
+          errorMessage: next.errorMessage,
+          workflowId: dispatch.workflowId,
+        },
+      });
+    }
     await recordEvent(tx, {
       kind: AGENT_TEAM_EVENT_KIND.runStarted,
       runId: run.id,
