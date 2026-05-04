@@ -34,7 +34,7 @@ export const agentTeamRunWorkflowInputSchema = z.object({
   runId: z.string().min(1),
   teamId: z.string().min(1),
   teamSnapshot: agentTeamSnapshotSchema,
-  teamConfig: agentTeamConfigSchema.default(AGENT_TEAM_CONFIG.FAST),
+  teamConfig: agentTeamConfigSchema.default(AGENT_TEAM_CONFIG.DEEP),
   conversationId: z.string().min(1).optional(),
   analysisId: z.string().min(1).optional(),
   threadSnapshot: agentTeamThreadSnapshotInputSchema,
@@ -62,7 +62,7 @@ export const startAgentTeamRunInputSchema = z.object({
   conversationId: z.string().min(1),
   teamId: z.string().min(1).optional(),
   analysisId: z.string().min(1).optional(),
-  teamConfig: agentTeamConfigSchema.optional(),
+  teamConfig: agentTeamConfigSchema.default(AGENT_TEAM_CONFIG.DEEP),
 });
 
 export const getAgentTeamRunInputSchema = z.object({

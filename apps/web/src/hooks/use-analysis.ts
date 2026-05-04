@@ -14,15 +14,13 @@ const POLL_INTERVAL_MS = 2_000;
 /**
  * Manages the conversation right-rail draft lifecycle.
  *
- * Read path: SupportAnalysis is the source of truth for the panel. Pre-cutover
- * rows came from the standalone support-analysis workflow; post-cutover rows
- * are projected from the agent-team FAST run's drafter output (see
- * markRunCompleted in agent-team-run.activity.ts). Either way, the panel reads
- * the same shape.
+ * Read path: SupportAnalysis is the source of truth for the panel. It is a
+ * projection of the Agent Team run, so this panel stays a compact summary while
+ * the Agent Team tab owns the detailed collaboration transcript.
  *
- * Trigger path: starts an agent-team FAST run. The drafter terminal step
- * projects onto SupportAnalysis + SupportDraft so the polling loop sees
- * the new row when status flips to ANALYZED.
+ * Trigger path: starts the configured Agent Team in DEEP mode. The terminal or
+ * waiting workflow state projects back onto SupportAnalysis so the polling loop
+ * sees the summary row when the team finishes or needs more context.
  */
 export function useAnalysis(conversationId: string | null, workspaceId: string) {
   const [analysis, setAnalysis] = useState<SupportAnalysisWithRelations | null>(null);
@@ -76,7 +74,7 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
     try {
       await trpcMutation<StartAgentTeamRunInput, AgentTeamRunSummary>(
         "agentTeam.startRun",
-        { conversationId, teamConfig: AGENT_TEAM_CONFIG.FAST },
+        { conversationId, teamConfig: AGENT_TEAM_CONFIG.DEEP },
         { withCsrf: true }
       );
       setIsAnalyzing(true);

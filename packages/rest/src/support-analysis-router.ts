@@ -11,13 +11,10 @@ import {
 import { z } from "zod";
 
 // Post-cutover this router serves only as the read/approve/dismiss path for
-// SupportAnalysis + SupportDraft rows. The trigger procedure was removed when
-// the agent-team-only pipeline replaced support-analysis as the dispatch path
-// (the frontend now calls agentTeam.startRun({ teamConfig: 'FAST' }) directly,
-// and the auto-trigger workflow dispatches via run-service.start). Drafter
-// output is projected onto SupportAnalysis/SupportDraft from
-// markRunCompleted, and the existing approve/dismiss flow keeps working
-// against those projection rows unchanged.
+// SupportAnalysis + SupportDraft projection rows. The trigger procedure was
+// removed when the agent-team-only pipeline replaced support-analysis as the
+// dispatch path: frontend and auto-trigger flows start AgentTeamRun directly,
+// then the workflow projects its team summary back onto SupportAnalysis.
 export function createSupportAnalysisRouter(dispatcher: WorkflowDispatcher) {
   const operatorProcedure = workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER);
 
