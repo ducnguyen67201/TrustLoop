@@ -101,6 +101,7 @@ describe("dispatchWorkflow", () => {
         workspaceId: "ws_1",
         runId: "run_1",
         teamId: "team_1",
+        teamConfig: "FAST",
         threadSnapshot: "thread snapshot",
         teamSnapshot: {
           roles: [

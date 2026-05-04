@@ -2,6 +2,127 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.17.3] - 2026-05-04
+
+### Changed
+- **AgentTeamRun status now driven by a finite-state machine.** Mirrors the
+  existing `draft-state-machine.ts` pattern using the shared `defineFsm`
+  helper. Replaces five scattered `status: AGENT_TEAM_RUN_STATUS.*` direct
+  writes (in `run-service.start`, `initializeRunState`, `markRunCompleted`,
+  `markRunWaiting`, `markRunFailed`, and the resume path in `resume-run.ts`)
+  with `transitionAgentTeamRun(ctx, event)` calls. Illegal transitions
+  (e.g. completed → resume, queued → complete) now throw
+  `InvalidAgentTeamRunTransitionError` at the call site instead of
+  silently corrupting state.
+
+### Added
+- **`packages/types/src/agent-team/state-machines/agent-team-run-state-machine.ts`.**
+  States: `queued | running | waiting | completed | failed`. Events:
+  `start | complete | waitForResolution | fail | resume`. Terminal:
+  `completed`, `failed`. Public API: `createAgentTeamRunContext`,
+  `restoreAgentTeamRunContext`, `transitionAgentTeamRun`,
+  `getAllowedAgentTeamRunEvents`, plus the
+  `InvalidAgentTeamRunTransitionError` class for `instanceof` checks at
+  service-layer error translation boundaries.
+- **15 new unit tests** in `packages/types/test/state-machines.test.ts`
+  covering every valid transition, every terminal-state rejection, and
+  the `getAllowedAgentTeamRunEvents` reflection of current state.
+
+### Notes
+- The FSM event type is named `AgentTeamRunFsmEvent` (not
+  `AgentTeamRunEvent`) to avoid colliding with the existing event-log
+  `AgentTeamRunEvent` discriminated union — they live in adjacent
+  modules and are conceptually different layers.
+- Test fixtures across `packages/rest/test/*` still use string literals
+  for `AgentTeamRun.status` (e.g. `status: "queued"` instead of
+  `AGENT_TEAM_RUN_STATUS.queued`). The literal-to-enum sweep is a
+  separate housekeeping refactor — not blocking.
+
+## [0.2.17.2] - 2026-05-03
+
+### Changed
+- **Drafter projects to SupportAnalysis + SupportDraft on completion.**
+  When a FAST agent-team run completes, `markRunCompleted` writes a
+  `SupportAnalysis` row (with the new `agentTeamRunId` link) and a
+  `SupportDraft` row driven through the draft FSM
+  (`generating → awaitingApproval`). The right-rail panel and the existing
+  approve/dismiss flow read from `SupportAnalysis` unchanged. The
+  `useAnalysis` hook reverts to its pre-cutover read path; only its trigger
+  call was swapped to `agentTeam.startRun({ teamConfig: 'FAST' })`.
+- **Removed `AGENT_TEAM_AS_DEFAULT_PIPELINE` flag.** Agent team is the only
+  pipeline. Rollback is via `git revert` of the cutover commits — no flag
+  flip required.
+
+### Added
+- **`SupportAnalysis.agentTeamRunId` column** with migration. Indexed and
+  used for projection idempotency (re-running `markRunCompleted` for the
+  same run does not double-write).
+- **PR-creator + reviewer prompt hardening.** `pr-creator.prompt.ts` now
+  spells out hard preconditions before `createPullRequest` (reviewer
+  approval present, file located + read first, full file content
+  reconstructed not blind-edited, size self-checked). `reviewer.prompt.ts`
+  now defines the explicit approval contract — five conditions that must
+  all be true before emitting `kind: approval`.
+- **Unit tests for `DraftProjection` service** in
+  `packages/rest/test/draft-projection-service.test.ts`. Status-mapping
+  parametrized tests, missing-conversation handling, empty-message handling.
+- **`docs/concepts/agent-team.md` updated** with the new trigger paths,
+  team configurations table, drafter delegation flow, and SupportAnalysis
+  projection mechanics.
+
+### Notes
+- The legacy `support-analysis.workflow.ts` and `supportAnalysis.*` router
+  remain in the tree for one release as a rollback artifact. Not reached
+  by the live code path. Physical deletion ships in a follow-up.
+- AgentTeamRun status is currently set via direct writes; a finite-state
+  machine (matching the existing `draft-state-machine.ts` pattern) is on
+  the project's stated FSM follow-up list and is its own refactor. Test
+  fixtures still use string literals for `AgentTeamRun.status`; cleanup to
+  the typed `AGENT_TEAM_RUN_STATUS` enum constants is a sweep follow-up.
+- Pre-existing apps/queue env-validation failures
+  (`agent-team-archive.test.ts`, `agent-team-metrics-rollup.test.ts`)
+  require server env vars not in the local `.env`. Unrelated to this
+  change; CI provisions them.
+
+## [0.2.17.1] - 2026-05-03
+
+### Changed
+- **Agent team is the only AI pipeline now.** The single-agent
+  `support-analysis` pipeline is retired in favor of the agent team running
+  in a sized configuration (FAST | STANDARD | DEEP). Auto-trigger always
+  dispatches the agent-team FAST run. The right-rail draft panel reads from
+  the new `DraftProjection` service via the existing `useAnalysis` hook
+  (adapter pattern: hook surface unchanged, data source swapped underneath).
+- **New `drafter` role** in the agent team. The FAST configuration runs the
+  drafter only — it replaces the legacy single-agent analysis. The drafter
+  role at the agent service layer delegates to `runAnalysis()` so the prompt,
+  tools, and model are identical to the old `/analyze` path. Quality is
+  unchanged by construction; the wrapper just maps the analysis output onto
+  one team-event-log proposal message + facts.
+
+### Added
+- **`AGENT_TEAM_CONFIG` enum** (FAST | STANDARD | DEEP) and the matching
+  `AgentTeamRun.teamConfig` column with migration. Existing runs are
+  backfilled to DEEP since they were created via the manual full-team button.
+- **`DraftProjection` service** that reads an agent-team run's drafter
+  output and shapes it as `{ insights, draftBody, references, status }`. New
+  tRPC procedure `agentTeam.getLatestDraftForConversation`. The right-rail
+  panel hook (`useAnalysis`) reads through this projection.
+- **Idempotent `agentTeam.startRun`.** A queued or running run for the same
+  `(workspaceId, conversationId)` returns the existing run instead of
+  starting a duplicate. Mirrors the GATHERING_CONTEXT|ANALYZING dedupe in
+  the legacy supportAnalysis service.
+
+### Notes
+- The legacy `support-analysis.workflow` and the `supportAnalysis.*` tRPC
+  procedures stay in the codebase for one release as a rollback path. The
+  auto-trigger no longer reaches them. Approve/dismiss flows on
+  pre-cutover SupportDraft rows continue to work via
+  `supportAnalysis.approveDraft` / `dismissDraft`.
+- Post-cutover drafts produced by the agent team are read-only in the UI
+  until a follow-up wires SupportDraft writes (or an equivalent) into the
+  agent-team event log.
+
 ## [0.2.16.5] - 2026-05-03
 
 ### Changed

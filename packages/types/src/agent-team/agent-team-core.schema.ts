@@ -20,6 +20,7 @@ export const agentTeamRunStatusValues = [
 export const agentTeamRunStatusSchema = z.enum(agentTeamRunStatusValues);
 
 export const AGENT_TEAM_ROLE_SLUG = {
+  drafter: "drafter",
   architect: "architect",
   reviewer: "reviewer",
   codeReader: "code_reader",
@@ -28,6 +29,7 @@ export const AGENT_TEAM_ROLE_SLUG = {
 } as const;
 
 export const agentTeamRoleSlugValues = [
+  AGENT_TEAM_ROLE_SLUG.drafter,
   AGENT_TEAM_ROLE_SLUG.architect,
   AGENT_TEAM_ROLE_SLUG.reviewer,
   AGENT_TEAM_ROLE_SLUG.codeReader,
@@ -36,6 +38,20 @@ export const agentTeamRoleSlugValues = [
 ] as const;
 
 export const agentTeamRoleSlugSchema = z.enum(agentTeamRoleSlugValues);
+
+export const AGENT_TEAM_CONFIG = {
+  FAST: "FAST",
+  STANDARD: "STANDARD",
+  DEEP: "DEEP",
+} as const;
+
+export const agentTeamConfigValues = [
+  AGENT_TEAM_CONFIG.FAST,
+  AGENT_TEAM_CONFIG.STANDARD,
+  AGENT_TEAM_CONFIG.DEEP,
+] as const;
+
+export const agentTeamConfigSchema = z.enum(agentTeamConfigValues);
 
 export const AGENT_TEAM_TOOL_ID = {
   searchCode: "searchCode",
@@ -202,6 +218,7 @@ export const updateAgentTeamLayoutInputSchema = z.object({
 
 export type AgentTeamRunStatus = z.infer<typeof agentTeamRunStatusSchema>;
 export type AgentTeamRoleSlug = z.infer<typeof agentTeamRoleSlugSchema>;
+export type AgentTeamConfig = z.infer<typeof agentTeamConfigSchema>;
 export type AgentTeamToolId = z.infer<typeof agentTeamToolIdSchema>;
 export type AgentTeamRoleCanvasPosition = z.infer<typeof agentTeamRoleCanvasPositionSchema>;
 export type AgentTeamRoleMetadata = z.infer<typeof agentTeamRoleMetadataSchema>;

@@ -1,8 +1,14 @@
 import { prisma } from "@shared/database";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
+  AGENT_PROVIDER,
+  AGENT_TEAM_CONFIG,
+  AGENT_TEAM_ROLE_SLUG,
   AGENT_TEAM_RUN_STATUS,
+  type AgentTeamConfig,
+  type AgentTeamRole,
   type AgentTeamRunSummary,
+  type AgentTeamSnapshot,
   ValidationError,
   agentTeamRunSummarySchema,
   agentTeamSnapshotSchema,
@@ -16,6 +22,7 @@ interface StartRunArgs {
   conversationId: string;
   teamId?: string;
   analysisId?: string;
+  teamConfig?: AgentTeamConfig;
 }
 
 interface GetRunArgs {
@@ -33,6 +40,24 @@ export async function start(
   dispatcher: WorkflowDispatcher
 ): Promise<AgentTeamRunSummary> {
   const parsed = startAgentTeamRunInputSchema.parse(input);
+  const teamConfig = parsed.teamConfig ?? AGENT_TEAM_CONFIG.FAST;
+
+  // Dedupe: a queued or running run for this (workspace, conversation) wins.
+  // Mirrors the GATHERING_CONTEXT|ANALYZING dedupe in supportAnalysis. Race on
+  // two near-simultaneous calls is a sub-100ms window — accept rare double-runs.
+  const inFlight = await prisma.agentTeamRun.findFirst({
+    where: {
+      workspaceId: input.workspaceId,
+      conversationId: parsed.conversationId,
+      status: { in: [AGENT_TEAM_RUN_STATUS.queued, AGENT_TEAM_RUN_STATUS.running] },
+    },
+    include: runInclude,
+    orderBy: { createdAt: "desc" },
+  });
+  if (inFlight) {
+    return mapRun(inFlight);
+  }
+
   const team = await findTeam(input.workspaceId, parsed.teamId);
   const conversation = await prisma.supportConversation.findUnique({
     where: { id: parsed.conversationId },
@@ -58,9 +83,15 @@ export async function start(
     throw new ValidationError("A default agent team and support conversation are required");
   }
 
-  const teamSnapshot = agentTeamSnapshotSchema.parse({
-    roles: team.roles,
-    edges: team.edges,
+  // teamConfig drives which roles are seeded for this run. The team in the DB
+  // is the workspace's blueprint (typically all roles). For FAST runs we
+  // synthesize a single-drafter snapshot regardless of blueprint, so existing
+  // workspaces don't need a teams-table migration to start using the FAST path.
+  const teamSnapshot = buildTeamSnapshotForConfig({
+    teamId: team.id,
+    teamConfig,
+    teamRoles: team.roles,
+    teamEdges: team.edges,
   });
 
   const created = await prisma.agentTeamRun.create({
@@ -69,6 +100,7 @@ export async function start(
       teamId: team.id,
       conversationId: conversation.id,
       analysisId: parsed.analysisId ?? null,
+      teamConfig,
       status: AGENT_TEAM_RUN_STATUS.queued,
       teamSnapshot: JSON.parse(JSON.stringify(teamSnapshot)),
     },
@@ -81,6 +113,7 @@ export async function start(
     teamId: team.id,
     conversationId: conversation.id,
     analysisId: parsed.analysisId,
+    teamConfig,
     teamSnapshot,
     threadSnapshot: JSON.stringify(buildConversationSnapshot(conversation), null, 2),
   });
@@ -180,6 +213,10 @@ function buildConversationSnapshot(conversation: {
     channelId: conversation.channelId,
     threadTs: conversation.threadTs,
     status: conversation.status,
+    // Customer email is required by ThreadSnapshot.strict() for the FAST drafter
+    // delegation. We don't currently track customer email at this layer; null
+    // is the honest answer until support-conversation surfaces it.
+    customer: { email: null },
     events: conversation.events.map((event) => ({
       type: event.eventType,
       source: event.eventSource,
@@ -190,12 +227,82 @@ function buildConversationSnapshot(conversation: {
   };
 }
 
+// Build the snapshot of roles + edges for this run based on teamConfig.
+// FAST: single synthetic drafter (replaces the legacy single-agent analysis).
+// STANDARD: drafter + reviewer (drafts go through a review gate before exposure).
+// DEEP: all roles from the workspace's team blueprint (full multi-agent).
+function buildTeamSnapshotForConfig(args: {
+  teamId: string;
+  teamConfig: AgentTeamConfig;
+  teamRoles: Array<{
+    id: string;
+    teamId: string;
+    roleKey: string;
+    slug: string;
+    label: string;
+    description: string | null;
+    provider: string;
+    model: string | null;
+    toolIds: string[];
+    systemPromptOverride: string | null;
+    maxSteps: number;
+    sortOrder: number;
+    metadata: unknown;
+  }>;
+  teamEdges: Array<{
+    id: string;
+    teamId: string;
+    sourceRoleId: string;
+    targetRoleId: string;
+    condition: string | null;
+    sortOrder: number;
+  }>;
+}): AgentTeamSnapshot {
+  if (args.teamConfig === AGENT_TEAM_CONFIG.DEEP) {
+    return agentTeamSnapshotSchema.parse({
+      roles: args.teamRoles,
+      edges: args.teamEdges,
+    });
+  }
+
+  const drafter = synthesizeDrafterRole(args.teamId);
+  if (args.teamConfig === AGENT_TEAM_CONFIG.FAST) {
+    return agentTeamSnapshotSchema.parse({ roles: [drafter], edges: [] });
+  }
+
+  // STANDARD: drafter + first reviewer if the blueprint has one.
+  const reviewerRow = args.teamRoles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.reviewer);
+  if (!reviewerRow) {
+    return agentTeamSnapshotSchema.parse({ roles: [drafter], edges: [] });
+  }
+  return agentTeamSnapshotSchema.parse({ roles: [drafter, reviewerRow], edges: [] });
+}
+
+function synthesizeDrafterRole(teamId: string): AgentTeamRole {
+  return {
+    id: `${teamId}-synthetic-drafter`,
+    teamId,
+    roleKey: AGENT_TEAM_ROLE_SLUG.drafter,
+    slug: AGENT_TEAM_ROLE_SLUG.drafter,
+    label: "Drafter",
+    description: null,
+    provider: AGENT_PROVIDER.openai,
+    model: null,
+    toolIds: [],
+    systemPromptOverride: null,
+    maxSteps: 6,
+    sortOrder: 0,
+    metadata: null,
+  };
+}
+
 function mapRun(run: {
   id: string;
   workspaceId: string;
   teamId: string;
   conversationId: string | null;
   analysisId: string | null;
+  teamConfig: string;
   status: string;
   workflowId: string | null;
   startedAt: Date | null;
@@ -263,6 +370,7 @@ function mapRun(run: {
     teamId: run.teamId,
     conversationId: run.conversationId,
     analysisId: run.analysisId,
+    teamConfig: run.teamConfig,
     status: run.status,
     workflowId: run.workflowId,
     startedAt: run.startedAt?.toISOString() ?? null,

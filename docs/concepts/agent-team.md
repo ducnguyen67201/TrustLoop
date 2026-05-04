@@ -16,24 +16,57 @@ Where the analysis pipeline answers _"what is this ticket about, and what should
 
 ## Trigger
 
-One path today (manual). Analysis-driven auto-trigger is designed in but not wired.
+The agent team is now the **only** AI pipeline. Two trigger paths:
+
+### AUTO: per-conversation debounce
+
+- `apps/queue/src/domains/support/support-analysis-trigger.workflow.ts` — one debounce workflow per active conversation (5-minute default). Resets on every new message. When the customer stops typing, dispatches the agent team via `dispatchAnalysis`.
+- `apps/queue/src/domains/support/support-analysis-trigger.activity.ts` — `dispatchAnalysis` calls `agentTeamRuns.start({ workspaceId, conversationId, teamConfig: 'FAST' })`. The `support-analysis` workflow is no longer dispatched.
+- The legacy `support-analysis.workflow` and `supportAnalysis.triggerAnalysis` mutation are kept in the tree for one release as a rollback artifact (revert the cutover commits to fall back). They are not reached by the live code path.
 
 ### MANUAL: UI button
 
-- `apps/web/src/components/support/agent-team-panel.tsx:14` — mounted in the conversation right-rail under the **"Agent Team"** tab (`conversation-insights-panel.tsx:60`)
-- Click **Start run** → `useAgentTeamRun.startRun()` → tRPC `agentTeam.startRun`
-- `apps/web/src/hooks/use-agent-team-run.ts:66`
-- tRPC router: `packages/rest/src/agent-team-router.ts:61`
-- Input: `{ conversationId, teamId?, analysisId? }` — defaults to the workspace's default team
+- `apps/web/src/hooks/use-analysis.ts` — the right-rail draft panel hook. `triggerAnalysis()` calls `agentTeam.startRun({ teamConfig: 'FAST' })`.
+- `apps/web/src/components/support/agent-team-panel.tsx:14` — the dedicated team-runs panel (still renders the live SSE stream when an operator wants to inspect a DEEP run).
+- tRPC router: `packages/rest/src/agent-team-router.ts`
+- Input: `{ conversationId, teamId?, analysisId?, teamConfig? }` — defaults to the workspace's default team. `teamConfig` defaults to `FAST` for new runs.
 
 ### Direct API
 
 ```
 POST /api/trpc/agentTeam.startRun
-body: { conversationId, teamId?, analysisId? }
+body: { conversationId, teamId?, analysisId?, teamConfig?: 'FAST' | 'STANDARD' | 'DEEP' }
 ```
 
-Input schema: `packages/types/src/agent-team/agent-team.schema.ts:48`. `analysisId` is accepted end-to-end by the schema and persisted on the run, but the UI hook does not yet pass it — plumbing analysis context into the team prompt is a follow-up.
+Input schema: `packages/types/src/agent-team/agent-team.schema.ts`. `analysisId` is accepted end-to-end by the schema and persisted on the run.
+
+## Team configurations
+
+`AgentTeamRun.teamConfig` controls which roles are seeded for a run.
+
+| Config | Roles | When |
+|---|---|---|
+| `FAST` (default) | drafter only | Auto-triggered runs. Replaces the legacy single-agent analysis. |
+| `STANDARD` | drafter + reviewer | Drafts go through a review gate before exposure. |
+| `DEEP` | architect, reviewer, code-reader, pr-creator, rca-analyst | Operator opt-in for full team deliberation including code search and draft PR creation. |
+
+`run-service.start()` synthesizes the `teamSnapshot` based on `teamConfig` rather than reading from the workspace's team blueprint, so workspaces don't need a teams-table migration to use FAST.
+
+## Drafter delegation
+
+The `drafter` role is the FAST-path role and does **not** run through the addressed-dialogue prompt machinery. `runTeamTurn` in `apps/agents/src/agent.ts` short-circuits on `role.slug === 'drafter'` and delegates to `runAnalysis()` — the legacy `/analyze` code path. Quality is identical to the pre-cutover single-agent pipeline by construction (same prompt, same model, same tool set).
+
+The `AnalyzeResponse` is mapped onto a single `proposal` message and 2 facts in the team event log:
+- the `proposal` message carries the draft body (or a "no draft, here's why" message when the analysis declined to produce one)
+- one fact for the problem statement, one for the likely subsystem
+
+## SupportAnalysis projection
+
+When a FAST run completes (`markRunCompleted` in `agent-team-run.activity.ts`), the activity projects the drafter's output onto the legacy `SupportAnalysis` + `SupportDraft` tables in the same Prisma transaction. This keeps the existing right-rail panel UI, the approve/dismiss flow, and any downstream consumers of `SupportAnalysis` working unchanged after the cutover.
+
+The `SupportAnalysis.agentTeamRunId` column makes the projection idempotent — re-running `markRunCompleted` for the same run does not double-write.
+
+The projection uses `transitionDraft` from `packages/types/src/support/state-machines/draft-state-machine.ts` to drive the SupportDraft status (`generating → awaitingApproval`) rather than writing the literal status string. Required by the project's state-machine convention.
 
 ## Guards (before dispatch)
 

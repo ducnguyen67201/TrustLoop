@@ -70,6 +70,10 @@ model AgentTeamRun {
   // started this run; null on the original. SetNull on parent delete keeps
   // the chain queryable even if the original row is removed.
   parentRunId    String?
+  // Team size for this run. FAST = drafter only (replaces analysis pipeline).
+  // STANDARD = drafter + reviewer. DEEP = full architect/reviewer/code-reader/
+  // pr-creator/rca-analyst team. Validated by agentTeamConfigSchema in shared types.
+  teamConfig     String   @default("FAST")
   status         String   @default("queued")
   teamSnapshot   Json
   workflowId     String?
