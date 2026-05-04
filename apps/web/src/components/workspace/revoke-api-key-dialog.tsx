@@ -47,7 +47,8 @@ export function RevokeApiKeyDialog({ keyId, keyPrefix, onConfirm }: RevokeApiKey
         <DialogHeader>
           <DialogTitle>Revoke API key</DialogTitle>
           <DialogDescription>
-            This will immediately disable <strong>{keyPrefix}</strong> for all future requests.
+            <strong>{keyPrefix}</strong> will be permanently deleted and immediately rejected on all
+            future requests. This cannot be undone.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

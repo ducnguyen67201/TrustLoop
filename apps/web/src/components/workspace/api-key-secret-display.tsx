@@ -81,8 +81,8 @@ export function ApiKeyOneTimeSecretDisplay({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-start gap-2">
-        <code className="bg-muted block flex-1 overflow-x-auto rounded p-2 text-xs">
+      <div className="flex min-w-0 items-start gap-2">
+        <code className="bg-muted block min-w-0 flex-1 break-all rounded p-2 font-mono text-xs leading-relaxed">
           {isSecretVisible ? secret : "•".repeat(Math.min(64, secret.length))}
         </code>
         <Button
