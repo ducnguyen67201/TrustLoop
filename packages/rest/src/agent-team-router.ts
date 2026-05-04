@@ -1,3 +1,4 @@
+import * as draftProjection from "@shared/rest/services/agent-team/draft-projection-service";
 import * as edges from "@shared/rest/services/agent-team/edge-service";
 import * as resumeRunService from "@shared/rest/services/agent-team/resume-run";
 import * as roles from "@shared/rest/services/agent-team/role-service";
@@ -74,6 +75,13 @@ export function createAgentTeamRouter(dispatcher: WorkflowDispatcher) {
           ...input,
           workspaceId: ctx.workspaceId,
         })
+      ),
+    // Drafter projection — analysis-shaped read of the latest agent-team run.
+    // Powers the AnalysisPanel in the conversation right-rail post-cutover.
+    getLatestDraftForConversation: workspaceProcedure
+      .input(getLatestAgentTeamRunInputSchema)
+      .query(({ ctx, input }) =>
+        draftProjection.getLatestProjectionForConversation(ctx.workspaceId, input.conversationId)
       ),
     getRun: workspaceProcedure
       .input(getAgentTeamRunInputSchema)
