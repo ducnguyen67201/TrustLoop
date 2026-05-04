@@ -22,10 +22,10 @@ export function AgentPrList({ conversationId, refetchKey }: AgentPrListProps) {
   const [prs, setPrs] = useState<AgentPrSummary[]>([]);
 
   useEffect(() => {
-    // refetchKey is intentionally referenced in the closure body (not just
-    // the deps array) so biome's exhaustive-deps check accepts it as a real
-    // dependency. The agent opens PRs mid-analysis, so we re-fetch when the
-    // analysis status flips even though the value isn't used directly here.
+    // refetchKey is in the deps array so a status flip during analysis
+    // (e.g. ANALYZING → ANALYZED) re-runs this effect and picks up PRs the
+    // agent opened mid-flight. The deref below keeps biome's
+    // exhaustive-deps rule from flagging it as unused.
     void refetchKey;
 
     let cancelled = false;
@@ -36,9 +36,11 @@ export function AgentPrList({ conversationId, refetchKey }: AgentPrListProps) {
           { conversationId }
         );
         if (!cancelled) setPrs(result);
-      } catch {
-        // Silent: this is supplementary UI. The PR exists on GitHub regardless.
-        if (!cancelled) setPrs([]);
+      } catch (error) {
+        // Keep whatever pills were already showing — a transient 5xx or
+        // network blip shouldn't make existing PR links visibly disappear.
+        // Log so a real auth/permission regression surfaces during QA.
+        console.warn("[agent-pr-list] fetch failed, keeping previous pills", error);
       }
     })();
     return () => {

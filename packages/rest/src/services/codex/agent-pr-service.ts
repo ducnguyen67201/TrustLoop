@@ -1,4 +1,5 @@
 import { prisma } from "@shared/database";
+import type { AgentPrStatus } from "@shared/types";
 
 // ---------------------------------------------------------------------------
 // agent-pr service
@@ -12,6 +13,11 @@ import { prisma } from "@shared/database";
 // Call sites read as `agentPrs.listForConversation(...)`.
 // ---------------------------------------------------------------------------
 
+// Cap how many rows the inbox renders per conversation. The agent can keep
+// opening PRs across re-analyses, and there's no GC or status reconciliation
+// today, so without a limit the analysis panel grows linearly forever.
+const MAX_LIST_ROWS = 25;
+
 export interface AgentPrSummary {
   id: string;
   prNumber: number;
@@ -19,7 +25,7 @@ export interface AgentPrSummary {
   branchName: string;
   baseBranch: string;
   title: string;
-  status: "open" | "merged" | "closed";
+  status: AgentPrStatus;
   repositoryFullName: string;
   createdAt: string;
 }
@@ -31,6 +37,7 @@ export async function listForConversation(
   const rows = await prisma.agentPullRequest.findMany({
     where: { workspaceId, conversationId },
     orderBy: { createdAt: "desc" },
+    take: MAX_LIST_ROWS,
     include: { repository: { select: { fullName: true } } },
   });
   return rows.map(toSummary);
@@ -43,6 +50,7 @@ export async function listForAnalysis(
   const rows = await prisma.agentPullRequest.findMany({
     where: { workspaceId, analysisId },
     orderBy: { createdAt: "desc" },
+    take: MAX_LIST_ROWS,
     include: { repository: { select: { fullName: true } } },
   });
   return rows.map(toSummary);
@@ -55,7 +63,7 @@ function toSummary(row: {
   branchName: string;
   baseBranch: string;
   title: string;
-  status: "open" | "merged" | "closed";
+  status: AgentPrStatus;
   createdAt: Date;
   repository: { fullName: string };
 }): AgentPrSummary {
