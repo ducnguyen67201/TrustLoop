@@ -1,6 +1,24 @@
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import { dispatchWorkflow } from "@shared/rest/workflow-router";
+import type { ThreadSnapshot } from "@shared/types";
 import { describe, expect, it, vi } from "vitest";
+
+const threadSnapshot: ThreadSnapshot = {
+  conversationId: "conv_1",
+  channelId: "C0ABCDEF",
+  threadTs: "1776616233.348399",
+  status: "UNREAD",
+  customer: { email: null },
+  events: [
+    {
+      type: "MESSAGE_RECEIVED",
+      source: "CUSTOMER",
+      summary: "thread snapshot",
+      details: { rawText: "thread snapshot" },
+      at: "2026-04-19T16:30:34.672Z",
+    },
+  ],
+};
 
 function createDispatcher(): WorkflowDispatcher {
   return {
@@ -81,7 +99,7 @@ describe("dispatchWorkflow", () => {
         runId: "run_1",
         teamId: "team_1",
         teamConfig: "FAST",
-        threadSnapshot: "thread snapshot",
+        threadSnapshot,
         teamSnapshot: {
           roles: [
             {

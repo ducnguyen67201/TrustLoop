@@ -21,7 +21,6 @@ import {
   type SessionDigest,
   TOOL_STRUCTURED_RESULT_KIND,
   TOOL_STRUCTURED_RESULT_METADATA_KEY,
-  type ThreadSnapshot,
   type ToneConfig,
   agentProviderConfigSchema,
   agentTeamDialogueMessageDraftSchema,
@@ -35,7 +34,6 @@ import {
   parseJsonModelOutput,
   reconstructAgentTeamTurnOutput,
   reconstructAnalysisOutput,
-  threadSnapshotSchema,
 } from "@shared/types";
 
 import { resolveProviderConfig } from "./agent-config";
@@ -321,7 +319,7 @@ export async function runTeamTurn(
 async function runDrafterAsTeamTurn(
   request: AgentTeamRoleTurnInput
 ): Promise<AgentTeamRoleTurnOutput> {
-  const threadSnapshot = parseDrafterThreadSnapshot(request.requestSummary);
+  const threadSnapshot = request.requestSummary;
 
   const analyzeRequest: AnalyzeRequest = {
     workspaceId: request.workspaceId,
@@ -371,18 +369,6 @@ async function runDrafterAsTeamTurn(
     resolution: null,
     meta: response.meta,
   };
-}
-
-// Run-service builds requestSummary as JSON of the conversation snapshot. Older
-// rows may omit the customer field that threadSnapshotSchema.strict() requires;
-// fall back to a placeholder when missing rather than refusing the FAST run.
-function parseDrafterThreadSnapshot(requestSummary: string): ThreadSnapshot {
-  const raw = JSON.parse(requestSummary) as Record<string, unknown>;
-  const candidate = {
-    ...raw,
-    customer: (raw.customer as { email: string | null } | undefined) ?? { email: null },
-  };
-  return threadSnapshotSchema.parse(candidate);
 }
 
 // ── Private Helpers ─────────────────────────────────────────────────
@@ -580,7 +566,7 @@ NEVER set "t" to your own ROLE_KEY (${request.role.roleKey}); you cannot message
 ${availableTeamRoles}
 
 ## Request Summary
-${request.requestSummary}
+${renderThreadSnapshotPrompt(request.requestSummary)}
 
 ## Inbox
 ${inbox}

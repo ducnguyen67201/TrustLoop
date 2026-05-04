@@ -1,4 +1,5 @@
 import { sessionDigestSchema } from "@shared/types/session-replay/session-digest.schema";
+import { threadSnapshotSchema } from "@shared/types/support/support-analysis.schema";
 import { z } from "zod";
 
 import { agentTeamRoleSchema } from "./agent-team-core.schema";
@@ -332,6 +333,26 @@ export const agentTeamOpenQuestionSchema = z.preprocess(
   })
 );
 
+export const agentTeamThreadSnapshotInputSchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!isRecord(parsed)) {
+      return parsed;
+    }
+
+    return {
+      ...parsed,
+      customer: parsed.customer ?? { email: null },
+    };
+  } catch {
+    return value;
+  }
+}, threadSnapshotSchema);
+
 export const agentTeamRoleTurnInputSchema = z.object({
   workspaceId: z.string().min(1),
   conversationId: z.string().min(1).optional(),
@@ -342,7 +363,7 @@ export const agentTeamRoleTurnInputSchema = z.object({
   turnIndex: z.number().int().nonnegative().default(0),
   teamRoles: z.array(agentTeamRoleSchema).min(1),
   role: agentTeamRoleSchema,
-  requestSummary: z.string().min(1),
+  requestSummary: agentTeamThreadSnapshotInputSchema,
   inbox: z.array(agentTeamDialogueMessageSchema).default([]),
   acceptedFacts: z.array(agentTeamFactSchema).default([]),
   openQuestions: z.array(agentTeamOpenQuestionSchema).default([]),
@@ -371,6 +392,10 @@ export const agentTeamRoleTurnOutputSchema = z.object({
 
 export function isRoleTarget(target: z.infer<typeof agentTeamTargetSchema>): boolean {
   return target !== AGENT_TEAM_TARGET.broadcast && target !== AGENT_TEAM_TARGET.orchestrator;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export type AgentTeamMessageKind = z.infer<typeof agentTeamMessageKindSchema>;

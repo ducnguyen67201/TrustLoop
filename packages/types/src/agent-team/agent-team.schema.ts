@@ -26,6 +26,7 @@ import {
   agentTeamFactSchema,
   agentTeamOpenQuestionSchema,
   agentTeamRoleInboxSchema,
+  agentTeamThreadSnapshotInputSchema,
 } from "./agent-team-dialogue.schema";
 
 export const agentTeamRunWorkflowInputSchema = z.object({
@@ -36,7 +37,7 @@ export const agentTeamRunWorkflowInputSchema = z.object({
   teamConfig: agentTeamConfigSchema.default(AGENT_TEAM_CONFIG.FAST),
   conversationId: z.string().min(1).optional(),
   analysisId: z.string().min(1).optional(),
-  threadSnapshot: z.string().min(1),
+  threadSnapshot: agentTeamThreadSnapshotInputSchema,
   sessionDigest: sessionDigestSchema.nullish(),
   // True when an operator triggered this workflow as a resume of an earlier
   // run that exited in `waiting`. Skips initializeRunState (which would

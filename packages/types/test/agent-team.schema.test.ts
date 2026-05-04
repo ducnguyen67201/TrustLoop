@@ -5,12 +5,30 @@ import {
   AGENT_TEAM_TARGET,
   AGENT_TEAM_TOOL_ID,
   POSITIONAL_AGENT_TEAM_TURN_FORMAT_INSTRUCTIONS,
+  type ThreadSnapshot,
   agentTeamRoleTurnOutputSchema,
   agentTeamRunWorkflowInputSchema,
   compressedAgentTeamTurnOutputSchema,
   reconstructAgentTeamTurnOutput,
 } from "@shared/types";
 import { describe, expect, it } from "vitest";
+
+const threadSnapshot: ThreadSnapshot = {
+  conversationId: "conv_1",
+  channelId: "C0ABCDEF",
+  threadTs: "1776616233.348399",
+  status: "UNREAD",
+  customer: { email: null },
+  events: [
+    {
+      type: "MESSAGE_RECEIVED",
+      source: "CUSTOMER",
+      summary: "Customer says replies thread incorrectly in Slack.",
+      details: { rawText: "Customer says replies thread incorrectly in Slack." },
+      at: "2026-04-19T16:30:34.672Z",
+    },
+  ],
+};
 
 describe("agent team const enums", () => {
   it("exposes stable run statuses", () => {
@@ -38,7 +56,7 @@ describe("agent team schemas", () => {
       workspaceId: "ws_1",
       runId: "run_1",
       teamId: "team_1",
-      threadSnapshot: "thread context",
+      threadSnapshot,
       teamSnapshot: {
         roles: [
           {
