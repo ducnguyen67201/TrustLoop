@@ -2,39 +2,44 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
-## [0.2.17.0] - 2026-05-03
+## [0.2.17.1] - 2026-05-03
 
-### Added
-- **Foundation for agent-team-only pipeline.** Lays the structural groundwork
-  to retire the single-agent `support-analysis` pipeline in favor of the
-  multi-agent agent team running in a sized configuration (FAST | STANDARD |
-  DEEP). Behind a feature flag (default off) — flip
-  `AGENT_TEAM_AS_DEFAULT_PIPELINE=true` to validate the FAST path end-to-end
-  before the UI migration lands.
+### Changed
+- **Agent team is the only AI pipeline now.** The single-agent
+  `support-analysis` pipeline is retired in favor of the agent team running
+  in a sized configuration (FAST | STANDARD | DEEP). Auto-trigger always
+  dispatches the agent-team FAST run. The right-rail draft panel reads from
+  the new `DraftProjection` service via the existing `useAnalysis` hook
+  (adapter pattern: hook surface unchanged, data source swapped underneath).
 - **New `drafter` role** in the agent team. The FAST configuration runs the
   drafter only — it replaces the legacy single-agent analysis. The drafter
   role at the agent service layer delegates to `runAnalysis()` so the prompt,
   tools, and model are identical to the old `/analyze` path. Quality is
   unchanged by construction; the wrapper just maps the analysis output onto
   one team-event-log proposal message + facts.
-- **`AgentTeamRun.teamConfig` column** (FAST | STANDARD | DEEP) with
-  migration. Existing runs are backfilled to DEEP since they were created
-  via the manual full-team button.
-- **`DraftProjection` service** that reads an agent-team run's drafter output
-  and shapes it as `{ insights, draftBody, references, status }` so the
-  conversation right-rail can render it like the legacy SupportAnalysis. New
-  tRPC procedure `agentTeam.getLatestDraftForConversation` exposes it.
+
+### Added
+- **`AGENT_TEAM_CONFIG` enum** (FAST | STANDARD | DEEP) and the matching
+  `AgentTeamRun.teamConfig` column with migration. Existing runs are
+  backfilled to DEEP since they were created via the manual full-team button.
+- **`DraftProjection` service** that reads an agent-team run's drafter
+  output and shapes it as `{ insights, draftBody, references, status }`. New
+  tRPC procedure `agentTeam.getLatestDraftForConversation`. The right-rail
+  panel hook (`useAnalysis`) reads through this projection.
 - **Idempotent `agentTeam.startRun`.** A queued or running run for the same
   `(workspaceId, conversationId)` returns the existing run instead of
   starting a duplicate. Mirrors the GATHERING_CONTEXT|ANALYZING dedupe in
-  supportAnalysis.
+  the legacy supportAnalysis service.
 
-### Changed
-- **Auto-trigger pipeline swap.** When
-  `AGENT_TEAM_AS_DEFAULT_PIPELINE=true`, the per-conversation debounce
-  workflow dispatches an agent-team FAST run instead of the legacy
-  support-analysis workflow. Default remains `false` until the UI migration
-  lands.
+### Notes
+- The legacy `support-analysis.workflow` and the `supportAnalysis.*` tRPC
+  procedures stay in the codebase for one release as a rollback path. The
+  auto-trigger no longer reaches them. Approve/dismiss flows on
+  pre-cutover SupportDraft rows continue to work via
+  `supportAnalysis.approveDraft` / `dismissDraft`.
+- Post-cutover drafts produced by the agent team are read-only in the UI
+  until a follow-up wires SupportDraft writes (or an equivalent) into the
+  agent-team event log.
 
 ## [0.2.16.3] - 2026-05-03
 
