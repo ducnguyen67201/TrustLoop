@@ -17,17 +17,19 @@ The server is intentionally local-first. Environment selection happens outside t
 process through Doppler:
 
 ```bash
-doppler run -- npm --workspace @trustloop/debugger-mcp start
+doppler run --project debugger-mcp --config stg_railway -- npm --workspace @trustloop/debugger-mcp start
 ```
 
 For staging or another named Doppler config:
 
 ```bash
-doppler run --config stg -- npm --workspace @trustloop/debugger-mcp start
+doppler run --project debugger-mcp --config <config> -- npm --workspace @trustloop/debugger-mcp start
 ```
 
 The MCP process reads already-injected environment variables. It does not call
-Doppler, mutate its environment, or expose secret values.
+Doppler, mutate its environment, or expose secret values. The dedicated Doppler
+project is `debugger-mcp`; the current staging config is
+`debugger-mcp/stg_railway`.
 
 ## Current Capabilities
 
@@ -45,14 +47,24 @@ Doppler, mutate its environment, or expose secret values.
 - `diagnose_from_text` accepts a pasted Temporal UI snippet, stack trace, or log
   blob. It extracts workflow IDs, run IDs, activity names, and error text, then
   calls the right lower-level diagnostic automatically.
+- Railway diagnostics are available for runtime checks:
+  `get_railway_status`, `get_railway_service_variables`, `get_railway_logs`,
+  `probe_railway_private_url`, and `diagnose_railway_agent_connectivity`.
+  These tools use Railway CLI access when the local MCP process is authenticated
+  and linked to the project.
 
 ## Invariants
 
 - Never return raw secrets from debugger MCP tools.
 - Keep environment switching outside the MCP process. Restart with a different
-  `doppler run --config ...` command instead.
+  `doppler run --project debugger-mcp --config ...` command instead.
+- Keep the `debugger-mcp` Doppler project aligned with the staging runtime
+  variables required for debugger parity. Document debugger-specific overrides
+  such as the corrected agents private URL.
 - Keep Temporal read-only. The debugger MCP does not reset, signal, terminate,
   or mutate workflows.
+- Keep Railway diagnostics read-only. The only remote command is a bounded
+  Node `fetch` over `railway ssh` for private-network reachability checks.
 - Separate observed evidence from inferred root cause in diagnosis responses.
 - Add new diagnostic providers behind typed service modules before exposing them
   as MCP tools.
@@ -66,7 +78,10 @@ queue-to-agents connectivity failure. The next checks are:
 - inspect `queue` with `get_service_config_snapshot`
 - verify `AGENT_SERVICE_URL` is present and points to the private agents service
 - verify agents service health/deployment in the same environment
-- search queue/agents logs once a log provider is added
+- use `diagnose_railway_agent_connectivity` to check redacted Railway variables
+  and probe `/health` from the queue service
+- search queue/agents logs with `get_railway_logs` around the Temporal failure
+  timestamp
 
 ## Keep this doc honest
 
