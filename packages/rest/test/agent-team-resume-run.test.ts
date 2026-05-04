@@ -1,5 +1,5 @@
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
-import { ConflictError, ValidationError } from "@shared/types";
+import { AGENT_TEAM_CONFIG, ConflictError, ValidationError } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockFindFirstRun = vi.fn();
@@ -277,7 +277,7 @@ describe("resumeRun", () => {
       teamId: "team_1",
       conversationId: "conv_1",
       analysisId: null,
-      teamConfig: "FAST",
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
       status: "waiting",
       teamSnapshot: baseTeamSnapshot,
     });
