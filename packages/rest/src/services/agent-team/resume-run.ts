@@ -9,6 +9,7 @@ import {
   ConflictError,
   type GetPendingResolutionQuestionsResponse,
   type PendingResolutionQuestion,
+  type ThreadSnapshot,
   ValidationError,
   type WorkflowDispatchResponse,
   agentTeamConfigSchema,
@@ -18,6 +19,7 @@ import {
   recordOperatorAnswerInputSchema,
   restoreAgentTeamRunContext,
   resumeAgentTeamRunInputSchema,
+  threadSnapshotSchema,
   transitionAgentTeamRun,
 } from "@shared/types";
 
@@ -371,9 +373,9 @@ export async function getPendingQuestions(
   return pending;
 }
 
-async function buildThreadSnapshot(conversationId: string | null): Promise<string> {
+async function buildThreadSnapshot(conversationId: string | null): Promise<ThreadSnapshot> {
   if (!conversationId) {
-    return JSON.stringify({ events: [] }, null, 2);
+    throw new ValidationError("Agent team run cannot resume without a support conversation");
   }
 
   const conversation = await prisma.supportConversation.findUnique({
@@ -397,24 +399,21 @@ async function buildThreadSnapshot(conversationId: string | null): Promise<strin
   });
 
   if (!conversation) {
-    return JSON.stringify({ events: [] }, null, 2);
+    throw new ValidationError(`Support conversation ${conversationId} not found`);
   }
 
-  return JSON.stringify(
-    {
-      conversationId: conversation.id,
-      channelId: conversation.channelId,
-      threadTs: conversation.threadTs,
-      status: conversation.status,
-      events: conversation.events.map((event) => ({
-        type: event.eventType,
-        source: event.eventSource,
-        summary: event.summary,
-        details: event.detailsJson as Record<string, unknown> | null,
-        at: event.createdAt.toISOString(),
-      })),
-    },
-    null,
-    2
-  );
+  return threadSnapshotSchema.parse({
+    conversationId: conversation.id,
+    channelId: conversation.channelId,
+    threadTs: conversation.threadTs,
+    status: conversation.status,
+    customer: { email: null },
+    events: conversation.events.map((event) => ({
+      type: event.eventType,
+      source: event.eventSource,
+      summary: event.summary,
+      details: event.detailsJson as Record<string, unknown> | null,
+      at: event.createdAt.toISOString(),
+    })),
+  });
 }
