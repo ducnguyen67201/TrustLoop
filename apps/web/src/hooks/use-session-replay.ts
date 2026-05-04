@@ -34,6 +34,7 @@ export interface UseSessionReplayResult {
   isDetachingSession: boolean;
   isRecorrelatingSession: boolean;
   sessionActionError: string | null;
+  sessionActionMessage: string | null;
   hasSessionData: boolean;
   attachSession: (sessionRecordId: string) => Promise<void>;
   detachSession: () => Promise<void>;
@@ -71,6 +72,7 @@ export function useSessionReplay(
   const [isDetachingSession, setIsDetachingSession] = useState(false);
   const [isRecorrelatingSession, setIsRecorrelatingSession] = useState(false);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
+  const [sessionActionMessage, setSessionActionMessage] = useState<string | null>(null);
 
   const applySessionResult = useCallback((result: SessionForConversationResponse) => {
     setMatch(result.match);
@@ -105,6 +107,7 @@ export function useSessionReplay(
       setReplayLoadError(null);
       setAttachSessionError(null);
       setSessionActionError(null);
+      setSessionActionMessage(null);
 
       try {
         const result = await trpcQuery<SessionForConversationResponse, { conversationId: string }>(
@@ -142,6 +145,7 @@ export function useSessionReplay(
 
       setIsAttachingSession(true);
       setAttachSessionError(null);
+      setSessionActionMessage(null);
       setReplayChunks([]);
       setTotalReplayChunks(0);
       setReplayLoadError(null);
@@ -175,6 +179,7 @@ export function useSessionReplay(
 
     setIsDetachingSession(true);
     setSessionActionError(null);
+    setSessionActionMessage(null);
     setReplayChunks([]);
     setTotalReplayChunks(0);
     setReplayLoadError(null);
@@ -200,6 +205,7 @@ export function useSessionReplay(
 
     setIsRecorrelatingSession(true);
     setSessionActionError(null);
+    setSessionActionMessage(null);
     setReplayChunks([]);
     setTotalReplayChunks(0);
     setReplayLoadError(null);
@@ -212,6 +218,9 @@ export function useSessionReplay(
       );
 
       applySessionResult(result);
+      if (!result.session) {
+        setSessionActionMessage("AI re-check finished, but no matching browser session was found.");
+      }
     } catch (err) {
       setSessionActionError(err instanceof Error ? err.message : "Failed to re-run AI match");
       throw err;
@@ -270,6 +279,7 @@ export function useSessionReplay(
     isDetachingSession,
     isRecorrelatingSession,
     sessionActionError,
+    sessionActionMessage,
     hasSessionData: session !== null,
     attachSession,
     detachSession,
