@@ -202,6 +202,7 @@ Update when you:
 - Move from polling ingest to a true streaming ingest
 - Change conversation/session matching precedence or confidence rules
 - Change manual session linking or overrides
+- Add or change operator detach / re-correlate affordances on the evidence capsule
 - Change the operator evidence capsule contract or redaction behavior
 - Wire raw rrweb chunks into the agent prompt (would also update `ai-analysis-pipeline.md`)
 - Change the correlation signal (email → something else)
