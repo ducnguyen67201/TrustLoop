@@ -65,7 +65,19 @@ export const agentTeamToolIdValues = [
   AGENT_TEAM_TOOL_ID.createPullRequest,
 ] as const;
 
-export const agentTeamToolIdSchema = z.enum(agentTeamToolIdValues);
+// Tool IDs include built-in identifiers (searchCode, searchSentry,
+// createPullRequest) AND dynamic MCP tool IDs of the form
+// `mcp:<workspaceMcpServerId>:<toolName>` or wildcard `mcp:<id>:*`.
+// The schema is intentionally open-ended so per-workspace MCP tools can
+// flow through AgentTeamRole.toolIds[] without an enum migration each time.
+// See docs/concepts/agent-mcp-tools.md.
+export const agentTeamToolIdSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9_:\-*]+$/, {
+    message:
+      'tool ID must be alphanumeric with optional ":" separators (e.g., "searchCode" or "mcp:<serverId>:<toolName>" or "mcp:<serverId>:*")',
+  });
 
 export const agentTeamRoleCanvasPositionSchema = z.object({
   x: z.number().finite(),

@@ -1,0 +1,77 @@
+// Workspace-scoped MCP (Model Context Protocol) server registry + audit log.
+//
+// Customer hosts an MCP server (e.g. @modelcontextprotocol/server-postgres) inside
+// their network and gives TrustLoop a URL + bearer token. The RCA sub-agent picks
+// up the server's tools at agent-run time, scoped by per-server toolAllowlist[].
+// Every call is recorded in WorkspaceMcpCall as an append-only audit row.
+//
+// See docs/concepts/agent-mcp-tools.md for the customer-host model, the
+// audit-log subsection, and the mcp:<serverId>:* allowlist convention.
+
+enum McpTransport {
+  HTTP_SSE
+  STDIO
+  WEBSOCKET
+}
+
+enum McpServerMode {
+  EXECUTE
+  SUGGEST
+}
+
+enum McpCallStatus {
+  OK
+  ERROR
+  TIMEOUT
+  DENIED
+  PENDING_APPROVAL
+}
+
+model WorkspaceMcpServer {
+  id               String        @id @default(cuid())
+  workspaceId      String
+  name             String
+  transport        McpTransport  @default(HTTP_SSE)
+  url              String?
+  // JSON discriminator: {type: "bearer", tokenEnc: <secret-encryption blob>}.
+  // HEADER and MTLS shapes reserved for v2 (only BEARER is implemented in v1).
+  authConfigEnc    Json
+  toolAllowlist    String[]
+  mode             McpServerMode @default(EXECUTE)
+  timeoutMs        Int           @default(15000)
+  toolGrantVersion Int           @default(1)
+  enabled          Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deletedAt        DateTime?
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  calls     WorkspaceMcpCall[]
+
+  // TYPE GENERATION ONLY: DB uses partial unique index
+  // (WHERE deletedAt IS NULL). Soft-delete preserves audit linkage.
+  @@unique([workspaceId, name])
+  @@index([workspaceId, enabled])
+}
+
+// Append-only audit row. onDelete: Restrict on server preserves history if
+// a server is soft-deleted. Cascade from AgentTeamRun is OK because run
+// hard-deletes are rare and an orphaned audit row has no useful FK target.
+model WorkspaceMcpCall {
+  id             String        @id @default(cuid())
+  serverId       String
+  agentTeamRunId String
+  agentRole      String
+  toolName       String
+  inputDigest    String
+  durationMs     Int
+  status         McpCallStatus
+  errorMessage   String?       @db.Text
+  createdAt      DateTime      @default(now())
+
+  server       WorkspaceMcpServer @relation(fields: [serverId], references: [id], onDelete: Restrict)
+  agentTeamRun AgentTeamRun       @relation(fields: [agentTeamRunId], references: [id], onDelete: Cascade)
+
+  @@index([agentTeamRunId])
+  @@index([serverId, createdAt])
+}

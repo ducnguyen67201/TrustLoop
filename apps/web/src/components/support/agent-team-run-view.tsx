@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { type RunMcpCall, useRunMcpCalls } from "@/hooks/use-run-mcp-calls";
 import {
   getAgentRoleColorStyle,
   getAgentRoleTargetColorStyle,
@@ -74,6 +75,8 @@ export function AgentTeamRunView({
   const roleLabels = useMemo(() => buildRoleLabelMap(run), [run]);
   const activeRoleKey = isStreaming ? findActiveRoleKey(run?.roleInboxes ?? []) : null;
   const rawTranscript = useMemo(() => buildRawTranscript(messages), [messages]);
+  const mcpCallsState = useRunMcpCalls(run?.id ?? null);
+  const mcpCallCount = mcpCallsState.calls.length;
 
   if (!run && isLoading) {
     return <p className="text-sm text-muted-foreground">Loading latest run…</p>;
@@ -178,7 +181,7 @@ export function AgentTeamRunView({
         onValueChange={setActiveTab}
         className="flex min-h-0 w-full flex-1 flex-col"
       >
-        <TabsList className="grid w-full grid-cols-6 gap-0.5">
+        <TabsList className="grid w-full grid-cols-7 gap-0.5">
           <TabsTrigger value="chat" className="min-w-0 px-1 text-xs">
             Chat
           </TabsTrigger>
@@ -206,6 +209,10 @@ export function AgentTeamRunView({
           <TabsTrigger value="inboxes" aria-label="Inboxes" className="min-w-0 px-1 text-xs">
             Inbox
             <CountSuffix value={inboxCount} />
+          </TabsTrigger>
+          <TabsTrigger value="mcp" aria-label="MCP calls" className="min-w-0 px-1 text-xs">
+            MCP
+            <CountSuffix value={mcpCallCount} />
           </TabsTrigger>
         </TabsList>
 
@@ -316,9 +323,64 @@ export function AgentTeamRunView({
             </div>
           </ScrollArea>
         </TabsContent>
+
+        <TabsContent
+          value="mcp"
+          className="mt-3 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        >
+          <ScrollArea className="h-full min-h-0 flex-1 rounded-md border border-border/50">
+            <div className="space-y-1 p-3">
+              {mcpCallsState.error ? (
+                <p className="text-xs text-destructive">{mcpCallsState.error}</p>
+              ) : null}
+              {mcpCallCount === 0 ? (
+                <EmptyState
+                  icon={<RiSparklingLine className="h-4 w-4" />}
+                  title="No MCP calls"
+                  description="When the RCA agent reads from a customer-hosted MCP server, an audit row appears here."
+                />
+              ) : (
+                mcpCallsState.calls.map((call) => <McpCallRow key={call.id} call={call} />)
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
       </Tabs>
     </div>
   );
+}
+
+function McpCallRow({ call }: { call: RunMcpCall }) {
+  return (
+    <div
+      className="rounded-md border border-border/50 p-3 text-xs"
+      data-testid="agent-team-mcp-call"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium">{call.toolName}</span>
+        <Badge variant="outline" className={mcpStatusClassName(call.status)}>
+          {call.status}
+        </Badge>
+      </div>
+      <p className="mt-1 text-muted-foreground">
+        server: <span className="text-foreground">{call.serverName}</span> · role:{" "}
+        <span className="text-foreground">{call.agentRole}</span> · {call.durationMs}ms ·{" "}
+        {formatAbs(call.createdAt)}
+      </p>
+      <p className="truncate text-[10px] text-muted-foreground/70" title={call.inputDigest}>
+        digest: {call.inputDigest}
+      </p>
+      {call.errorMessage ? <p className="mt-1 text-destructive">{call.errorMessage}</p> : null}
+    </div>
+  );
+}
+
+function mcpStatusClassName(status: string): string {
+  if (status === "OK") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "ERROR" || status === "TIMEOUT" || status === "DENIED")
+    return "border-destructive/20 bg-destructive/10 text-destructive";
+  if (status === "PENDING_APPROVAL") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "";
 }
 
 function MessageRow({

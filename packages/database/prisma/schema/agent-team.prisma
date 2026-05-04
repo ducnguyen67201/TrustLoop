@@ -93,6 +93,7 @@ model AgentTeamRun {
   facts         AgentTeamFact[]
   openQuestions AgentTeamOpenQuestion[]
   events        AgentTeamRunEvent[]
+  mcpCalls      WorkspaceMcpCall[]
 
   @@index([workspaceId, status])
   @@index([conversationId])

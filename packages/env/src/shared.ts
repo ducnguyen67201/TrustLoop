@@ -35,6 +35,11 @@ export const serverSchemas = {
   // Security
   API_KEY_PEPPER: z.string().min(16),
   INTERNAL_SERVICE_KEY: z.string().startsWith("tli_").min(20),
+  // 32-byte AES-256 key, base64-encoded (44 chars). Used by
+  // packages/rest/src/security/secret-encryption.ts to encrypt customer-
+  // supplied secrets (MCP bearer tokens, future Slack/GitHub OAuth tokens).
+  // Generate with: npx tsx scripts/dev/gen-encryption-key.ts
+  SECRET_ENCRYPTION_KEY: z.string().length(44),
 
   // Database
   DATABASE_URL: z.string().min(1),

@@ -1,6 +1,7 @@
 export * from "@shared/types/auth.schema";
 export * from "@shared/types/api.schema";
 export * from "@shared/types/agent-team/index";
+export * from "@shared/types/agents/mcp-server.schema";
 export * from "@shared/types/codex/index";
 export * from "@shared/types/errors";
 export * from "@shared/types/fsm";

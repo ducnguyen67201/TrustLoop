@@ -4,6 +4,7 @@ import * as resumeRunService from "@shared/rest/services/agent-team/resume-run";
 import * as roles from "@shared/rest/services/agent-team/role-service";
 import * as agentTeamRuns from "@shared/rest/services/agent-team/run-service";
 import * as teams from "@shared/rest/services/agent-team/team-service";
+import * as workspaceMcp from "@shared/rest/services/workspace-mcp-service";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import { router, workspaceProcedure, workspaceRoleProcedure } from "@shared/rest/trpc";
 import {
@@ -86,6 +87,13 @@ export function createAgentTeamRouter(dispatcher: WorkflowDispatcher) {
     getRun: workspaceProcedure
       .input(getAgentTeamRunInputSchema)
       .query(({ ctx, input }) => agentTeamRuns.getRun({ ...input, workspaceId: ctx.workspaceId })),
+    listRunMcpCalls: workspaceProcedure
+      .input(getAgentTeamRunInputSchema)
+      .query(async ({ ctx, input }) => {
+        // Validate the run is in this workspace before exposing audit rows.
+        await agentTeamRuns.getRun({ ...input, workspaceId: ctx.workspaceId });
+        return workspaceMcp.listCallsForRun(input.runId);
+      }),
     getPendingResolutionQuestions: workspaceProcedure
       .input(getPendingResolutionQuestionsInputSchema)
       .query(({ ctx, input }) =>

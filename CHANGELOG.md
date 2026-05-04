@@ -2,6 +2,52 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [1.0.0.0] - 2026-05-04
+
+### Added
+- **MCP tool access for the RCA sub-agent.** The agent team's RCA analyst can now
+  call out to a customer-hosted MCP (Model Context Protocol) server during a run
+  and read live state (Postgres first; Redis, Signoz, and other sources extend
+  via the same interface). Every call is recorded in `WorkspaceMcpCall` as an
+  append-only audit row, surfaced in the run-detail UI's new "MCP" tab.
+- **Customer-hosted model.** Customers run the MCP server inside their network
+  with a read-only DB role and expose a single bearer-authenticated endpoint;
+  TrustLoop never sees connection strings. v1 dogfoods against TrustLoop's own
+  Postgres.
+- **Per-server suggest mode.** `WorkspaceMcpServer.mode = SUGGEST` makes the RCA
+  agent propose tool calls without invoking them, writing `PENDING_APPROVAL`
+  audit rows instead. Default is `EXECUTE`. The flag exists in v1 so the
+  design-partner negotiation is "flip a flag" rather than "wait for v2."
+- **Encryption helper for server-side secrets.**
+  `packages/rest/src/security/secret-encryption.ts` (AES-256-GCM, key from
+  `SECRET_ENCRYPTION_KEY`, key-versioned blob format) is the canonical pattern
+  for encrypting customer-supplied secrets. Used today for MCP bearer tokens;
+  existing Slack/GitHub OAuth tokens migrate to it in a follow-up PR.
+- **Bearer-token log scrubber.** Global console wrapper in the agents service
+  entrypoint redacts `Authorization: Bearer ...` and inline bearer tokens from
+  all log output before they leave the process.
+- **`mcp:register` CLI.** `npm --workspace @trustloop/agents run mcp:register`
+  registers, probes, lists, disables, or rotates MCP servers per workspace.
+  Inline `--auth-token` is rejected (shell-history risk); use
+  `--auth-token-stdin` or `--auth-token-env`. Pre-flight handshake validates
+  the bearer + tool allowlist before any DB write.
+- **Concept doc.** `docs/concepts/agent-mcp-tools.md` covers the customer-host
+  model, the audit log, the `mcp:<serverId>:*` allowlist convention, the
+  suggest-vs-execute mechanism, error-string contracts, and a 5-minute
+  Quickstart for internal dogfood.
+
+### Changed
+- **`agentTeamToolIdSchema` relaxed** from a closed enum to a regex string so
+  per-workspace MCP tool IDs (`mcp:<serverId>:<toolName>` and
+  `mcp:<serverId>:*` wildcard) flow through `AgentTeamRole.toolIds[]` without
+  an enum migration each time a new server is registered.
+- **`buildToolsForAgent` is async.** MCP tool discovery is network I/O; the
+  factory now awaits per-workspace MCP servers before agent construction.
+  `pickToolsForRole` expands `mcp:<id>:*` wildcards against the live tool key
+  set at construction time. Existing built-in tools are unchanged.
+- **`AgentTeamRun` gains `mcpCalls` back-relation** for joined run-detail
+  reads. New `agentTeam.listRunMcpCalls` tRPC procedure powers the UI.
+
 ## [0.2.17.6] - 2026-05-04
 
 ### Added

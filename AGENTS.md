@@ -43,6 +43,7 @@ Queue-level isolation is mandatory even if both are run in one worker runtime.
 
 - `apps/web`: UI + API transport boundary
 - `apps/queue`: workflow domain + worker runtime (support + codex)
+- `apps/agents`: agent runtime (Mastra). RCA sub-agent can call out to customer-hosted MCP servers — see [`docs/concepts/agent-mcp-tools.md`](docs/concepts/agent-mcp-tools.md).
 - `packages/types`: shared types + Zod schemas + Prisma-generated model types
 - `packages/rest`: tRPC routers/orchestration
 - `packages/database`: Prisma schema + client

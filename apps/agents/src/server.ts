@@ -1,3 +1,9 @@
+import { installConsoleScrubber } from "./observability/scrub-bearer";
+
+// Install bearer-token scrubber FIRST, before any other import that might
+// log on construction. See observability/scrub-bearer.ts for context.
+installConsoleScrubber();
+
 import { timingSafeEqual } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { env } from "@shared/env";
