@@ -21,7 +21,7 @@ export async function shouldAutoTrigger(workspaceId: string): Promise<boolean> {
  *
  * Query logic:
  * - Conversation has at least one grouping anchor with windowExpiresAt < now
- * - No SupportAnalysis exists with status ANALYZING or ANALYZED
+ * - No SupportAnalysis exists with an active, completed, or waiting-for-human status
  * - Conversation status is not DONE (no point analyzing closed threads)
  *
  * Historical-row check still references SupportAnalysis: pre-cutover rows
@@ -51,7 +51,12 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
     where: {
       conversationId: { in: candidateIds },
       status: {
-        in: [ANALYSIS_STATUS.gatheringContext, ANALYSIS_STATUS.analyzing, ANALYSIS_STATUS.analyzed],
+        in: [
+          ANALYSIS_STATUS.gatheringContext,
+          ANALYSIS_STATUS.analyzing,
+          ANALYSIS_STATUS.analyzed,
+          ANALYSIS_STATUS.needsContext,
+        ],
       },
     },
     select: { conversationId: true },
