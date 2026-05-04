@@ -21,12 +21,6 @@ export {
   findConversationsReadyForAnalysis,
   shouldAutoTrigger,
 } from "@/domains/support/support-analysis-trigger.activity";
-export {
-  buildThreadSnapshot,
-  escalateToManualHandling,
-  markAnalyzing,
-  runAnalysisAgent,
-} from "@/domains/support/support-analysis.activity";
 export { captionFailureFramesActivity } from "@/domains/support/support-frames-caption.activity";
 export { renderFailureFramesActivity } from "@/domains/support/support-frames.activity";
 export { mirrorSupportAttachment } from "@/domains/support/support-attachment-mirror.activity";
