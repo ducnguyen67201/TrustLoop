@@ -105,6 +105,7 @@ describe("recordOperatorAnswer", () => {
       id: "run_1",
       workspaceId: "ws_1",
       status: "waiting",
+      teamConfig: "FAST",
       teamSnapshot: baseTeamSnapshot,
     });
     mockFindFirstEvent
@@ -188,6 +189,7 @@ describe("recordOperatorAnswer", () => {
       id: "run_1",
       workspaceId: "ws_1",
       status: "running",
+      teamConfig: "FAST",
       teamSnapshot: baseTeamSnapshot,
     });
 
@@ -207,6 +209,7 @@ describe("recordOperatorAnswer", () => {
       id: "run_1",
       workspaceId: "ws_1",
       status: "waiting",
+      teamConfig: "FAST",
       teamSnapshot: baseTeamSnapshot,
     });
     mockFindFirstEvent.mockResolvedValueOnce(null);
@@ -227,6 +230,7 @@ describe("recordOperatorAnswer", () => {
       id: "run_1",
       workspaceId: "ws_1",
       status: "waiting",
+      teamConfig: "FAST",
       teamSnapshot: baseTeamSnapshot,
     });
     mockFindFirstEvent
@@ -267,6 +271,7 @@ describe("resumeRun", () => {
       teamId: "team_1",
       conversationId: "conv_1",
       analysisId: null,
+      teamConfig: "FAST",
       status: "waiting",
       teamSnapshot: baseTeamSnapshot,
     });
@@ -328,6 +333,7 @@ describe("resumeRun", () => {
       teamId: "team_1",
       conversationId: "conv_1",
       analysisId: null,
+      teamConfig: "FAST",
       status: "completed",
       teamSnapshot: baseTeamSnapshot,
     });

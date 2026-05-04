@@ -53,6 +53,10 @@ model SupportAnalysis {
   id                String                      @id @default(cuid())
   workspaceId       String
   conversationId    String
+  // Post-cutover: the AgentTeamRun that produced this analysis. Null for
+  // pre-cutover rows (the standalone support-analysis workflow created them
+  // directly). Indexed so projection writes can dedupe per-run.
+  agentTeamRunId    String?
   status            SupportAnalysisStatus       @default(GATHERING_CONTEXT)
   triggerType        SupportAnalysisTriggerType  @default(MANUAL)
   threadSnapshot    Json?
@@ -81,6 +85,7 @@ model SupportAnalysis {
 
   @@index([conversationId, createdAt])
   @@index([workspaceId, status])
+  @@index([agentTeamRunId])
 }
 
 model AnalysisEvidence {
