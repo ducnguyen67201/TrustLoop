@@ -42,6 +42,7 @@ model Workspace {
   agentTeamRuns            AgentTeamRun[]
   agentTeamRunEvents       AgentTeamRunEvent[]
   agentTeamMetrics         WorkspaceAgentMetrics[]
+  mcpServers               WorkspaceMcpServer[]
   supportConversationSessionMatches SupportConversationSessionMatch[]
   draftDispatches          DraftDispatch[]
   supportAttachments       SupportMessageAttachment[]
