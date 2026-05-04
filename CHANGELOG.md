@@ -2,6 +2,23 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.16.4] - 2026-05-03
+
+### Added
+- **Inbox now shows "Draft PR opened: #N →" pills when the AI agent files a PR.**
+  Every successful `createDraftPullRequest` writes an `AgentPullRequest`
+  audit row that links back to the originating conversation and analysis.
+  The analysis panel renders one link per PR, so multi-PR analyses
+  (e.g. fix + tests in separate PRs) are all surfaced.
+
+### Changed
+- **Agent tools no longer accept `workspaceId` from the LLM.** Each tool
+  ships as a factory (`buildSearchCodeTool`, `buildCreatePullRequestTool`,
+  `buildSearchSentryTool`) that closes over the per-request workspaceId.
+  The analyze and team-turn prompts no longer include a `WORKSPACE_ID:`
+  line. A hallucinated workspaceId in tool args can no longer cross
+  tenants.
+
 ## [0.2.16.3] - 2026-05-03
 
 ### Tests
