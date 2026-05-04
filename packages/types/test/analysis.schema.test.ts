@@ -10,9 +10,7 @@ import {
   approveDraftInputSchema,
   dismissDraftInputSchema,
   draftStatusSchema,
-  supportAnalysisWorkflowInputSchema,
-  supportAnalysisWorkflowResultSchema,
-  triggerAnalysisInputSchema,
+  getLatestAnalysisInputSchema,
 } from "@shared/types";
 import { describe, expect, it } from "vitest";
 
@@ -139,50 +137,9 @@ describe("agentOutputSchema", () => {
   });
 });
 
-describe("workflow schemas", () => {
-  it("supportAnalysisWorkflowInputSchema validates", () => {
-    const result = supportAnalysisWorkflowInputSchema.parse({
-      workspaceId: "ws_1",
-      conversationId: "conv_1",
-    });
-    expect(result.workspaceId).toBe("ws_1");
-  });
-
-  it("supportAnalysisWorkflowInputSchema rejects empty IDs", () => {
-    expect(() =>
-      supportAnalysisWorkflowInputSchema.parse({
-        workspaceId: "",
-        conversationId: "conv_1",
-      })
-    ).toThrow();
-  });
-
-  it("supportAnalysisWorkflowResultSchema validates", () => {
-    const result = supportAnalysisWorkflowResultSchema.parse({
-      analysisId: "an_1",
-      draftId: "dr_1",
-      status: "ANALYZED",
-      confidence: 0.9,
-      toolCallCount: 5,
-    });
-    expect(result.status).toBe("ANALYZED");
-  });
-
-  it("supportAnalysisWorkflowResultSchema accepts null draftId", () => {
-    const result = supportAnalysisWorkflowResultSchema.parse({
-      analysisId: "an_1",
-      draftId: null,
-      status: "NEEDS_CONTEXT",
-      confidence: 0.3,
-      toolCallCount: 2,
-    });
-    expect(result.draftId).toBeNull();
-  });
-});
-
 describe("tRPC input schemas", () => {
-  it("triggerAnalysisInputSchema validates", () => {
-    expect(triggerAnalysisInputSchema.parse({ conversationId: "conv_1" })).toEqual({
+  it("getLatestAnalysisInputSchema validates", () => {
+    expect(getLatestAnalysisInputSchema.parse({ conversationId: "conv_1" })).toEqual({
       conversationId: "conv_1",
     });
   });

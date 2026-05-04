@@ -1,22 +1,19 @@
 import { timingSafeEqual } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { env } from "@shared/env";
-import { agentTeamRoleTurnInputSchema, analyzeRequestSchema } from "@shared/types";
+import { agentTeamRoleTurnInputSchema } from "@shared/types";
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
 
-import { runAnalysis, runTeamTurn } from "./agent";
+import { runTeamTurn } from "./agent";
 import { listProviders } from "./providers";
 
 export const app = new Hono();
 
-// Service-key auth for the agent service. The /analyze and /team-turn
-// endpoints accept workspaceId, conversationId, and analysisId from the
-// request body — those values flow into Octokit calls and DB writes
-// scoped to that workspace, so the body must come from a trusted caller.
-// Mirrors withServiceAuth in packages/rest/src/security/rest-auth.ts but
-// implemented for Hono. The queue worker is the only legitimate caller;
-// it forwards INTERNAL_SERVICE_KEY in the Authorization header.
+// Service-key auth for the agent service. The /team-turn endpoint accepts
+// workspaceId and conversationId from the request body, so the body must come
+// from a trusted caller. Mirrors withServiceAuth in packages/rest/src/security/rest-auth.ts
+// but implemented for Hono.
 const SERVICE_KEY_PREFIX = "tli_";
 
 function isServiceKeyFormat(token: string): boolean {
@@ -49,20 +46,10 @@ app.get("/health", (c) => c.json({ ok: true, service: "agents" }));
 
 app.get("/providers", (c) => c.json(listProviders()));
 
-app.post("/analyze", requireServiceKey, async (c) => {
-  try {
-    const body = analyzeRequestSchema.parse(await c.req.json());
-    const result = await runAnalysis(body);
-    return c.json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : undefined;
-    console.error("[agents] Analysis failed:", message);
-    if (stack) console.error("[agents] Stack:", stack);
-    return c.json({ error: message }, 500);
-  }
-});
-
+// Note: the /analyze HTTP route was removed when the agent-team-only pipeline
+// took over. runAnalysis is still exported from agent.ts and called as a
+// function by runTeamTurn's drafter short-circuit. Keeping it as an HTTP
+// endpoint after the cutover would have been dead surface area.
 app.post("/team-turn", requireServiceKey, async (c) => {
   try {
     const body = agentTeamRoleTurnInputSchema.parse(await c.req.json());

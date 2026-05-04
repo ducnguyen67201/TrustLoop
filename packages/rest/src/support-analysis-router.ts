@@ -6,23 +6,22 @@ import {
   WORKSPACE_ROLE,
   approveDraftInputSchema,
   dismissDraftInputSchema,
-  triggerAnalysisInputSchema,
+  getLatestAnalysisInputSchema,
 } from "@shared/types";
 import { z } from "zod";
 
-// Note: the tRPC procedure names below (triggerAnalysis, approveDraft,
-// dismissDraft, getLatestAnalysis) are the PUBLIC API the frontend calls,
-// and stay unchanged. Only the internal service function calls were
-// renamed under the service-layer convention. See docs/conventions/service-layer-conventions.md.
+// Post-cutover this router serves only as the read/approve/dismiss path for
+// SupportAnalysis + SupportDraft rows. The trigger procedure was removed when
+// the agent-team-only pipeline replaced support-analysis as the dispatch path
+// (the frontend now calls agentTeam.startRun({ teamConfig: 'FAST' }) directly,
+// and the auto-trigger workflow dispatches via run-service.start). Drafter
+// output is projected onto SupportAnalysis/SupportDraft from
+// markRunCompleted, and the existing approve/dismiss flow keeps working
+// against those projection rows unchanged.
 export function createSupportAnalysisRouter(dispatcher: WorkflowDispatcher) {
   const operatorProcedure = workspaceRoleProcedure(WORKSPACE_ROLE.MEMBER);
 
   return router({
-    triggerAnalysis: operatorProcedure
-      .input(triggerAnalysisInputSchema)
-      .mutation(({ ctx, input }) =>
-        supportAnalysis.trigger({ ...input, workspaceId: ctx.workspaceId }, dispatcher)
-      ),
     approveDraft: operatorProcedure.input(approveDraftInputSchema).mutation(({ ctx, input }) =>
       supportAnalysis.approveDraft(
         {
@@ -41,7 +40,7 @@ export function createSupportAnalysisRouter(dispatcher: WorkflowDispatcher) {
       })
     ),
     getLatestAnalysis: operatorProcedure
-      .input(triggerAnalysisInputSchema)
+      .input(getLatestAnalysisInputSchema)
       .query(({ ctx, input }) => supportAnalysis.getLatest(input.conversationId, ctx.workspaceId)),
     // Draft PRs the AI agent has opened against this conversation. Drives the
     // "Draft PR opened: #N →" pill in the analysis panel. Empty list when the

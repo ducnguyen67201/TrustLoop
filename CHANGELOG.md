@@ -2,6 +2,52 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.17.5] - 2026-05-04
+
+### Removed
+- **Legacy single-agent `support-analysis` workflow rollback artifacts.**
+  After three releases of the agent-team-only pipeline (v0.2.17.1 cutover,
+  v0.2.17.3 FSM hardening, v0.2.17.4 idempotency fixes) running in
+  production without rollback, the legacy code is deleted.
+  - `apps/queue/src/domains/support/support-analysis.workflow.ts` and
+    `support-analysis.activity.ts` — the orchestrator + activities. Not
+    reached by the live code path since v0.2.17.1.
+  - `apps/queue/test/support-analysis.activity.test.ts` — tested the
+    deleted activity.
+  - `WorkflowDispatcher.startSupportAnalysisWorkflow` method and its
+    Temporal binding in `temporal-dispatcher.ts`.
+  - `support-analysis` discriminator branch from `workflow-router.ts` and
+    the matching `workflowDispatchSchema` member.
+  - `supportAnalysisWorkflowInputSchema` /
+    `supportAnalysisWorkflowResultSchema` and the `supportAnalysis`
+    workflow name from `workflow.schema.ts`.
+  - `supportAnalysis.triggerAnalysis` tRPC mutation and its
+    `supportAnalysis.trigger` service backing.
+  - `triggerAnalysisInputSchema` / `triggerAnalysisResultSchema` from
+    support-analysis schema (frontend renamed its input to
+    `getLatestAnalysisInputSchema` to match its only remaining caller).
+  - `POST /analyze` HTTP route on the agents service. The `runAnalysis`
+    function stays — it's still called as a function by `runTeamTurn`'s
+    drafter short-circuit.
+  - Worker registration entries for the deleted workflow + activities in
+    `apps/queue/src/runtime/{workflows,activities}.ts`.
+  - Test mocks of `startSupportAnalysisWorkflow` removed from
+    `agent-team-run-service.test.ts`, `agent-team-resume-run.test.ts`,
+    `workflow-router.test.ts`, and `procedure-auth.test.ts`.
+
+### Notes
+- `SupportAnalysis` and `SupportDraft` Prisma models stay — they're now
+  derived projections written by `markRunCompleted` from drafter output.
+  The right-rail UI reads them unchanged via
+  `supportAnalysis.getLatestAnalysis` and approve/dismiss still operate on
+  `SupportDraft` rows.
+- The `runAnalysis` function in `apps/agents/src/agent.ts` and the
+  `support-analysis*.ts` prompt files stay — they're still the LLM call
+  the drafter delegates to. Quality unchanged.
+- Rollback path: the prior cutover commits would need to be reverted
+  along with this one. After three stable releases, that's not a path
+  worth keeping the dead code for.
+
 ## [0.2.17.4] - 2026-05-04
 
 ### Fixed
