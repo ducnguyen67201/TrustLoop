@@ -324,7 +324,13 @@ async function callAgentService(input: AnalysisAgentInput, config: { toneConfig:
   const agentUrl = env.AGENT_SERVICE_URL ?? "http://localhost:3100";
   const response = await fetch(`${agentUrl}/analyze`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // Service-key auth: the agent service trusts workspaceId from the
+      // body and turns it into Octokit calls + DB writes. Without this
+      // header any caller on the network could impersonate any tenant.
+      Authorization: `Bearer ${env.INTERNAL_SERVICE_KEY}`,
+    },
     body: JSON.stringify({
       workspaceId: input.workspaceId,
       conversationId: input.conversationId,
