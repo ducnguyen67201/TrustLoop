@@ -154,6 +154,24 @@ describe("SessionTab integration", () => {
     expect(sdkLink?.getAttribute("href")).toBe("/docs/sdk-install");
   });
 
+  it("wires the empty-state Re-attach AI button and shows a completed no-match message", () => {
+    const onRecorrelateSession = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SessionTab
+        {...defaultProps}
+        onRecorrelateSession={onRecorrelateSession}
+        sessionActionMessage="AI re-check finished, but no matching browser session was found."
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Re-attach \(AI\)/ }));
+
+    expect(onRecorrelateSession).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText("AI re-check finished, but no matching browser session was found.")
+    ).toBeDefined();
+  });
+
   it("renders the populated capsule + timeline + replay button when matched", () => {
     render(<SessionTab {...matchedProps} />);
     expect(screen.getByText("Support evidence")).toBeDefined();

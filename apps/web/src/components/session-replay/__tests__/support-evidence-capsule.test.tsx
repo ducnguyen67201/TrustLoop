@@ -97,6 +97,15 @@ describe("SupportEvidenceCapsule", () => {
     expect(screen.getByText("No browser session matched")).toBeDefined();
   });
 
+  it("shows the re-correlation no-match message in the empty state", () => {
+    renderCapsule({
+      sessionActionMessage: "AI re-check finished, but no matching browser session was found.",
+    });
+    expect(
+      screen.getByText("AI re-check finished, but no matching browser session was found.")
+    ).toBeDefined();
+  });
+
   it("renders the populated capsule when a session is attached with evidence", () => {
     renderCapsule({
       session: baseSession,

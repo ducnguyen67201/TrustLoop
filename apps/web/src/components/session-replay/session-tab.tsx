@@ -35,6 +35,7 @@ interface SessionTabProps {
   isDetachingSession?: boolean;
   isRecorrelatingSession?: boolean;
   sessionActionError?: string | null;
+  sessionActionMessage?: string | null;
   onAttachSession: (sessionRecordId: string) => Promise<void>;
   onDetachSession?: () => Promise<void>;
   onRecorrelateSession?: () => Promise<void>;
@@ -63,6 +64,7 @@ export function SessionTab({
   isDetachingSession = false,
   isRecorrelatingSession = false,
   sessionActionError = null,
+  sessionActionMessage = null,
   onAttachSession,
   onDetachSession,
   onRecorrelateSession,
@@ -103,6 +105,7 @@ export function SessionTab({
           isDetachingSession={isDetachingSession}
           isRecorrelatingSession={isRecorrelatingSession}
           sessionActionError={sessionActionError}
+          sessionActionMessage={sessionActionMessage}
           error={error}
           match={match}
           session={session}
@@ -133,6 +136,7 @@ export function SessionTab({
         isDetachingSession={isDetachingSession}
         isRecorrelatingSession={isRecorrelatingSession}
         sessionActionError={sessionActionError}
+        sessionActionMessage={sessionActionMessage}
         error={error}
         match={match}
         session={session}

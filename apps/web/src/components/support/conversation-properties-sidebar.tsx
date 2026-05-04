@@ -247,6 +247,7 @@ export function ConversationPropertiesSidebar({
           isDetachingSession={sessionReplay.isDetachingSession}
           isRecorrelatingSession={sessionReplay.isRecorrelatingSession}
           sessionActionError={sessionReplay.sessionActionError}
+          sessionActionMessage={sessionReplay.sessionActionMessage}
           onAttachSession={sessionReplay.attachSession}
           onDetachSession={sessionReplay.detachSession}
           onRecorrelateSession={sessionReplay.recorrelateSession}
