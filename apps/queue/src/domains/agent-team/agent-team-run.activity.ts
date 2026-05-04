@@ -44,7 +44,9 @@ import {
   agentTeamRoleInboxSchema,
   agentTeamRoleTurnInputSchema,
   agentTeamRoleTurnOutputSchema,
+  restoreAgentTeamRunContext,
   restoreDraftContext,
+  transitionAgentTeamRun,
   transitionDraft,
 } from "@shared/types";
 import { heartbeat } from "@temporalio/activity";
@@ -100,13 +102,21 @@ export async function initializeRunState(
   const initialRole = selectInitialRole(input.teamSnapshot);
 
   const recordedEvent = await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: input.runId },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      { type: "start" }
+    );
     const run = await tx.agentTeamRun.update({
       where: { id: input.runId },
       data: {
-        status: AGENT_TEAM_RUN_STATUS.running,
+        status: next.status,
+        errorMessage: next.errorMessage,
         startedAt: new Date(),
         completedAt: null,
-        errorMessage: null,
       },
       select: {
         id: true,
@@ -633,12 +643,20 @@ export async function getRunProgress(runId: string): Promise<RunProgressSnapshot
 
 export async function markRunCompleted(runId: string): Promise<void> {
   const event = await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: runId },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      { type: "complete" }
+    );
     const run = await tx.agentTeamRun.update({
       where: { id: runId },
       data: {
-        status: AGENT_TEAM_RUN_STATUS.completed,
+        status: next.status,
+        errorMessage: next.errorMessage,
         completedAt: new Date(),
-        errorMessage: null,
       },
       select: {
         id: true,
@@ -779,23 +797,41 @@ async function projectFastRunToSupportAnalysis(
 export async function markRunWaiting(runId: string): Promise<void> {
   // Waiting is a re-entrant pause, not a terminal state. No event emitted;
   // the next initializeRunState/claimNext cycle will emit role_queued events.
-  await prisma.agentTeamRun.update({
-    where: { id: runId },
-    data: {
-      status: AGENT_TEAM_RUN_STATUS.waiting,
-      completedAt: null,
-    },
+  await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: runId },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      { type: "waitForResolution" }
+    );
+    await tx.agentTeamRun.update({
+      where: { id: runId },
+      data: {
+        status: next.status,
+        completedAt: null,
+      },
+    });
   });
 }
 
 export async function markRunFailed(input: { runId: string; errorMessage: string }): Promise<void> {
   const event = await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: input.runId },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      { type: "fail", error: input.errorMessage }
+    );
     const run = await tx.agentTeamRun.update({
       where: { id: input.runId },
       data: {
-        status: AGENT_TEAM_RUN_STATUS.failed,
+        status: next.status,
+        errorMessage: next.errorMessage,
         completedAt: new Date(),
-        errorMessage: input.errorMessage,
       },
       select: { id: true, workspaceId: true, startedAt: true, completedAt: true },
     });

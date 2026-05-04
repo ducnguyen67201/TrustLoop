@@ -257,7 +257,13 @@ describe("resumeRun", () => {
     vi.clearAllMocks();
     mockTransaction.mockImplementation(async (cb: (t: unknown) => unknown) =>
       cb({
-        agentTeamRun: { update: mockUpdateRun },
+        agentTeamRun: {
+          update: mockUpdateRun,
+          // FSM-driven status writes read current status before each update.
+          findUniqueOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: "run_1", status: "waiting", errorMessage: null }),
+        },
         agentTeamRunEvent: { createManyAndReturn: mockCreateManyAndReturnEvent },
       })
     );

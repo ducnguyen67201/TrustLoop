@@ -2,6 +2,42 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.17.3] - 2026-05-04
+
+### Changed
+- **AgentTeamRun status now driven by a finite-state machine.** Mirrors the
+  existing `draft-state-machine.ts` pattern using the shared `defineFsm`
+  helper. Replaces five scattered `status: AGENT_TEAM_RUN_STATUS.*` direct
+  writes (in `run-service.start`, `initializeRunState`, `markRunCompleted`,
+  `markRunWaiting`, `markRunFailed`, and the resume path in `resume-run.ts`)
+  with `transitionAgentTeamRun(ctx, event)` calls. Illegal transitions
+  (e.g. completed → resume, queued → complete) now throw
+  `InvalidAgentTeamRunTransitionError` at the call site instead of
+  silently corrupting state.
+
+### Added
+- **`packages/types/src/agent-team/state-machines/agent-team-run-state-machine.ts`.**
+  States: `queued | running | waiting | completed | failed`. Events:
+  `start | complete | waitForResolution | fail | resume`. Terminal:
+  `completed`, `failed`. Public API: `createAgentTeamRunContext`,
+  `restoreAgentTeamRunContext`, `transitionAgentTeamRun`,
+  `getAllowedAgentTeamRunEvents`, plus the
+  `InvalidAgentTeamRunTransitionError` class for `instanceof` checks at
+  service-layer error translation boundaries.
+- **15 new unit tests** in `packages/types/test/state-machines.test.ts`
+  covering every valid transition, every terminal-state rejection, and
+  the `getAllowedAgentTeamRunEvents` reflection of current state.
+
+### Notes
+- The FSM event type is named `AgentTeamRunFsmEvent` (not
+  `AgentTeamRunEvent`) to avoid colliding with the existing event-log
+  `AgentTeamRunEvent` discriminated union — they live in adjacent
+  modules and are conceptually different layers.
+- Test fixtures across `packages/rest/test/*` still use string literals
+  for `AgentTeamRun.status` (e.g. `status: "queued"` instead of
+  `AGENT_TEAM_RUN_STATUS.queued`). The literal-to-enum sweep is a
+  separate housekeeping refactor — not blocking.
+
 ## [0.2.17.2] - 2026-05-03
 
 ### Changed
