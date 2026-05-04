@@ -3,16 +3,6 @@ import * as agentTeamRuns from "@shared/rest/services/agent-team/run-service";
 import { temporalWorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import { AGENT_TEAM_CONFIG, ANALYSIS_STATUS, ANALYSIS_TRIGGER_MODE } from "@shared/types";
 
-// Pipeline feature flag. When true, the auto-trigger dispatches the agent-team
-// FAST run; when false (default), falls back to the legacy support-analysis
-// workflow. Defaults to false in this PR because the UI still reads
-// SupportAnalysis rows directly — the UI migration to DraftProjection lands in
-// the follow-up PR. Operators can flip AGENT_TEAM_AS_DEFAULT_PIPELINE=true in
-// a test workspace to validate end-to-end before flipping the default.
-function agentTeamIsDefaultPipeline(): boolean {
-  return (process.env.AGENT_TEAM_AS_DEFAULT_PIPELINE ?? "false").toLowerCase() === "true";
-}
-
 /**
  * Check if the workspace has auto-analysis enabled.
  * Reads the analysisTriggerMode from workspace settings.
@@ -33,11 +23,15 @@ export async function shouldAutoTrigger(workspaceId: string): Promise<boolean> {
  * - Conversation has at least one grouping anchor with windowExpiresAt < now
  * - No SupportAnalysis exists with status ANALYZING or ANALYZED
  * - Conversation status is not DONE (no point analyzing closed threads)
+ *
+ * Historical-row check still references SupportAnalysis: pre-cutover rows
+ * exist there. The agent-team-only pipeline writes to AgentTeamRun instead,
+ * but pre-existing SupportAnalysis rows are still authoritative for
+ * backfill-state checks until they age out.
  */
 export async function findConversationsReadyForAnalysis(workspaceId: string): Promise<string[]> {
   const now = new Date();
 
-  // Find conversations with expired grouping windows
   const expiredAnchors = await prisma.supportGroupingAnchor.findMany({
     where: {
       workspaceId,
@@ -53,7 +47,6 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
     (anchor: { conversationId: string }) => anchor.conversationId
   );
 
-  // Filter out conversations that already have an analysis
   const alreadyAnalyzed = await prisma.supportAnalysis.findMany({
     where: {
       conversationId: { in: candidateIds },
@@ -69,7 +62,6 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
     alreadyAnalyzed.map((analysis: { conversationId: string }) => analysis.conversationId)
   );
 
-  // Filter out DONE conversations
   const activeConversations = await prisma.supportConversation.findMany({
     where: {
       id: { in: candidateIds },
@@ -84,20 +76,12 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
 }
 
 /**
- * Dispatch a single conversation for AI processing.
+ * Dispatch a single conversation for AI processing via the agent-team FAST
+ * pipeline. The drafter role delegates to the legacy support-analysis prompt
+ * inside the agent service, so quality is identical by construction.
  *
- * Default path (agent-team-only pipeline): dispatches an agent-team run with
- * teamConfig=FAST. The drafter role inside the agent service delegates to the
- * same support-analysis prompt that the legacy /analyze endpoint uses, so
- * quality is identical by construction.
- *
- * Legacy path (rollback): when env AGENT_TEAM_AS_DEFAULT_PIPELINE=false, the
- * old support-analysis workflow runs instead. This exists so a regression in
- * the agent-team path can be rolled back without a deploy.
- *
- * Both paths are idempotent: the agent-team path uses run-service's queued|
- * running dedupe guard plus the deterministic Temporal workflow ID. The legacy
- * path uses the workflow ID alone.
+ * Idempotent: run-service's queued|running dedupe guard plus the deterministic
+ * Temporal workflow ID short-circuit duplicate dispatches.
  */
 export async function dispatchAnalysis(input: {
   workspaceId: string;
@@ -108,31 +92,17 @@ export async function dispatchAnalysis(input: {
     return;
   }
 
-  if (agentTeamIsDefaultPipeline()) {
-    try {
-      await agentTeamRuns.start(
-        {
-          workspaceId: input.workspaceId,
-          conversationId: input.conversationId,
-          teamConfig: AGENT_TEAM_CONFIG.FAST,
-        },
-        temporalWorkflowDispatcher
-      );
-    } catch {
-      // Dedupe matched an in-flight run, or the workspace has no default team
-      // configured. Either way, autoanalysis stays a best-effort path — log
-      // upstream if needed; never throw out of the trigger.
-    }
-    return;
-  }
-
   try {
-    await temporalWorkflowDispatcher.startSupportAnalysisWorkflow({
-      workspaceId: input.workspaceId,
-      conversationId: input.conversationId,
-      triggerType: "AUTO",
-    });
+    await agentTeamRuns.start(
+      {
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        teamConfig: AGENT_TEAM_CONFIG.FAST,
+      },
+      temporalWorkflowDispatcher
+    );
   } catch {
-    // Workflow already running or completed for this conversation. Fine.
+    // Dedupe matched an in-flight run, or the workspace has no default team
+    // configured. Auto-analysis is a best-effort path — never throw.
   }
 }
