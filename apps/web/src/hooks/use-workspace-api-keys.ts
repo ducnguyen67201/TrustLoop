@@ -32,20 +32,20 @@ export function useWorkspaceApiKeys() {
     }
   }, []);
 
-  const createKey = useCallback(
-    async (input: WorkspaceApiKeyCreateRequest) => {
-      setError(null);
+  const createKey = useCallback(async (input: WorkspaceApiKeyCreateRequest) => {
+    setError(null);
 
-      const result = await trpcMutation<
-        WorkspaceApiKeyCreateRequest,
-        WorkspaceApiKeyCreateResponse
-      >("workspaceApiKey.create", input, { withCsrf: true });
+    const result = await trpcMutation<WorkspaceApiKeyCreateRequest, WorkspaceApiKeyCreateResponse>(
+      "workspaceApiKey.create",
+      input,
+      { withCsrf: true }
+    );
 
-      await refresh();
-      return result;
-    },
-    [refresh]
-  );
+    setData((current) => ({
+      keys: current ? [result.key, ...current.keys] : [result.key],
+    }));
+    return result;
+  }, []);
 
   const revokeKey = useCallback(
     async (keyId: string) => {
