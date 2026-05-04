@@ -3,7 +3,6 @@ import {
   type AgentTeamRunWorkflowInput,
   type RepositoryIndexWorkflowInput,
   type SendDraftToSlackInput,
-  type SupportAnalysisWorkflowInput,
   type SupportSummaryWorkflowInput,
   type SupportWorkflowInput,
   TASK_QUEUES,
@@ -16,9 +15,6 @@ import { buildTemporalConnectionOptions } from "./temporal-connection";
 
 export interface WorkflowDispatcher {
   startSupportWorkflow(input: SupportWorkflowInput): Promise<WorkflowDispatchResponse>;
-  startSupportAnalysisWorkflow(
-    input: SupportAnalysisWorkflowInput
-  ): Promise<WorkflowDispatchResponse>;
   startAgentTeamRunWorkflow(input: AgentTeamRunWorkflowInput): Promise<WorkflowDispatchResponse>;
   startAgentTeamRunResumeWorkflow(
     input: AgentTeamRunWorkflowInput & { resumeNonce: string }
@@ -64,21 +60,6 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
     const client = await getClient();
     const workflowId = `support-ingress-${input.canonicalIdempotencyKey}`;
     const handle = await client.workflow.start(workflowNames.supportInbox, {
-      args: [input],
-      taskQueue: TASK_QUEUES.SUPPORT,
-      workflowId,
-    });
-
-    return workflowDispatchResponseSchema.parse({
-      workflowId,
-      runId: handle.firstExecutionRunId,
-      queue: TASK_QUEUES.SUPPORT,
-    });
-  },
-  async startSupportAnalysisWorkflow(input) {
-    const client = await getClient();
-    const workflowId = `support-analysis-${input.conversationId}-${Date.now()}`;
-    const handle = await client.workflow.start(workflowNames.supportAnalysis, {
       args: [input],
       taskQueue: TASK_QUEUES.SUPPORT,
       workflowId,

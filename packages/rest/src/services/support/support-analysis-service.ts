@@ -1,8 +1,6 @@
 import { prisma } from "@shared/database";
-import * as llmManager from "@shared/rest/services/llm-manager-service";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
-  ANALYSIS_STATUS,
   type ApproveDraftInput,
   ConflictError,
   DRAFT_DISPATCH_KIND,
@@ -11,8 +9,6 @@ import {
   type DismissDraftInput,
   type DraftStatus,
   InvalidDraftTransitionError,
-  LLM_USE_CASE,
-  type TriggerAnalysisInput,
   ValidationError,
   restoreDraftContext,
   transitionDraft,
@@ -21,28 +17,20 @@ import {
 // ---------------------------------------------------------------------------
 // supportAnalysis service
 //
-// Commands over SupportAnalysis / SupportDraft: trigger a new analysis,
-// approve or dismiss a drafted reply, read the latest analysis for a
-// conversation. Import as a namespace:
+// Read + approve/dismiss path for SupportAnalysis / SupportDraft rows. The
+// trigger function was removed when the agent-team-only pipeline took over —
+// SupportAnalysis is now a derived projection of agent-team runs, written by
+// markRunCompleted from the drafter's proposal. The router still exposes
+// approveDraft, dismissDraft, and getLatestAnalysis as the operator UI's
+// public API.
 //
 //   import * as supportAnalysis from "@shared/rest/services/support/support-analysis-service";
-//   await supportAnalysis.trigger(input, dispatcher);
-//   await supportAnalysis.approveDraft(input);
+//   await supportAnalysis.approveDraft(input, dispatcher);
 //   await supportAnalysis.dismissDraft(input);
 //   const latest = await supportAnalysis.getLatest(conversationId, workspaceId);
 //
-// Note: tRPC procedure names in support-analysis-router.ts stay unchanged
-// (they're the public API the frontend calls). Only the internal function
-// names are migrated here.
-//
 // See docs/conventions/service-layer-conventions.md.
 // ---------------------------------------------------------------------------
-
-export interface TriggerAnalysisResult {
-  analysisId: string | null;
-  workflowId: string;
-  alreadyInProgress: boolean;
-}
 
 /**
  * Route a draft state change through the draft state machine, translating
@@ -63,64 +51,6 @@ function tryDraftTransition(
     }
     throw err;
   }
-}
-
-export async function trigger(
-  input: TriggerAnalysisInput & { workspaceId: string },
-  dispatcher: WorkflowDispatcher
-): Promise<TriggerAnalysisResult> {
-  // Capability check: fail early if no configured provider can serve this route.
-  if (!llmManager.hasRouteForUseCase(LLM_USE_CASE.supportAnalysis)) {
-    throw new ValidationError(
-      "AI analysis is not configured. Set OPENAI_API_KEY or OPENROUTER_API_KEY in environment variables."
-    );
-  }
-
-  // Verify conversation exists in this workspace
-  const conversation = await prisma.supportConversation.findFirst({
-    where: { id: input.conversationId, workspaceId: input.workspaceId },
-  });
-  if (!conversation) {
-    throw new ConflictError("Conversation not found in this workspace.");
-  }
-
-  // Check for at least one indexed repository
-  const indexedRepo = await prisma.repositoryIndexVersion.findFirst({
-    where: { workspaceId: input.workspaceId, status: "active" },
-  });
-  if (!indexedRepo) {
-    throw new ConflictError(
-      "No indexed repositories found. Connect and sync a GitHub repository first."
-    );
-  }
-
-  // Check for in-progress analysis (dedup)
-  const existingAnalysis = await prisma.supportAnalysis.findFirst({
-    where: {
-      conversationId: input.conversationId,
-      status: { in: [ANALYSIS_STATUS.gatheringContext, ANALYSIS_STATUS.analyzing] },
-    },
-  });
-  if (existingAnalysis) {
-    return {
-      analysisId: existingAnalysis.id,
-      workflowId: "",
-      alreadyInProgress: true,
-    };
-  }
-
-  // Dispatch workflow
-  const dispatchResult = await dispatcher.startSupportAnalysisWorkflow({
-    workspaceId: input.workspaceId,
-    conversationId: input.conversationId,
-    triggerType: "MANUAL",
-  });
-
-  return {
-    analysisId: null,
-    workflowId: dispatchResult.workflowId,
-    alreadyInProgress: false,
-  };
 }
 
 export async function approveDraft(

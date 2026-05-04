@@ -25,7 +25,6 @@ const agentTeamRuns = await import("@shared/rest/services/agent-team/run-service
 function createDispatcher(): WorkflowDispatcher {
   return {
     startSupportWorkflow: vi.fn(),
-    startSupportAnalysisWorkflow: vi.fn(),
     startSupportSummaryWorkflow: vi.fn(),
     startRepositoryIndexWorkflow: vi.fn(),
     startSendDraftToSlackWorkflow: vi.fn(),
