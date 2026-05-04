@@ -153,7 +153,7 @@ The support inbox shows an operator-first `SupportEvidence` capsule before the r
 - Last route and event-window metadata (`returned`, `total`, `isTruncated`, `mode: "latest"`)
 - Copy-safe repro and escalation snippets with URLs, emails, credentials, and long token-like values redacted
 
-The UI treats the capsule as the summary and the rrweb player as proof. Operators can copy repro/escalation text, open the replay at the primary signal or a listed event, and manually attach or change the selected session. Fuzzy matches remain visibly marked so operators verify the match before quoting session evidence to a customer.
+The UI treats the capsule as the summary and the rrweb player as proof. Operators can copy repro/escalation text, open the replay at the primary signal or a listed event, manually attach or change the selected session, **detach the current session** (works for auto-correlated, fuzzy, and manual matches alike), and **re-run the AI matcher on demand** when no session is attached. Detach flips `isPrimary: false` on the match row — the row stays as audit history, so a future auto-correlation can still rediscover that session if its signals win again. Fuzzy matches remain visibly marked so operators verify the match before quoting session evidence to a customer.
 
 ## What the agent sees
 
@@ -175,7 +175,7 @@ Wiring rrweb chunks into the prompt is flagged as P2 in `TODOS.md` → "Wire rrw
 
 ## Known thin spots
 
-- **Manual linking is operator-only.** Operators can override the primary session from the inbox, and manual matches are treated as strong enough for analysis attachment. There is no customer-facing self-serve correction path.
+- **Manual linking is operator-only.** Operators can override, detach, or ask the matcher to re-run from the inbox. Manual matches are treated as strong enough for analysis attachment. There is no customer-facing self-serve correction path.
 - **No direct `sessionId` on `SupportConversation`.** The durable link is `SupportConversationSessionMatch`, which preserves candidate history and avoids mutating `SessionRecord` with one conversation-specific foreign key.
 
 ## Invariants

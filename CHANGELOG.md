@@ -2,6 +2,30 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.17.6] - 2026-05-04
+
+### Added
+- **Detach + Re-attach (AI) operator buttons on the support-evidence capsule.**
+  Operators can now drop a session that the auto-matcher (or a teammate) pinned
+  to the wrong conversation, and ask the heuristic to take another swing without
+  reopening the conversation.
+  - **Detach** flips `isPrimary: false` on the match row — works for auto-confirmed,
+    fuzzy, and manual matches alike. The match row stays as audit history, so a
+    future auto-correlation can still rediscover that session if its signals win
+    again. New tRPC mutation: `sessionReplay.detachFromConversation`.
+  - **Re-attach (AI)** clears any current primary, then re-runs the auto-matcher
+    bypassing the manual short-circuit so heuristics can pick a fresh session
+    candidate. Renders in the empty state next to "Browse sessions". New tRPC
+    mutation: `sessionReplay.recorrelateForConversation`.
+  - Both mutations piggyback on the existing skeleton/loading state so the panel
+    feels responsive during in-flight work, and surface failures via a new
+    `sessionActionError` field in the capsule.
+
+### Changed
+- **`docs/concepts/session-replay-capture.md` updated** to describe the new
+  detach + re-attach affordances and clarify that detach is audit-preserving
+  rather than destructive.
+
 ## [0.2.17.5] - 2026-05-04
 
 ### Removed
