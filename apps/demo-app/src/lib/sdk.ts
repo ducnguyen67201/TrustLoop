@@ -1,7 +1,6 @@
 import { TrustLoop } from "@trustloop/sdk";
 
-const INGEST_URL =
-  process.env.NEXT_PUBLIC_TRUSTLOOP_INGEST_URL ?? "http://localhost:3000/api/rest/sessions/ingest";
+const INGEST_URL = process.env.NEXT_PUBLIC_TRUSTLOOP_INGEST_URL ?? "http://localhost:3000";
 
 const API_KEY =
   process.env.NEXT_PUBLIC_TRUSTLOOP_API_KEY ??
