@@ -3,6 +3,7 @@
 import { useAgentTeamRunStream } from "@/hooks/use-agent-team-run-stream";
 import { trpcMutation, trpcQuery } from "@/lib/trpc-http";
 import {
+  AGENT_TEAM_CONFIG,
   AGENT_TEAM_RUN_STATUS,
   type AgentTeamRunSummary,
   type GetLatestAgentTeamRunInput,
@@ -74,7 +75,7 @@ export function useAgentTeamRun(
     try {
       const created = await trpcMutation<StartAgentTeamRunInput, AgentTeamRunSummary>(
         "agentTeam.startRun",
-        { conversationId },
+        { conversationId, teamConfig: AGENT_TEAM_CONFIG.DEEP },
         { withCsrf: true }
       );
       setRun(created);

@@ -283,9 +283,9 @@ export const analyzeResponseSchema = z.object({
 // ── tRPC Input Schemas ──────────────────────────────────────────────
 
 // Read-only lookup of the latest SupportAnalysis projection for a conversation.
-// Post-cutover, SupportAnalysis rows are written by markRunCompleted from the
-// agent-team workflow's drafter output — they're a derived projection of the
-// agent-team event log, not a primary table.
+// Post-cutover, SupportAnalysis rows are written by the agent-team workflow
+// from the team transcript — they're a compact summary projection, not a
+// primary execution table.
 export const getLatestAnalysisInputSchema = z.object({
   conversationId: z.string().min(1),
 });
