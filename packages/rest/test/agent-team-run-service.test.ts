@@ -1,4 +1,5 @@
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
+import { AGENT_TEAM_CONFIG } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockFindFirstTeam = vi.fn();
@@ -87,7 +88,7 @@ describe("agentTeamRuns.start", () => {
       teamId: "team_1",
       conversationId: "conv_1",
       analysisId: null,
-      teamConfig: "FAST",
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
       status: "queued",
       workflowId: null,
       startedAt: null,
@@ -110,7 +111,7 @@ describe("agentTeamRuns.start", () => {
       teamId: "team_1",
       conversationId: "conv_1",
       analysisId: null,
-      teamConfig: "FAST",
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
       status: "queued",
       workflowId: "agent-team-run-run_1",
       startedAt: null,
@@ -189,7 +190,7 @@ describe("agentTeamRuns.start", () => {
       teamId: "team_1",
       conversationId: "conv_1",
       analysisId: "analysis_99",
-      teamConfig: "FAST",
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
       status: "queued",
       workflowId: null,
       startedAt: null,
@@ -243,7 +244,7 @@ describe("agentTeamRuns.getRun", () => {
       teamId: "team_1",
       conversationId: "conv_1",
       analysisId: null,
-      teamConfig: "FAST",
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
       status: "running",
       workflowId: "agent-team-run-run_1",
       startedAt: createdAt,
@@ -356,7 +357,7 @@ describe("agentTeamRuns.getLatestRunForConversation", () => {
       teamId: "team_1",
       conversationId: "conv_1",
       analysisId: null,
-      teamConfig: "FAST",
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
       status: "waiting",
       workflowId: "agent-team-run-run_latest",
       startedAt: createdAt,
