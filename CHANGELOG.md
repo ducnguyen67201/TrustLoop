@@ -2,6 +2,30 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.16.5] - 2026-05-03
+
+### Changed
+- **API key creation dialog is now hard to close accidentally.** While the
+  request is in flight or the one-time secret is on screen, the dialog blocks
+  outside-click, Escape, and the X close button. The only way out during the
+  reveal is the explicit "I've saved my key" button. This prevents the most
+  common way to lose a one-time secret.
+- **The new key defaults to visible on first reveal.** This is the only chance
+  the user has to read it; making them click "show" first added friction
+  without protection.
+- **The reveal panel uses the destructive Alert variant** with stronger copy
+  warning that the secret cannot be recovered after closing.
+
+### Fixed
+- **Rapid double-click on "Create" no longer creates duplicate API keys.** A
+  synchronous in-flight ref rejects the second submission before React
+  re-renders the disabled button.
+
+### Added
+- **API keys settings page now explains the `tlk_<prefix>.<secret>` format**
+  with a persistent alert showing the exact bearer-token shape, so the auth
+  format is discoverable without reading docs.
+
 ## [0.2.16.3] - 2026-05-03
 
 ### Tests
