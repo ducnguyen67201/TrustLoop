@@ -1,3 +1,15 @@
+---
+title: "Agent MCP Tools"
+summary: "RCA sub-agent reads live customer state via customer-hosted MCP servers; per-workspace registry, append-only audit log, suggest/execute mode, AES-256-GCM bearer encryption."
+read_when:
+  - Wiring or debugging the RCA agent's MCP tool path in apps/agents
+  - Adding a new MCP transport, auth shape, or audit field
+  - Changing tool ID conventions or per-role allowlist semantics (mcp:<serverId>:* wildcard)
+  - Onboarding a customer-hosted MCP server (Postgres, Redis, Signoz, etc.)
+  - Touching the secret-encryption helper or planning a key-rotation runbook
+  - Building toward v2 (settings UI, suggest-mode resume API, PII redaction, hosted connectors)
+---
+
 # Agent MCP Tools
 
 The agent team's RCA sub-agent can call out to a customer-hosted MCP (Model Context Protocol) server during a run, fetch live state from the customer's systems (Postgres first, with Redis / Signoz / log platform extending later via the same interface), and fold the evidence into its draft. Every call is recorded in `WorkspaceMcpCall` as an append-only audit row, surfaced in the run-detail UI's "MCP" tab.
