@@ -6,7 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { RiAlertLine, RiFileCopyLine, RiPlayCircleLine, RiShieldCheckLine } from "@remixicon/react";
+import {
+  RiAlertLine,
+  RiFileCopyLine,
+  RiLinkUnlink,
+  RiMagicLine,
+  RiPlayCircleLine,
+  RiShieldCheckLine,
+} from "@remixicon/react";
 import {
   SESSION_MATCH_CONFIDENCE,
   SESSION_REPLAY_MATCH_SOURCE,
@@ -36,6 +43,17 @@ interface SupportEvidenceCapsuleProps {
   manualAttachControl: ReactNode;
   canViewProof: boolean;
   onViewProof: (eventId?: string, timestamp?: string) => void;
+  // Operator-initiated detach. When provided, a "Detach" button renders next
+  // to "View proof" so a bad auto-match or stale manual pin can be removed.
+  onDetachSession?: () => Promise<void> | void;
+  isDetachingSession?: boolean;
+  // Operator-initiated re-run of the auto-correlation heuristic. When
+  // provided, a "Re-attach (AI)" button renders both in the empty state and
+  // alongside Detach so operators can ask the system to take another swing
+  // without closing the conversation.
+  onRecorrelateSession?: () => Promise<void> | void;
+  isRecorrelatingSession?: boolean;
+  sessionActionError?: string | null;
 }
 
 interface EvidenceListItem {
@@ -66,6 +84,11 @@ export function SupportEvidenceCapsule({
   manualAttachControl,
   canViewProof,
   onViewProof,
+  onDetachSession,
+  isDetachingSession = false,
+  onRecorrelateSession,
+  isRecorrelatingSession = false,
+  sessionActionError = null,
 }: SupportEvidenceCapsuleProps) {
   const [copiedAction, setCopiedAction] = useState<"repro" | "escalation" | null>(null);
   const evidenceLists = useMemo(() => buildEvidenceLists(supportEvidence), [supportEvidence]);
@@ -93,11 +116,18 @@ export function SupportEvidenceCapsule({
     }
   }
 
-  // isAttachingSession piggybacks on the loading skeleton so the operator
-  // doesn't see stale "no session" copy during an attach mutation. The
-  // aria-live label tells screen readers which kind of wait this is.
-  if (isLoading || isAttachingSession) {
-    const liveLabel = isAttachingSession ? "Attaching session" : "Loading session evidence";
+  // Any in-flight session mutation piggybacks on the loading skeleton so the
+  // operator doesn't see stale data while attach/detach/re-run is mid-flight.
+  // The aria-live label tells screen readers which kind of wait this is.
+  const isMutatingSession = isAttachingSession || isDetachingSession || isRecorrelatingSession;
+  if (isLoading || isMutatingSession) {
+    const liveLabel = isAttachingSession
+      ? "Attaching session"
+      : isDetachingSession
+        ? "Detaching session"
+        : isRecorrelatingSession
+          ? "Re-running AI session match"
+          : "Loading session evidence";
     return (
       <Card size="sm" aria-busy="true" aria-live="polite" data-testid="capsule-loading">
         <span className="sr-only">{liveLabel}</span>
@@ -135,9 +165,26 @@ export function SupportEvidenceCapsule({
         <CardContent className="space-y-3">
           <p className="text-muted-foreground">
             No captured browser session matched this support thread. Attach a recent session if the
-            customer was using the product while they wrote in.
+            customer was using the product while they wrote in, or ask the AI matcher to take
+            another pass.
           </p>
-          <div>{manualAttachControl}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {onRecorrelateSession ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void onRecorrelateSession()}
+              >
+                <RiMagicLine className="size-3.5" />
+                Re-attach (AI)
+              </Button>
+            ) : null}
+            {manualAttachControl}
+          </div>
+          {sessionActionError ? (
+            <p className="text-xs text-destructive">{sessionActionError}</p>
+          ) : null}
         </CardContent>
       </Card>
     );
@@ -198,6 +245,17 @@ export function SupportEvidenceCapsule({
               <RiPlayCircleLine className="size-3.5" />
               View proof
             </Button>
+            {onDetachSession ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void onDetachSession()}
+              >
+                <RiLinkUnlink className="size-3.5" />
+                Detach
+              </Button>
+            ) : null}
             {manualAttachControl}
           </div>
         </div>
@@ -212,6 +270,9 @@ export function SupportEvidenceCapsule({
               ? "Possible session evidence. Verify the match before quoting this in a reply."
               : "Operator-attached session. Treat this as selected evidence, not identity-confirmed proof."}
           </div>
+        ) : null}
+        {sessionActionError ? (
+          <p className="text-xs text-destructive">{sessionActionError}</p>
         ) : null}
       </CardHeader>
       <CardContent className="space-y-4">

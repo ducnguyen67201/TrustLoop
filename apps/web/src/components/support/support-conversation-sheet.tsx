@@ -396,7 +396,12 @@ export function SupportConversationSheet({
                     replayLoadError={sessionReplay.replayLoadError}
                     isAttachingSession={sessionReplay.isAttachingSession}
                     attachSessionError={sessionReplay.attachSessionError}
+                    isDetachingSession={sessionReplay.isDetachingSession}
+                    isRecorrelatingSession={sessionReplay.isRecorrelatingSession}
+                    sessionActionError={sessionReplay.sessionActionError}
                     onAttachSession={sessionReplay.attachSession}
+                    onDetachSession={sessionReplay.detachSession}
+                    onRecorrelateSession={sessionReplay.recorrelateSession}
                     onRetryReplayLoad={sessionReplay.retryReplayLoad}
                     onLoadReplayChunks={sessionReplay.loadReplayChunks}
                   />
