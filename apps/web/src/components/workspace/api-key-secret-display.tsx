@@ -66,7 +66,8 @@ export function ApiKeyOneTimeSecretDisplay({
   secret,
   onCopyError,
 }: ApiKeyOneTimeSecretDisplayProps) {
-  const [isSecretVisible, setIsSecretVisible] = useState(false);
+  // Default visible: this is the only chance the user has to read the secret.
+  const [isSecretVisible, setIsSecretVisible] = useState(true);
   const [secretCopied, setSecretCopied] = useState(false);
 
   async function handleCopySecret(): Promise<void> {

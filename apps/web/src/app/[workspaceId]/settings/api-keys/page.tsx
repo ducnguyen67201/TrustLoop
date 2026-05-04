@@ -53,6 +53,20 @@ export default function WorkspaceApiKeysPage() {
             </Alert>
           ) : null}
 
+          <Alert>
+            <AlertTitle>Using your API key</AlertTitle>
+            <AlertDescription>
+              The full key has the format{" "}
+              <code className="font-mono">tlk_&lt;prefix&gt;.&lt;secret&gt;</code> — both halves
+              joined by a dot. Send it as{" "}
+              <code className="font-mono">
+                Authorization: Bearer tlk_&lt;prefix&gt;.&lt;secret&gt;
+              </code>
+              . The full secret is only shown once at creation. The table below lists prefixes only
+              — the prefix on its own will not authenticate.
+            </AlertDescription>
+          </Alert>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3">
               <div>
