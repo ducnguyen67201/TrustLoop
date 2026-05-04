@@ -154,7 +154,7 @@ export function MessageList({
         role="log"
         aria-live="polite"
       >
-        <div className="mx-auto max-w-3xl space-y-1">
+        <div className="max-w-3xl space-y-1">
           {topLevel.map((event) => {
             const nodes: React.ReactNode[] = [];
             const currentDateKey = dateKey(event.createdAt);
