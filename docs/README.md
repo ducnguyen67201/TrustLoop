@@ -33,6 +33,7 @@ That's it. No `plans/`, no `domains/`, no `specs/`. If you need a forward-lookin
 | [concepts/session-replay-capture.md](concepts/session-replay-capture.md) | Browser SDK → ingest → storage → SessionDigest correlation into analysis. |
 | [concepts/auth-and-workspaces.md](concepts/auth-and-workspaces.md) | Google OAuth, workspace auto-join, membership roles, the three auth surfaces (`tli_` / `tlk_` / operator session). |
 | [concepts/codex-search.md](concepts/codex-search.md) | Repository indexing, embedding (text-embedding-3-small), hybrid search (RRF + LLM reranker), citations, PR intent skeleton. |
+| [concepts/debugger-mcp.md](concepts/debugger-mcp.md) | Local Doppler-backed MCP server for Temporal debugging and incident RCA from Codex-compatible clients. |
 
 ## Conventions (cross-cutting rules)
 

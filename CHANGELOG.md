@@ -2,6 +2,25 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.17.6] - 2026-05-04
+
+### Added
+- **Debugger MCP for Doppler-backed staging RCA.** Adds
+  `@trustloop/debugger-mcp`, a local MCP server intended to run as
+  `doppler run -- npm --workspace @trustloop/debugger-mcp start`. The server
+  exposes redacted environment/config snapshots, read-only Temporal workflow
+  history, agent-team run diagnosis, and a paste-first `diagnose_from_text`
+  tool that extracts workflow IDs/run IDs/activity names from Temporal UI or
+  log text before choosing the right diagnostic path.
+- **Agent-team `fetch failed` diagnosis.** The first classifier recognizes
+  `runTeamTurnActivity` raw `TypeError: fetch failed` failures as
+  queue-to-agents connectivity/configuration issues and points operators at
+  queue `AGENT_SERVICE_URL`, agents service health, and Railway private
+  networking checks.
+- **Debugger MCP docs.** Documents the local-first Doppler execution model,
+  no-secret-output invariant, read-only Temporal boundary, and keep-honest
+  triggers in `docs/concepts/debugger-mcp.md`.
+
 ## [0.2.17.5] - 2026-05-04
 
 ### Removed
