@@ -326,7 +326,7 @@ export function SupportInbox() {
           side="right"
           showCloseButton={false}
           onInteractOutside={(event) => event.preventDefault()}
-          className="flex w-full flex-col gap-0 overflow-hidden p-0 data-[side=right]:sm:max-w-6xl"
+          className="flex flex-col gap-0 overflow-hidden p-0 data-[side=right]:w-full sm:data-[side=right]:w-[80vw] sm:data-[side=right]:max-w-[80vw]"
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Conversation</SheetTitle>
