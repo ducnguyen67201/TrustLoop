@@ -1,3 +1,4 @@
+import * as agentPrs from "@shared/rest/services/codex/agent-pr-service";
 import * as supportAnalysis from "@shared/rest/services/support/support-analysis-service";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import { router, workspaceRoleProcedure } from "@shared/rest/trpc";
@@ -7,6 +8,7 @@ import {
   dismissDraftInputSchema,
   triggerAnalysisInputSchema,
 } from "@shared/types";
+import { z } from "zod";
 
 // Note: the tRPC procedure names below (triggerAnalysis, approveDraft,
 // dismissDraft, getLatestAnalysis) are the PUBLIC API the frontend calls,
@@ -41,5 +43,13 @@ export function createSupportAnalysisRouter(dispatcher: WorkflowDispatcher) {
     getLatestAnalysis: operatorProcedure
       .input(triggerAnalysisInputSchema)
       .query(({ ctx, input }) => supportAnalysis.getLatest(input.conversationId, ctx.workspaceId)),
+    // Draft PRs the AI agent has opened against this conversation. Drives the
+    // "Draft PR opened: #N →" pill in the analysis panel. Empty list when the
+    // agent hasn't opened anything yet — UI should hide the pill in that case.
+    listAgentPrsForConversation: operatorProcedure
+      .input(z.object({ conversationId: z.string().min(1) }))
+      .query(({ ctx, input }) =>
+        agentPrs.listForConversation(ctx.workspaceId, input.conversationId)
+      ),
   });
 }

@@ -40,6 +40,12 @@ export interface CreateDraftPullRequestInput {
   description: string;
   changes: DraftPullRequestChange[];
   baseBranch?: string;
+  // Audit-trail context. When the agent service threads these through
+  // (the analyze path), the persisted AgentPullRequest row links back
+  // to the originating support conversation + analysis so the inbox UI
+  // can show "Draft PR opened: #N →" pills for the operator.
+  conversationId?: string;
+  analysisId?: string;
 }
 
 export type CreateDraftPullRequestResult =
@@ -151,6 +157,31 @@ export async function createDraftPullRequest(
       base: baseBranch,
       draft: true,
     });
+
+    // Persist for the inbox UI. We log + swallow errors here on purpose:
+    // the GitHub PR is already real, so failing to write the audit row
+    // shouldn't roll back a successful PR. Worst case the operator sees
+    // the PR in GitHub but no pill in the inbox until we reconcile.
+    try {
+      await prisma.agentPullRequest.create({
+        data: {
+          workspaceId: input.workspaceId,
+          repositoryId: repo.id,
+          conversationId: input.conversationId ?? null,
+          analysisId: input.analysisId ?? null,
+          prNumber: pr.number,
+          prUrl: pr.html_url,
+          branchName,
+          baseBranch,
+          title: input.title,
+        },
+      });
+    } catch (persistError) {
+      console.error(
+        "[draft-pr] Persisted PR but failed to write AgentPullRequest row:",
+        persistError instanceof Error ? persistError.message : persistError
+      );
+    }
 
     return {
       success: true,

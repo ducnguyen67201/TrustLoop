@@ -328,6 +328,7 @@ async function callAgentService(input: AnalysisAgentInput, config: { toneConfig:
     body: JSON.stringify({
       workspaceId: input.workspaceId,
       conversationId: input.conversationId,
+      analysisId: input.analysisId,
       threadSnapshot: input.threadSnapshot,
       ...(input.sessionDigest ? { sessionDigest: input.sessionDigest } : {}),
       ...(input.failureFrames && input.failureFrames.length > 0
