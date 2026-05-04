@@ -32,7 +32,12 @@ interface SessionTabProps {
   replayLoadError: string | null;
   isAttachingSession: boolean;
   attachSessionError: string | null;
+  isDetachingSession?: boolean;
+  isRecorrelatingSession?: boolean;
+  sessionActionError?: string | null;
   onAttachSession: (sessionRecordId: string) => Promise<void>;
+  onDetachSession?: () => Promise<void>;
+  onRecorrelateSession?: () => Promise<void>;
   onRetryReplayLoad: () => void;
   onLoadReplayChunks: () => void;
 }
@@ -55,7 +60,12 @@ export function SessionTab({
   replayLoadError,
   isAttachingSession,
   attachSessionError,
+  isDetachingSession = false,
+  isRecorrelatingSession = false,
+  sessionActionError = null,
   onAttachSession,
+  onDetachSession,
+  onRecorrelateSession,
   onRetryReplayLoad,
   onLoadReplayChunks,
 }: SessionTabProps) {
@@ -81,14 +91,18 @@ export function SessionTab({
   );
 
   // Don't drop into the "no session, show SDK setup guide" branch while a
-  // manual attach is in flight — the operator already picked a session,
+  // session mutation is in flight — the operator already triggered an action,
   // surface the loading state instead so the click feels acknowledged.
-  if (!isLoading && !isAttachingSession && !error && !session) {
+  const isMutatingSession = isAttachingSession || isDetachingSession || isRecorrelatingSession;
+  if (!isLoading && !isMutatingSession && !error && !session) {
     return (
       <div className="space-y-3 p-4">
         <SupportEvidenceCapsule
           isLoading={isLoading}
           isAttachingSession={isAttachingSession}
+          isDetachingSession={isDetachingSession}
+          isRecorrelatingSession={isRecorrelatingSession}
+          sessionActionError={sessionActionError}
           error={error}
           match={match}
           session={session}
@@ -97,6 +111,8 @@ export function SessionTab({
           manualAttachControl={manualAttachControl}
           canViewProof={false}
           onViewProof={handleOpenReplay}
+          onDetachSession={onDetachSession}
+          onRecorrelateSession={onRecorrelateSession}
         />
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" asChild>
@@ -114,6 +130,9 @@ export function SessionTab({
       <SupportEvidenceCapsule
         isLoading={isLoading}
         isAttachingSession={isAttachingSession}
+        isDetachingSession={isDetachingSession}
+        isRecorrelatingSession={isRecorrelatingSession}
+        sessionActionError={sessionActionError}
         error={error}
         match={match}
         session={session}
@@ -122,6 +141,8 @@ export function SessionTab({
         manualAttachControl={manualAttachControl}
         canViewProof={Boolean(session?.hasReplayData)}
         onViewProof={handleOpenReplay}
+        onDetachSession={onDetachSession}
+        onRecorrelateSession={onRecorrelateSession}
       />
 
       <div className="border">
