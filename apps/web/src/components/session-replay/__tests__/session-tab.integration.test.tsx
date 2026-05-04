@@ -166,7 +166,11 @@ describe("SessionTab integration", () => {
 
   it("clicking 'Copy repro' writes the redacted repro text to the clipboard", async () => {
     render(<SessionTab {...matchedProps} />);
-    fireEvent.click(screen.getByRole("button", { name: /Copy repro/ }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /Evidence actions/ }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Copy repro/ }));
 
     // Microtask: handleCopy is async, settle the clipboard call.
     await new Promise((resolve) => setTimeout(resolve, 0));
