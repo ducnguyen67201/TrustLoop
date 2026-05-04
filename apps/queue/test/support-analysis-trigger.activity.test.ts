@@ -1,10 +1,10 @@
 import { AGENT_TEAM_CONFIG, ANALYSIS_TRIGGER_MODE } from "@shared/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { findUnique, agentTeamRunsStart, startSupportAnalysisWorkflow } = vi.hoisted(() => ({
+const { findUnique, agentTeamRunsStart, temporalWorkflowDispatcher } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   agentTeamRunsStart: vi.fn(),
-  startSupportAnalysisWorkflow: vi.fn(),
+  temporalWorkflowDispatcher: { kind: "test-dispatcher" },
 }));
 
 vi.mock("@shared/database", () => ({
@@ -20,9 +20,7 @@ vi.mock("@shared/rest/services/agent-team/run-service", () => ({
 }));
 
 vi.mock("@shared/rest/temporal-dispatcher", () => ({
-  temporalWorkflowDispatcher: {
-    startSupportAnalysisWorkflow,
-  },
+  temporalWorkflowDispatcher,
 }));
 
 import {
@@ -62,14 +60,13 @@ describe("dispatchAnalysis", () => {
     });
 
     expect(agentTeamRunsStart).toHaveBeenCalledWith(
-      expect.objectContaining({
+      {
         workspaceId: "ws_123",
         conversationId: "conv_123",
         teamConfig: AGENT_TEAM_CONFIG.FAST,
-      }),
-      expect.any(Object)
+      },
+      temporalWorkflowDispatcher
     );
-    expect(startSupportAnalysisWorkflow).not.toHaveBeenCalled();
   });
 
   it("skips dispatch when workspace has switched to manual mode", async () => {

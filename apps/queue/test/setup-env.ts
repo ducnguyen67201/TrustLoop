@@ -1,0 +1,10 @@
+process.env.NODE_ENV ??= "test";
+process.env.APP_BASE_URL ??= "http://localhost:3000";
+process.env.SESSION_COOKIE_NAME ??= "trustloop_session";
+process.env.SESSION_TTL_HOURS ??= "24";
+process.env.SESSION_SECRET ??= "test-session-secret-value";
+process.env.API_KEY_PEPPER ??= "test-api-pepper-1234";
+process.env.INTERNAL_SERVICE_KEY ??= "tli_test_service_key_value";
+process.env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/trustloop";
+process.env.TEMPORAL_ADDRESS ??= "localhost:7233";
+process.env.TEMPORAL_NAMESPACE ??= "default";
