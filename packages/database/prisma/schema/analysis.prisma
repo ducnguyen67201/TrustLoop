@@ -76,6 +76,7 @@ model SupportAnalysis {
   evidence          AnalysisEvidence[]
   drafts            SupportDraft[]
   frames            SupportAnalysisFrame[]
+  agentPullRequests AgentPullRequest[]
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
 

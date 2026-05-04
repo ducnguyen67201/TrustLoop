@@ -34,6 +34,7 @@ model Workspace {
   searchQueries            CodeSearchQuery[]
   searchFeedback           SearchFeedback[]
   pullRequestIntents       PullRequestIntent[]
+  agentPullRequests        AgentPullRequest[]
   groupingAnchors          SupportGroupingAnchor[]
   supportAnalyses          SupportAnalysis[]
   supportDrafts            SupportDraft[]
