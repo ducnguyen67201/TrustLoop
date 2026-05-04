@@ -5,6 +5,11 @@ import {
 } from "./agent-team-core.schema";
 
 export const AGENT_TEAM_ROUTING_POLICY: Record<AgentTeamRoleSlug, readonly AgentTeamRoleSlug[]> = {
+  // Drafter is the FAST-path role. It runs in isolation (single-role team
+  // snapshot) so addressed dialogue is not exercised — empty allow-list is
+  // intentional. If a drafter ever appears in a multi-role config, escalation
+  // to the architect is the natural target.
+  [AGENT_TEAM_ROLE_SLUG.drafter]: [],
   [AGENT_TEAM_ROLE_SLUG.architect]: [
     AGENT_TEAM_ROLE_SLUG.rcaAnalyst,
     AGENT_TEAM_ROLE_SLUG.codeReader,

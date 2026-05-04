@@ -1,6 +1,17 @@
 import { prisma } from "@shared/database";
+import * as agentTeamRuns from "@shared/rest/services/agent-team/run-service";
 import { temporalWorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
-import { ANALYSIS_STATUS, ANALYSIS_TRIGGER_MODE } from "@shared/types";
+import { AGENT_TEAM_CONFIG, ANALYSIS_STATUS, ANALYSIS_TRIGGER_MODE } from "@shared/types";
+
+// Pipeline feature flag. When true, the auto-trigger dispatches the agent-team
+// FAST run; when false (default), falls back to the legacy support-analysis
+// workflow. Defaults to false in this PR because the UI still reads
+// SupportAnalysis rows directly — the UI migration to DraftProjection lands in
+// the follow-up PR. Operators can flip AGENT_TEAM_AS_DEFAULT_PIPELINE=true in
+// a test workspace to validate end-to-end before flipping the default.
+function agentTeamIsDefaultPipeline(): boolean {
+  return (process.env.AGENT_TEAM_AS_DEFAULT_PIPELINE ?? "false").toLowerCase() === "true";
+}
 
 /**
  * Check if the workspace has auto-analysis enabled.
@@ -73,8 +84,20 @@ export async function findConversationsReadyForAnalysis(workspaceId: string): Pr
 }
 
 /**
- * Dispatch the analysis workflow for a single conversation.
- * Uses a deterministic workflow ID so duplicate dispatches are idempotent.
+ * Dispatch a single conversation for AI processing.
+ *
+ * Default path (agent-team-only pipeline): dispatches an agent-team run with
+ * teamConfig=FAST. The drafter role inside the agent service delegates to the
+ * same support-analysis prompt that the legacy /analyze endpoint uses, so
+ * quality is identical by construction.
+ *
+ * Legacy path (rollback): when env AGENT_TEAM_AS_DEFAULT_PIPELINE=false, the
+ * old support-analysis workflow runs instead. This exists so a regression in
+ * the agent-team path can be rolled back without a deploy.
+ *
+ * Both paths are idempotent: the agent-team path uses run-service's queued|
+ * running dedupe guard plus the deterministic Temporal workflow ID. The legacy
+ * path uses the workflow ID alone.
  */
 export async function dispatchAnalysis(input: {
   workspaceId: string;
@@ -82,6 +105,24 @@ export async function dispatchAnalysis(input: {
 }): Promise<void> {
   const autoEnabled = await shouldAutoTrigger(input.workspaceId);
   if (!autoEnabled) {
+    return;
+  }
+
+  if (agentTeamIsDefaultPipeline()) {
+    try {
+      await agentTeamRuns.start(
+        {
+          workspaceId: input.workspaceId,
+          conversationId: input.conversationId,
+          teamConfig: AGENT_TEAM_CONFIG.FAST,
+        },
+        temporalWorkflowDispatcher
+      );
+    } catch {
+      // Dedupe matched an in-flight run, or the workspace has no default team
+      // configured. Either way, autoanalysis stays a best-effort path — log
+      // upstream if needed; never throw out of the trigger.
+    }
     return;
   }
 

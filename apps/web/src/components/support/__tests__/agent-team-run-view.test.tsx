@@ -15,6 +15,7 @@ function buildRunSummary(): AgentTeamRunSummary {
     teamId: "team_1",
     conversationId: "conv_1",
     analysisId: null,
+    teamConfig: "DEEP",
     status: "running",
     workflowId: "workflow_1",
     startedAt: new Date().toISOString(),
