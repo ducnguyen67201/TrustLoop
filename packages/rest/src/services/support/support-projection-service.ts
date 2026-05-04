@@ -23,7 +23,7 @@ import { TRPCError } from "@trpc/server";
 // ---------------------------------------------------------------------------
 
 /**
- * Read the inbox projection using the queue hot-path sort order.
+ * Read the inbox projection with the freshest customer work first.
  */
 export async function listConversations(
   input: SupportConversationListRequest
@@ -35,8 +35,8 @@ export async function listConversations(
       assigneeUserId: input.assigneeUserId === undefined ? undefined : input.assigneeUserId,
     },
     orderBy: [
-      { staleAt: "asc" },
-      { customerWaitingSince: "asc" },
+      { staleAt: { sort: "desc", nulls: "last" } },
+      { customerWaitingSince: { sort: "desc", nulls: "last" } },
       { retryCount: "desc" },
       { lastActivityAt: "desc" },
     ],
