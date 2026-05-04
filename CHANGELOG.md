@@ -2,6 +2,52 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.17.2] - 2026-05-03
+
+### Changed
+- **Drafter projects to SupportAnalysis + SupportDraft on completion.**
+  When a FAST agent-team run completes, `markRunCompleted` writes a
+  `SupportAnalysis` row (with the new `agentTeamRunId` link) and a
+  `SupportDraft` row driven through the draft FSM
+  (`generating → awaitingApproval`). The right-rail panel and the existing
+  approve/dismiss flow read from `SupportAnalysis` unchanged. The
+  `useAnalysis` hook reverts to its pre-cutover read path; only its trigger
+  call was swapped to `agentTeam.startRun({ teamConfig: 'FAST' })`.
+- **Removed `AGENT_TEAM_AS_DEFAULT_PIPELINE` flag.** Agent team is the only
+  pipeline. Rollback is via `git revert` of the cutover commits — no flag
+  flip required.
+
+### Added
+- **`SupportAnalysis.agentTeamRunId` column** with migration. Indexed and
+  used for projection idempotency (re-running `markRunCompleted` for the
+  same run does not double-write).
+- **PR-creator + reviewer prompt hardening.** `pr-creator.prompt.ts` now
+  spells out hard preconditions before `createPullRequest` (reviewer
+  approval present, file located + read first, full file content
+  reconstructed not blind-edited, size self-checked). `reviewer.prompt.ts`
+  now defines the explicit approval contract — five conditions that must
+  all be true before emitting `kind: approval`.
+- **Unit tests for `DraftProjection` service** in
+  `packages/rest/test/draft-projection-service.test.ts`. Status-mapping
+  parametrized tests, missing-conversation handling, empty-message handling.
+- **`docs/concepts/agent-team.md` updated** with the new trigger paths,
+  team configurations table, drafter delegation flow, and SupportAnalysis
+  projection mechanics.
+
+### Notes
+- The legacy `support-analysis.workflow.ts` and `supportAnalysis.*` router
+  remain in the tree for one release as a rollback artifact. Not reached
+  by the live code path. Physical deletion ships in a follow-up.
+- AgentTeamRun status is currently set via direct writes; a finite-state
+  machine (matching the existing `draft-state-machine.ts` pattern) is on
+  the project's stated FSM follow-up list and is its own refactor. Test
+  fixtures still use string literals for `AgentTeamRun.status`; cleanup to
+  the typed `AGENT_TEAM_RUN_STATUS` enum constants is a sweep follow-up.
+- Pre-existing apps/queue env-validation failures
+  (`agent-team-archive.test.ts`, `agent-team-metrics-rollup.test.ts`)
+  require server env vars not in the local `.env`. Unrelated to this
+  change; CI provisions them.
+
 ## [0.2.17.1] - 2026-05-03
 
 ### Changed
