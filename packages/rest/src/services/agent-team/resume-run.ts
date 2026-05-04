@@ -15,7 +15,9 @@ import {
   agentTeamSnapshotSchema,
   getPendingResolutionQuestionsInputSchema,
   recordOperatorAnswerInputSchema,
+  restoreAgentTeamRunContext,
   resumeAgentTeamRunInputSchema,
+  transitionAgentTeamRun,
 } from "@shared/types";
 
 interface RecordOperatorAnswerArgs {
@@ -230,14 +232,23 @@ export async function resumeRun(
     resumeNonce,
   });
 
-  // Flip status back to running and record the new workflowId so the run row
-  // points at the live execution. Done after dispatch succeeded so a Temporal
-  // failure leaves the row in `waiting` for retry.
+  // Flip status back to running via the FSM and record the new workflowId so
+  // the run row points at the live execution. Done after dispatch succeeded so
+  // a Temporal failure leaves the row in `waiting` for retry.
   await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: run.id },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(current.id, current.status as never, current.errorMessage),
+      { type: "resume" }
+    );
     await tx.agentTeamRun.update({
       where: { id: run.id },
       data: {
-        status: AGENT_TEAM_RUN_STATUS.running,
+        status: next.status,
+        errorMessage: next.errorMessage,
         workflowId: dispatch.workflowId,
       },
     });
