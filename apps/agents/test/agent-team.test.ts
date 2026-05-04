@@ -1,4 +1,4 @@
-import type { AgentTeamRoleTurnInput } from "@shared/types";
+import type { AgentTeamRoleTurnInput, ThreadSnapshot } from "@shared/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockGenerate = vi.fn();
@@ -36,6 +36,23 @@ vi.mock("../src/tools/search-sentry", () => ({
 
 const { runTeamTurn } = await import("../src/agent");
 const { app } = await import("../src/server");
+
+const threadSnapshot: ThreadSnapshot = {
+  conversationId: "conv_1",
+  channelId: "C0ABCDEF",
+  threadTs: "1776616233.348399",
+  status: "UNREAD",
+  customer: { email: null },
+  events: [
+    {
+      type: "MESSAGE_RECEIVED",
+      source: "CUSTOMER",
+      summary: "Customer says replies thread incorrectly in Slack.",
+      details: { rawText: "Customer says replies thread incorrectly in Slack." },
+      at: "2026-04-19T16:30:34.672Z",
+    },
+  ],
+};
 
 function buildRequest(): AgentTeamRoleTurnInput {
   const teamRoles = [
@@ -80,7 +97,7 @@ function buildRequest(): AgentTeamRoleTurnInput {
     runId: "run_1",
     role: teamRoles[0],
     teamRoles: [...teamRoles],
-    requestSummary: "Customer says replies thread incorrectly in Slack.",
+    requestSummary: threadSnapshot,
     inbox: [],
     acceptedFacts: [],
     openQuestions: [],

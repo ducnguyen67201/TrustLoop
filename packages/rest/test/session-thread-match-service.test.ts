@@ -44,9 +44,11 @@ vi.mock("@shared/rest/services/support/adapters/slack/slack-user-service", () =>
   fetchEmail: vi.fn().mockResolvedValue(null),
 }));
 
-const { getConversationSessionContext } = await import(
-  "@shared/rest/services/support/session-thread-match-service"
-);
+const {
+  getConversationSessionContext,
+  detachSessionFromConversation,
+  recorrelateConversationSession,
+} = await import("@shared/rest/services/support/session-thread-match-service");
 
 describe("session thread matching", () => {
   beforeEach(() => {
@@ -319,5 +321,126 @@ describe("session thread matching", () => {
     expect(result.match?.matchSource).toBe("user_id");
     expect(mockMatchCreate).toHaveBeenCalledTimes(1);
     expect(mockMatchUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("detach throws NOT_FOUND when the conversation is missing or in a different workspace", async () => {
+    mockSupportConversationFindFirst.mockResolvedValue(null);
+
+    await expect(
+      detachSessionFromConversation({
+        workspaceId: "ws-1",
+        conversationId: "conv-missing",
+      })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    expect(mockMatchUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("detach flips isPrimary on every primary match and returns the empty context", async () => {
+    mockSupportConversationFindFirst.mockResolvedValue({ id: "conv-1" });
+
+    const result = await detachSessionFromConversation({
+      workspaceId: "ws-1",
+      conversationId: "conv-1",
+    });
+
+    expect(mockMatchUpdateMany).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "ws-1",
+        conversationId: "conv-1",
+        isPrimary: true,
+      },
+      data: { isPrimary: false },
+    });
+    expect(result.match).toBeNull();
+    expect(result.session).toBeNull();
+    expect(result.shouldAttachToAnalysis).toBe(false);
+  });
+
+  it("recorrelate throws NOT_FOUND when the conversation is missing", async () => {
+    mockSupportConversationFindFirst.mockResolvedValue(null);
+
+    await expect(
+      recorrelateConversationSession({
+        workspaceId: "ws-1",
+        conversationId: "conv-missing",
+      })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    expect(mockMatchUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("recorrelate clears any existing primary then runs auto-correlation, bypassing the manual short-circuit", async () => {
+    // First findFirst is recorrelate's own preflight (select { id: true }).
+    // Second is resolveConversationIdentity's full row inside getConversationSessionContext.
+    mockSupportConversationFindFirst.mockResolvedValueOnce({ id: "conv-1" }).mockResolvedValueOnce({
+      id: "conv-1",
+      workspaceId: "ws-1",
+      customerExternalUserId: "user-123",
+      customerEmail: null,
+      customerSlackUserId: null,
+      customerIdentitySource: null,
+      lastCustomerMessageAt: new Date("2026-04-18T10:05:00.000Z"),
+      createdAt: new Date("2026-04-18T10:00:00.000Z"),
+      lastActivityAt: new Date("2026-04-18T10:05:00.000Z"),
+      installation: { metadata: null },
+      events: [
+        {
+          eventType: "MESSAGE_RECEIVED",
+          eventSource: "CUSTOMER",
+          summary: "Issue",
+          detailsJson: { customerUserId: "user-123" },
+          createdAt: new Date("2026-04-18T10:00:00.000Z"),
+        },
+      ],
+    });
+
+    mockSessionRecordFindMany.mockResolvedValue([
+      {
+        id: "session-auto",
+        workspaceId: "ws-1",
+        sessionId: "sess-auto",
+        userId: "user-123",
+        userEmail: null,
+        userAgent: "Chrome",
+        release: "1.0.0",
+        startedAt: new Date("2026-04-18T09:58:00.000Z"),
+        lastEventAt: new Date("2026-04-18T10:03:00.000Z"),
+        eventCount: 12,
+        hasReplayData: true,
+      },
+    ]);
+    mockMatchCreate.mockResolvedValue({
+      conversationId: "conv-1",
+      sessionRecordId: "session-auto",
+      matchSource: "user_id",
+      matchConfidence: "confirmed",
+      matchedIdentifierType: "user_id",
+      matchedIdentifierValue: "user-123",
+      score: 40_000_000,
+      evidenceJson: { matchedIdentifierValue: "user-123" },
+      isPrimary: true,
+    });
+
+    const result = await recorrelateConversationSession({
+      workspaceId: "ws-1",
+      conversationId: "conv-1",
+    });
+
+    // Top-level explicit clear should fire before the inner getConversationSessionContext runs.
+    expect(mockMatchUpdateMany).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "ws-1",
+        conversationId: "conv-1",
+        isPrimary: true,
+      },
+      data: { isPrimary: false },
+    });
+    // loadManualSessionContext should NOT find a manual primary because we just cleared it.
+    expect(mockMatchFindFirst).toHaveBeenCalled();
+    expect(result.session?.id).toBe("session-auto");
+    expect(result.match?.matchSource).toBe("user_id");
+    expect(result.match?.isPrimary).toBe(true);
+    expect(result.shouldAttachToAnalysis).toBe(true);
   });
 });

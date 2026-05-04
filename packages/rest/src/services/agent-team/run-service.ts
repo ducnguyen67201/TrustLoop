@@ -9,12 +9,14 @@ import {
   type AgentTeamRole,
   type AgentTeamRunSummary,
   type AgentTeamSnapshot,
+  type ThreadSnapshot,
   ValidationError,
   agentTeamRunSummarySchema,
   agentTeamSnapshotSchema,
   getAgentTeamRunInputSchema,
   getLatestAgentTeamRunInputSchema,
   startAgentTeamRunInputSchema,
+  threadSnapshotSchema,
 } from "@shared/types";
 
 interface StartRunArgs {
@@ -115,7 +117,7 @@ export async function start(
     analysisId: parsed.analysisId,
     teamConfig,
     teamSnapshot,
-    threadSnapshot: JSON.stringify(buildConversationSnapshot(conversation), null, 2),
+    threadSnapshot: buildConversationSnapshot(conversation),
   });
 
   const updated = await prisma.agentTeamRun.update({
@@ -207,8 +209,8 @@ function buildConversationSnapshot(conversation: {
     detailsJson: unknown;
     createdAt: Date;
   }>;
-}) {
-  return {
+}): ThreadSnapshot {
+  return threadSnapshotSchema.parse({
     conversationId: conversation.id,
     channelId: conversation.channelId,
     threadTs: conversation.threadTs,
@@ -224,7 +226,7 @@ function buildConversationSnapshot(conversation: {
       details: event.detailsJson as Record<string, unknown> | null,
       at: event.createdAt.toISOString(),
     })),
-  };
+  });
 }
 
 // Build the snapshot of roles + edges for this run based on teamConfig.
