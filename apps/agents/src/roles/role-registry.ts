@@ -7,6 +7,7 @@ import {
 } from "@shared/types";
 import { ARCHITECT_ROLE_SYSTEM_PROMPT } from "./architect.prompt";
 import { CODE_READER_ROLE_SYSTEM_PROMPT } from "./code-reader.prompt";
+import { DRAFTER_ROLE_SYSTEM_PROMPT } from "./drafter.prompt";
 import { PR_CREATOR_ROLE_SYSTEM_PROMPT } from "./pr-creator.prompt";
 import { RCA_ANALYST_ROLE_SYSTEM_PROMPT } from "./rca-analyst.prompt";
 import { REVIEWER_ROLE_SYSTEM_PROMPT } from "./reviewer.prompt";
@@ -19,6 +20,14 @@ interface RoleDefinition {
 }
 
 export const AGENT_ROLE_REGISTRY: Record<AgentTeamRoleSlug, RoleDefinition> = {
+  // FAST-path role. runTeamTurn short-circuits to runAnalysis for this slug;
+  // the prompt is a registry-completeness placeholder, not the actual executor.
+  [AGENT_TEAM_ROLE_SLUG.drafter]: {
+    label: "Drafter",
+    defaultToolIds: [AGENT_TEAM_TOOL_ID.searchCode],
+    defaultMaxSteps: 6,
+    systemPrompt: DRAFTER_ROLE_SYSTEM_PROMPT,
+  },
   [AGENT_TEAM_ROLE_SLUG.architect]: {
     label: "Architect",
     defaultToolIds: [AGENT_TEAM_TOOL_ID.searchCode, AGENT_TEAM_TOOL_ID.searchSentry],

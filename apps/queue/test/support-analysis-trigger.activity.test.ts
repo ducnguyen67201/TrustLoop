@@ -1,8 +1,9 @@
-import { ANALYSIS_TRIGGER_MODE } from "@shared/types";
+import { AGENT_TEAM_CONFIG, ANALYSIS_TRIGGER_MODE } from "@shared/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { findUnique, startSupportAnalysisWorkflow } = vi.hoisted(() => ({
+const { findUnique, agentTeamRunsStart, startSupportAnalysisWorkflow } = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  agentTeamRunsStart: vi.fn(),
   startSupportAnalysisWorkflow: vi.fn(),
 }));
 
@@ -12,6 +13,10 @@ vi.mock("@shared/database", () => ({
       findUnique,
     },
   },
+}));
+
+vi.mock("@shared/rest/services/agent-team/run-service", () => ({
+  start: agentTeamRunsStart,
 }));
 
 vi.mock("@shared/rest/temporal-dispatcher", () => ({
@@ -47,19 +52,24 @@ describe("shouldAutoTrigger", () => {
 });
 
 describe("dispatchAnalysis", () => {
-  it("dispatches when automatic mode is enabled", async () => {
+  it("dispatches an agent-team FAST run when automatic mode is enabled", async () => {
     findUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.auto });
+    agentTeamRunsStart.mockResolvedValueOnce({ id: "run_1" });
 
     await dispatchAnalysis({
       workspaceId: "ws_123",
       conversationId: "conv_123",
     });
 
-    expect(startSupportAnalysisWorkflow).toHaveBeenCalledWith({
-      workspaceId: "ws_123",
-      conversationId: "conv_123",
-      triggerType: "AUTO",
-    });
+    expect(agentTeamRunsStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws_123",
+        conversationId: "conv_123",
+        teamConfig: AGENT_TEAM_CONFIG.FAST,
+      }),
+      expect.any(Object)
+    );
+    expect(startSupportAnalysisWorkflow).not.toHaveBeenCalled();
   });
 
   it("skips dispatch when workspace has switched to manual mode", async () => {
@@ -70,12 +80,12 @@ describe("dispatchAnalysis", () => {
       conversationId: "conv_123",
     });
 
-    expect(startSupportAnalysisWorkflow).not.toHaveBeenCalled();
+    expect(agentTeamRunsStart).not.toHaveBeenCalled();
   });
 
-  it("swallows duplicate workflow errors", async () => {
+  it("swallows in-flight dedupe errors from run-service.start", async () => {
     findUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.auto });
-    startSupportAnalysisWorkflow.mockRejectedValueOnce(new Error("Workflow already started"));
+    agentTeamRunsStart.mockRejectedValueOnce(new Error("Run already in flight"));
 
     await expect(
       dispatchAnalysis({

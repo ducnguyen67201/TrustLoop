@@ -1,9 +1,11 @@
 import { sessionDigestSchema } from "@shared/types/session-replay/session-digest.schema";
 import { z } from "zod";
 import {
+  AGENT_TEAM_CONFIG,
   AGENT_TEAM_RUN_STATUS,
   addAgentTeamEdgeInputSchema,
   addAgentTeamRoleInputSchema,
+  agentTeamConfigSchema,
   agentTeamEdgeSchema,
   agentTeamRoleSchema,
   agentTeamRunStatusSchema,
@@ -31,6 +33,7 @@ export const agentTeamRunWorkflowInputSchema = z.object({
   runId: z.string().min(1),
   teamId: z.string().min(1),
   teamSnapshot: agentTeamSnapshotSchema,
+  teamConfig: agentTeamConfigSchema.default(AGENT_TEAM_CONFIG.FAST),
   conversationId: z.string().min(1).optional(),
   analysisId: z.string().min(1).optional(),
   threadSnapshot: z.string().min(1),
@@ -58,6 +61,7 @@ export const startAgentTeamRunInputSchema = z.object({
   conversationId: z.string().min(1),
   teamId: z.string().min(1).optional(),
   analysisId: z.string().min(1).optional(),
+  teamConfig: agentTeamConfigSchema.optional(),
 });
 
 export const getAgentTeamRunInputSchema = z.object({
@@ -112,6 +116,7 @@ export const agentTeamRunSummarySchema = z.object({
   teamId: z.string().min(1),
   conversationId: z.string().nullable(),
   analysisId: z.string().nullable(),
+  teamConfig: agentTeamConfigSchema,
   status: agentTeamRunStatusSchema,
   workflowId: z.string().nullable(),
   startedAt: z.iso.datetime().nullable(),

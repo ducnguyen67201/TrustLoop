@@ -7,6 +7,7 @@ import {
   AGENT_TEAM_ROLE_SLUG,
   AGENT_TEAM_TARGET,
   type AgentTeamDialogueMessageDraft,
+  type AgentTeamFactDraft,
   type AgentTeamRole,
   type AgentTeamRoleTurnInput,
   type AgentTeamRoleTurnOutput,
@@ -20,6 +21,7 @@ import {
   type SessionDigest,
   TOOL_STRUCTURED_RESULT_KIND,
   TOOL_STRUCTURED_RESULT_METADATA_KEY,
+  type ThreadSnapshot,
   type ToneConfig,
   agentProviderConfigSchema,
   agentTeamDialogueMessageDraftSchema,
@@ -33,6 +35,7 @@ import {
   parseJsonModelOutput,
   reconstructAgentTeamTurnOutput,
   reconstructAnalysisOutput,
+  threadSnapshotSchema,
 } from "@shared/types";
 
 import { resolveProviderConfig } from "./agent-config";
@@ -192,6 +195,13 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
 export async function runTeamTurn(
   request: AgentTeamRoleTurnInput
 ): Promise<AgentTeamRoleTurnOutput> {
+  // FAST path: drafter delegates to runAnalysis. Same prompt, same model, same
+  // tools as the legacy /analyze pipeline — quality is identical by construction.
+  // The result is wrapped as a single proposal message + facts for the team event log.
+  if (request.role.slug === AGENT_TEAM_ROLE_SLUG.drafter) {
+    return runDrafterAsTeamTurn(request);
+  }
+
   const startTime = Date.now();
   const providerConfig = agentProviderConfigSchema.parse({
     provider: request.role.provider,
@@ -270,6 +280,83 @@ export async function runTeamTurn(
   });
 }
 
+// ── Drafter Delegation (FAST path) ───────────────────────────────────
+//
+// The drafter slug is the FAST agent-team config — replaces the legacy
+// support-analysis pipeline. It delegates to runAnalysis() so the LLM call,
+// prompt, and tool set are identical to the old /analyze path. The
+// AnalyzeResponse is then mapped onto the team event log shape:
+//   - one proposal message containing the draft body (or a "no draft" message
+//     when analysis declines to produce one)
+//   - one fact per analysis insight (problemStatement + likelySubsystem)
+//   - done: true so the workflow proceeds to terminal state
+async function runDrafterAsTeamTurn(
+  request: AgentTeamRoleTurnInput
+): Promise<AgentTeamRoleTurnOutput> {
+  const threadSnapshot = parseDrafterThreadSnapshot(request.requestSummary);
+
+  const analyzeRequest: AnalyzeRequest = {
+    workspaceId: request.workspaceId,
+    conversationId: request.conversationId ?? threadSnapshot.conversationId,
+    threadSnapshot,
+    sessionDigest: request.sessionDigest ?? undefined,
+    config: {
+      provider: request.role.provider,
+      model: request.role.model ?? undefined,
+      maxSteps: request.role.maxSteps ?? undefined,
+    },
+  };
+
+  const response = await runAnalysis(analyzeRequest);
+
+  const proposalContent =
+    response.draft?.body ??
+    `Could not produce a draft. Likely subsystem: ${response.analysis.likelySubsystem}. Confidence: ${response.analysis.confidence.toFixed(2)}. Missing info: ${response.analysis.missingInfo.join("; ") || "none"}.`;
+
+  const message: AgentTeamDialogueMessageDraft = {
+    toRoleKey: AGENT_TEAM_TARGET.broadcast,
+    kind: AGENT_TEAM_MESSAGE_KIND.proposal,
+    subject: response.draft ? "Draft reply" : "Analysis only — no draft",
+    content: proposalContent,
+    refs: [],
+  };
+
+  const proposedFacts: AgentTeamFactDraft[] = [
+    {
+      statement: `Problem: ${response.analysis.problemStatement}`,
+      confidence: response.analysis.confidence,
+      sourceMessageIds: [],
+    },
+    {
+      statement: `Likely subsystem: ${response.analysis.likelySubsystem}`,
+      confidence: response.analysis.confidence,
+      sourceMessageIds: [],
+    },
+  ];
+
+  return {
+    messages: [message],
+    proposedFacts,
+    resolvedQuestionIds: [],
+    nextSuggestedRoleKeys: [],
+    done: true,
+    resolution: null,
+    meta: response.meta,
+  };
+}
+
+// Run-service builds requestSummary as JSON of the conversation snapshot. Older
+// rows may omit the customer field that threadSnapshotSchema.strict() requires;
+// fall back to a placeholder when missing rather than refusing the FAST run.
+function parseDrafterThreadSnapshot(requestSummary: string): ThreadSnapshot {
+  const raw = JSON.parse(requestSummary) as Record<string, unknown>;
+  const candidate = {
+    ...raw,
+    customer: (raw.customer as { email: string | null } | undefined) ?? { email: null },
+  };
+  return threadSnapshotSchema.parse(candidate);
+}
+
 // ── Private Helpers ─────────────────────────────────────────────────
 function parseAgentOutput(rawOutput: string | undefined) {
   if (!rawOutput) {
@@ -317,6 +404,12 @@ function parseTeamTurnOutput(
 
 function resolveAgentTeamRoleUseCase(role: AgentTeamRole): LlmUseCase {
   switch (role.slug) {
+    // Drafter is short-circuited at the top of runTeamTurn — it delegates to
+    // runAnalysis (LLM_USE_CASE.supportAnalysis), so this mapping only matters
+    // if the short-circuit is removed in the future. Keeping it consistent
+    // with the underlying delegation.
+    case AGENT_TEAM_ROLE_SLUG.drafter:
+      return LLM_USE_CASE.supportAnalysis;
     case AGENT_TEAM_ROLE_SLUG.architect:
       return LLM_USE_CASE.agentTeamArchitect;
     case AGENT_TEAM_ROLE_SLUG.reviewer:
