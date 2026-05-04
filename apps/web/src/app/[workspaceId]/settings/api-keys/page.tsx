@@ -53,6 +53,30 @@ export default function WorkspaceApiKeysPage() {
             </Alert>
           ) : null}
 
+          <Alert>
+            <AlertTitle>Using your API key</AlertTitle>
+            <AlertDescription className="space-y-2">
+              <p>
+                The full key has two parts joined by a dot:{" "}
+                <span className="font-mono text-xs">prefix</span>{" "}
+                <span className="text-muted-foreground">+</span>{" "}
+                <span className="font-mono text-xs">.</span>{" "}
+                <span className="text-muted-foreground">+</span>{" "}
+                <span className="font-mono text-xs">secret</span>. The full secret is shown only
+                once at creation. The table below lists prefixes only — the prefix on its own will
+                not authenticate.
+              </p>
+              <pre className="bg-muted overflow-x-auto rounded p-3 font-mono text-xs leading-relaxed">
+                <span className="text-muted-foreground">Authorization:</span>{" "}
+                <span className="font-semibold text-blue-600 dark:text-blue-400">Bearer</span>{" "}
+                <span className="text-foreground">tlk_</span>
+                <span className="text-emerald-600 dark:text-emerald-400">&lt;prefix&gt;</span>
+                <span className="font-semibold text-amber-600 dark:text-amber-400">.</span>
+                <span className="text-pink-600 dark:text-pink-400">&lt;secret&gt;</span>
+              </pre>
+            </AlertDescription>
+          </Alert>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-3">
               <div>

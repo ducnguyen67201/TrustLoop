@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { ApiKeyOneTimeSecretDisplay } from "@/components/workspace/api-key-secret-display";
 import type { ApiKeyExpiryDays, WorkspaceApiKeyCreateResponse } from "@shared/types";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 interface CreateApiKeyDialogProps {
@@ -45,9 +45,14 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [createdPrefix, setCreatedPrefix] = useState<string | null>(null);
+  // Synchronous guard: setIsSubmitting only updates on the next render, so two
+  // rapid Enter/clicks can both pass the disabled check and create duplicate keys.
+  const submitInFlight = useRef(false);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setIsSubmitting(true);
     setError(null);
 
@@ -62,6 +67,7 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Failed to create API key");
     } finally {
+      submitInFlight.current = false;
       setIsSubmitting(false);
     }
   }
@@ -77,31 +83,64 @@ export function CreateApiKeyDialog({ onCreate }: CreateApiKeyDialogProps) {
     }
   }
 
+  const isRevealing = createdSecret !== null;
+  // Lock all close paths (X button, outside click, Escape) while creating or
+  // revealing — both states would lose the one-time secret if the dialog closed.
+  const isLocked = isRevealing || isSubmitting;
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogTrigger asChild>
         <Button>Create API key</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        showCloseButton={!isLocked}
+        onInteractOutside={(event) => {
+          if (isLocked) {
+            event.preventDefault();
+          }
+        }}
+        onEscapeKeyDown={(event) => {
+          if (isLocked) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
-          <DialogTitle>Create workspace API key</DialogTitle>
+          <DialogTitle>
+            {isRevealing ? "Copy your API key now" : "Create workspace API key"}
+          </DialogTitle>
           <DialogDescription>
-            Keys are workspace-bound and require an explicit expiry.
+            {isRevealing
+              ? "This is the only time the full secret will be shown. Copy and store it before closing this dialog."
+              : "Keys are workspace-bound and require an explicit expiry."}
           </DialogDescription>
         </DialogHeader>
 
         {createdSecret ? (
-          <Alert>
-            <AlertTitle>Copy this secret now</AlertTitle>
-            <AlertDescription className="space-y-2">
-              <p>
-                {createdPrefix} created. This secret is shown once and will not be retrievable
-                later; the API key table only shows the prefix.
-              </p>
-              {error ? <p className="text-destructive text-sm">{error}</p> : null}
-              <ApiKeyOneTimeSecretDisplay secret={createdSecret} onCopyError={setError} />
-            </AlertDescription>
-          </Alert>
+          <div className="space-y-4">
+            <Alert variant="destructive">
+              <AlertTitle>One-time reveal — save it now</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>
+                  Key <code className="font-mono">{createdPrefix}</code> was created. After you
+                  close this dialog the full secret cannot be recovered — the API key list only
+                  shows the prefix.
+                </p>
+                <p>
+                  Use the <strong>entire</strong> string below (prefix + dot + secret) as your
+                  bearer token. The prefix alone will not authenticate.
+                </p>
+              </AlertDescription>
+            </Alert>
+            {error ? <p className="text-destructive text-sm">{error}</p> : null}
+            <ApiKeyOneTimeSecretDisplay secret={createdSecret} onCopyError={setError} />
+            <DialogFooter>
+              <Button type="button" onClick={() => handleClose(false)}>
+                I&apos;ve saved my key
+              </Button>
+            </DialogFooter>
+          </div>
         ) : (
           <form className="space-y-4" onSubmit={handleCreate}>
             {error ? (

@@ -238,6 +238,11 @@ export type ThreadSnapshot = z.infer<typeof threadSnapshotSchema>;
 export const analyzeRequestSchema = z.object({
   workspaceId: z.string().min(1),
   conversationId: z.string().min(1),
+  // Optional today; passed by the queue worker so the agent service can
+  // bind the active analysis row to side-effects it produces (e.g. opening
+  // a draft PR via createDraftPullRequest). Optional keeps backward-compat
+  // for any direct-callers that don't have an analysisId in scope.
+  analysisId: z.string().min(1).optional(),
   threadSnapshot: threadSnapshotSchema,
   sessionDigest: sessionDigestSchema.optional(),
   // Visual evidence around the digest's failurePoint. Either raw frames (for
@@ -277,7 +282,11 @@ export const analyzeResponseSchema = z.object({
 
 // ── tRPC Input Schemas ──────────────────────────────────────────────
 
-export const triggerAnalysisInputSchema = z.object({
+// Read-only lookup of the latest SupportAnalysis projection for a conversation.
+// Post-cutover, SupportAnalysis rows are written by markRunCompleted from the
+// agent-team workflow's drafter output — they're a derived projection of the
+// agent-team event log, not a primary table.
+export const getLatestAnalysisInputSchema = z.object({
   conversationId: z.string().min(1),
 });
 
@@ -370,18 +379,9 @@ export const supportAnalysisWithRelationsSchema = supportAnalysisSchema.extend({
 
 export type SupportAnalysisWithRelations = z.infer<typeof supportAnalysisWithRelationsSchema>;
 
-// ── Trigger Analysis Result ──────────────────────────────────────
-
-export const triggerAnalysisResultSchema = z.object({
-  analysisId: z.string().nullable(),
-  workflowId: z.string(),
-  alreadyInProgress: z.boolean(),
-});
-
-export type TriggerAnalysisResult = z.infer<typeof triggerAnalysisResultSchema>;
 export type AnalyzeRequest = z.infer<typeof analyzeRequestSchema>;
 export type AnalyzeResponse = z.infer<typeof analyzeResponseSchema>;
 export type ToolCallRecord = z.infer<typeof toolCallRecordSchema>;
-export type TriggerAnalysisInput = z.infer<typeof triggerAnalysisInputSchema>;
+export type GetLatestAnalysisInput = z.infer<typeof getLatestAnalysisInputSchema>;
 export type ApproveDraftInput = z.infer<typeof approveDraftInputSchema>;
 export type DismissDraftInput = z.infer<typeof dismissDraftInputSchema>;

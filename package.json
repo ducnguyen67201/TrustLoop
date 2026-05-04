@@ -1,16 +1,13 @@
 {
   "name": "trustloop",
-  "version": "0.2.16.3",
+  "version": "0.2.17.5",
   "private": true,
   "type": "module",
   "packageManager": "npm@11.6.2",
   "engines": {
     "node": ">=24.0.0"
   },
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
@@ -24,11 +21,12 @@
     "doppler:dev:web": "doppler run -- npm run dev:web",
     "doppler:dev:queue": "doppler run -- npm run dev:queue",
     "doppler:dev:agents": "doppler run -- npm run dev:agents",
-    "check": "npm run type-check && npm run lint && npm run test && npm run build && npm run openapi:check && npm run db:generate",
+    "check": "npm run db:generate && npm run type-check && npm run lint && npm run test && npm run build:check && npm run openapi:check",
     "check:clean": "npm run check && npm run clean:artifacts",
     "type-check": "turbo run type-check",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "build:check": "APP_BASE_URL=http://localhost:3000 SESSION_COOKIE_NAME=trustloop-session SESSION_TTL_HOURS=24 SESSION_SECRET=ci-test-secret-minimum-16 API_KEY_PEPPER=ci-test-pepper-minimum-16 INTERNAL_SERVICE_KEY=tli_ci_test_service_key_12345 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/trustloop?schema=public TEMPORAL_ADDRESS=localhost:7233 TEMPORAL_NAMESPACE=default SKIP_ENV_VALIDATION=1 npm run build",
     "db:check-drift": "tsx packages/database/scripts/check-drift.ts",
     "db:generate": "npm --workspace @shared/database run db:generate && npm --workspace @shared/types run prisma:sync",
     "db:migrate": "npm --workspace @shared/database run db:migrate",

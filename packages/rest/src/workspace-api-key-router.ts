@@ -1,4 +1,4 @@
-import { prisma } from "@shared/database";
+import { prisma, prismaRaw } from "@shared/database";
 import { generateWorkspaceApiKeyMaterial } from "@shared/rest/security/api-key";
 import { writeAuditEvent } from "@shared/rest/security/audit";
 import { router, workspaceProcedure, workspaceRoleProcedure } from "@shared/rest/trpc";
@@ -44,6 +44,7 @@ export const workspaceApiKeyRouter = router({
     const keys = await prisma.workspaceApiKey.findMany({
       where: {
         workspaceId,
+        revokedAt: null,
       },
       orderBy: {
         createdAt: "desc",
@@ -148,24 +149,29 @@ export const workspaceApiKeyRouter = router({
         ctx.apiKeyAuth?.workspaceId ?? null
       );
 
-      const now = new Date();
-      const updated = await prisma.workspaceApiKey.updateMany({
+      const existing = await prisma.workspaceApiKey.findFirst({
         where: {
           id: input.keyId,
           workspaceId,
-          revokedAt: null,
         },
-        data: {
-          revokedAt: now,
+        select: {
+          id: true,
+          keyPrefix: true,
         },
       });
 
-      if (updated.count === 0) {
+      if (!existing) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "API key not found or already revoked",
+          message: "API key not found",
         });
       }
+
+      // Hard delete via the raw client to bypass the soft-delete extension —
+      // revoked keys leave no DB row, only the audit event preserves the action.
+      await prismaRaw.workspaceApiKey.delete({
+        where: { id: existing.id },
+      });
 
       await writeAuditEvent({
         action: "workspace.api_key.revoke",
@@ -173,6 +179,9 @@ export const workspaceApiKeyRouter = router({
         actorUserId: ctx.user.id,
         targetType: "workspace_api_key",
         targetId: input.keyId,
+        metadata: {
+          keyPrefix: existing.keyPrefix,
+        },
       });
 
       return workspaceApiKeyRevokeResponseSchema.parse({

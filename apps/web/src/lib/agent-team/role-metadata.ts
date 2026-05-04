@@ -30,6 +30,12 @@ interface RoleVisual {
 }
 
 export const ROLE_VISUALS: Record<AgentTeamRoleSlug, RoleVisual> = {
+  [AGENT_TEAM_ROLE_SLUG.drafter]: {
+    icon: RiBrainLine,
+    color: "#0ea5e9",
+    archetype: "The Drafter",
+    flavorText: "Reads the thread, drafts a reply, and surfaces likely subsystems.",
+  },
   [AGENT_TEAM_ROLE_SLUG.architect]: {
     icon: RiBrainLine,
     color: "#f5a623",
@@ -84,6 +90,7 @@ export function getAgentRoleTargetColorStyle(target: string): { color?: string }
  * Default label for each role slug (used when auto-assembling).
  */
 export const ROLE_LABELS: Record<AgentTeamRoleSlug, string> = {
+  [AGENT_TEAM_ROLE_SLUG.drafter]: "Drafter",
   [AGENT_TEAM_ROLE_SLUG.architect]: "Architect",
   [AGENT_TEAM_ROLE_SLUG.codeReader]: "Code Reader",
   [AGENT_TEAM_ROLE_SLUG.reviewer]: "Reviewer",

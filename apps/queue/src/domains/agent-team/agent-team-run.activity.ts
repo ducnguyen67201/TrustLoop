@@ -44,6 +44,11 @@ import {
   agentTeamRoleInboxSchema,
   agentTeamRoleTurnInputSchema,
   agentTeamRoleTurnOutputSchema,
+  agentTeamRunStatusSchema,
+  restoreAgentTeamRunContext,
+  restoreDraftContext,
+  transitionAgentTeamRun,
+  transitionDraft,
 } from "@shared/types";
 import { heartbeat } from "@temporalio/activity";
 
@@ -98,13 +103,40 @@ export async function initializeRunState(
   const initialRole = selectInitialRole(input.teamSnapshot);
 
   const recordedEvent = await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: input.runId },
+      select: {
+        id: true,
+        status: true,
+        errorMessage: true,
+        workspaceId: true,
+        teamId: true,
+        conversationId: true,
+        analysisId: true,
+      },
+    });
+    // Temporal-retry idempotency: if a previous attempt already committed the
+    // start transition, the run is already in `running`. Skip the FSM call
+    // (which would throw on running -> start) and skip re-emitting the
+    // run_started event (already in the log).
+    if (current.status === AGENT_TEAM_RUN_STATUS.running) {
+      return null;
+    }
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(
+        input.runId,
+        agentTeamRunStatusSchema.parse(current.status),
+        current.errorMessage
+      ),
+      { type: "start" }
+    );
     const run = await tx.agentTeamRun.update({
       where: { id: input.runId },
       data: {
-        status: AGENT_TEAM_RUN_STATUS.running,
+        status: next.status,
+        errorMessage: next.errorMessage,
         startedAt: new Date(),
         completedAt: null,
-        errorMessage: null,
       },
       select: {
         id: true,
@@ -156,7 +188,9 @@ export async function initializeRunState(
     });
   });
 
-  logRecordedEvents([recordedEvent]);
+  if (recordedEvent) {
+    logRecordedEvents([recordedEvent]);
+  }
 
   return { roleKey: initialRole.roleKey };
 }
@@ -248,7 +282,12 @@ export async function runTeamTurnActivity(
 
   const response = await fetch(`${resolveAgentServiceUrl()}/team-turn`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      // Service-key auth: see callAgentService in support-analysis.activity.ts
+      // for the rationale. The agent service treats the body as trusted input.
+      authorization: `Bearer ${env.INTERNAL_SERVICE_KEY}`,
+    },
     body: JSON.stringify(input),
     signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
   });
@@ -631,14 +670,38 @@ export async function getRunProgress(runId: string): Promise<RunProgressSnapshot
 
 export async function markRunCompleted(runId: string): Promise<void> {
   const event = await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: runId },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    // Temporal-retry idempotency: terminal state already persisted on a prior
+    // attempt. Skip the FSM call (would throw on completed -> complete) and
+    // skip re-emitting the run_succeeded event (already in the log).
+    if (current.status === AGENT_TEAM_RUN_STATUS.completed) {
+      return null;
+    }
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(
+        runId,
+        agentTeamRunStatusSchema.parse(current.status),
+        current.errorMessage
+      ),
+      { type: "complete" }
+    );
     const run = await tx.agentTeamRun.update({
       where: { id: runId },
       data: {
-        status: AGENT_TEAM_RUN_STATUS.completed,
+        status: next.status,
+        errorMessage: next.errorMessage,
         completedAt: new Date(),
-        errorMessage: null,
       },
-      select: { id: true, workspaceId: true, startedAt: true, completedAt: true },
+      select: {
+        id: true,
+        workspaceId: true,
+        conversationId: true,
+        startedAt: true,
+        completedAt: true,
+      },
     });
     const messageCount = await tx.agentTeamMessage.count({ where: { runId } });
 
@@ -667,31 +730,169 @@ export async function markRunCompleted(runId: string): Promise<void> {
       data: { summary: serializeRunRollup(rollup) },
     });
 
+    // Project the drafter's proposal onto the SupportAnalysis + SupportDraft
+    // tables so the existing approve/dismiss flow keeps working. Pre-cutover
+    // these rows came from the standalone support-analysis workflow; post-
+    // cutover they're a derived projection of the agent-team event log.
+    if (run.conversationId) {
+      await projectFastRunToSupportAnalysis(tx, {
+        runId: run.id,
+        workspaceId: run.workspaceId,
+        conversationId: run.conversationId,
+      });
+    }
+
     return recordedEvent;
   });
-  logRecordedEvents([event]);
+  if (event) {
+    logRecordedEvents([event]);
+  }
+}
+
+// Project a completed agent-team run onto the legacy SupportAnalysis +
+// SupportDraft tables. Idempotent: if a SupportAnalysis row already exists for
+// this conversation that points back at this run, skip.
+async function projectFastRunToSupportAnalysis(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  args: { runId: string; workspaceId: string; conversationId: string }
+): Promise<void> {
+  const drafterMessage = await tx.agentTeamMessage.findFirst({
+    where: {
+      runId: args.runId,
+      fromRoleSlug: AGENT_TEAM_ROLE_SLUG.drafter,
+      kind: AGENT_TEAM_MESSAGE_KIND.proposal,
+    },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, subject: true, content: true, refs: true },
+  });
+  if (!drafterMessage) {
+    return;
+  }
+
+  const facts = await tx.agentTeamFact.findMany({
+    where: { runId: args.runId },
+    orderBy: { createdAt: "asc" },
+    select: { statement: true, confidence: true },
+  });
+
+  const problemStatement = facts[0]?.statement ?? "Drafted by agent team.";
+  const likelySubsystem = facts[1]?.statement ?? "agent-team-FAST";
+  const confidence = facts[0]?.confidence ?? 0.5;
+  const hasDraft = drafterMessage.content.trim().length > 0;
+  const isNoDraftMarker = drafterMessage.subject?.includes("Analysis only") ?? false;
+
+  // Idempotency: skip if we've already projected this run.
+  const existing = await tx.supportAnalysis.findFirst({
+    where: { conversationId: args.conversationId, agentTeamRunId: args.runId },
+    select: { id: true },
+  });
+  if (existing) {
+    return;
+  }
+
+  const analysis = await tx.supportAnalysis.create({
+    data: {
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      agentTeamRunId: args.runId,
+      status: "ANALYZED",
+      triggerType: "AUTO",
+      problemStatement,
+      likelySubsystem,
+      confidence,
+      reasoningTrace: facts.map((fact) => `- ${fact.statement}`).join("\n"),
+      toolCallCount: 0,
+      llmModel: null,
+    },
+    select: { id: true },
+  });
+
+  if (hasDraft && !isNoDraftMarker) {
+    // Drive the SupportDraft status through the draft FSM rather than writing
+    // a literal status string. The drafter's proposal is the equivalent of
+    // the legacy single-agent "generated" event, so we create at the default
+    // GENERATING state and immediately transition to AWAITING_APPROVAL.
+    const created = await tx.supportDraft.create({
+      data: {
+        analysisId: analysis.id,
+        conversationId: args.conversationId,
+        workspaceId: args.workspaceId,
+        draftBody: drafterMessage.content,
+        citations: Array.isArray(drafterMessage.refs) ? drafterMessage.refs : [],
+      },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    const next = transitionDraft(
+      restoreDraftContext(created.id, created.status, created.errorMessage),
+      { type: "generated" }
+    );
+    await tx.supportDraft.update({
+      where: { id: created.id },
+      data: { status: next.status, errorMessage: next.errorMessage },
+    });
+  }
 }
 
 export async function markRunWaiting(runId: string): Promise<void> {
   // Waiting is a re-entrant pause, not a terminal state. No event emitted;
   // the next initializeRunState/claimNext cycle will emit role_queued events.
-  await prisma.agentTeamRun.update({
-    where: { id: runId },
-    data: {
-      status: AGENT_TEAM_RUN_STATUS.waiting,
-      completedAt: null,
-    },
+  await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: runId },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    // Temporal-retry idempotency: already in waiting from a prior attempt.
+    if (current.status === AGENT_TEAM_RUN_STATUS.waiting) {
+      return;
+    }
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(
+        runId,
+        agentTeamRunStatusSchema.parse(current.status),
+        current.errorMessage
+      ),
+      { type: "waitForResolution" }
+    );
+    await tx.agentTeamRun.update({
+      where: { id: runId },
+      data: {
+        status: next.status,
+        errorMessage: next.errorMessage,
+        completedAt: null,
+      },
+    });
   });
 }
 
 export async function markRunFailed(input: { runId: string; errorMessage: string }): Promise<void> {
   const event = await prisma.$transaction(async (tx) => {
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: input.runId },
+      select: { id: true, status: true, errorMessage: true },
+    });
+    // Terminal-state idempotency: failed and completed are both terminal — a
+    // retry of markRunFailed should not throw or rewrite. We treat completed
+    // as a stronger terminal (don't downgrade success to failure on retry).
+    if (
+      current.status === AGENT_TEAM_RUN_STATUS.failed ||
+      current.status === AGENT_TEAM_RUN_STATUS.completed
+    ) {
+      return null;
+    }
+    const next = transitionAgentTeamRun(
+      restoreAgentTeamRunContext(
+        input.runId,
+        agentTeamRunStatusSchema.parse(current.status),
+        current.errorMessage
+      ),
+      { type: "fail", error: input.errorMessage }
+    );
     const run = await tx.agentTeamRun.update({
       where: { id: input.runId },
       data: {
-        status: AGENT_TEAM_RUN_STATUS.failed,
+        status: next.status,
+        errorMessage: next.errorMessage,
         completedAt: new Date(),
-        errorMessage: input.errorMessage,
       },
       select: { id: true, workspaceId: true, startedAt: true, completedAt: true },
     });
@@ -722,7 +923,9 @@ export async function markRunFailed(input: { runId: string; errorMessage: string
 
     return recordedEvent;
   });
-  logRecordedEvents([event]);
+  if (event) {
+    logRecordedEvents([event]);
+  }
 }
 
 function computeDurationMs(startedAt: Date | null, completedAt: Date | null): number {

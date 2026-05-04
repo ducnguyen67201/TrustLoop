@@ -1,4 +1,5 @@
 import {
+  AGENT_TEAM_RUN_STATUS,
   ANALYSIS_STATUS,
   DRAFT_DISPATCH_STATUS,
   DRAFT_STATUS,
@@ -6,21 +7,26 @@ import {
   SUPPORT_CONVERSATION_STATUS,
 } from "@shared/types";
 import {
+  InvalidAgentTeamRunTransitionError,
   InvalidAnalysisTransitionError,
   InvalidConversationTransitionError,
   InvalidDraftDispatchTransitionError,
   InvalidDraftTransitionError,
   canRetryAnalysis,
+  createAgentTeamRunContext,
   createAnalysisContext,
   createConversationContext,
   createDraftContext,
   createDraftDispatchContext,
+  getAllowedAgentTeamRunEvents,
   getAllowedAnalysisEvents,
   getAllowedConversationEvents,
   getAllowedDraftDispatchEvents,
   getAllowedDraftEvents,
+  restoreAgentTeamRunContext,
   restoreAnalysisContext,
   restoreConversationContext,
+  transitionAgentTeamRun,
   transitionAnalysis,
   transitionConversation,
   transitionDraft,
@@ -705,6 +711,141 @@ describe("conversation state machine", () => {
         )
       );
       expect(allowed).not.toContain("markStale");
+    });
+  });
+});
+
+// ── AgentTeamRun State Machine ───────────────────────────────────────
+
+describe("agentTeamRun state machine", () => {
+  it("starts in queued", () => {
+    const ctx = createAgentTeamRunContext("run_1");
+    expect(ctx.status).toBe(AGENT_TEAM_RUN_STATUS.queued);
+    expect(ctx.errorMessage).toBeNull();
+  });
+
+  it("queued → start → running", () => {
+    const ctx = createAgentTeamRunContext("run_1");
+    const next = transitionAgentTeamRun(ctx, { type: "start" });
+    expect(next.status).toBe(AGENT_TEAM_RUN_STATUS.running);
+    expect(next.errorMessage).toBeNull();
+  });
+
+  it("queued → fail → failed (carries error)", () => {
+    const ctx = createAgentTeamRunContext("run_1");
+    const next = transitionAgentTeamRun(ctx, { type: "fail", error: "dispatch error" });
+    expect(next.status).toBe(AGENT_TEAM_RUN_STATUS.failed);
+    expect(next.errorMessage).toBe("dispatch error");
+  });
+
+  it("running → complete → completed (clears error)", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.running, "stale");
+    const next = transitionAgentTeamRun(ctx, { type: "complete" });
+    expect(next.status).toBe(AGENT_TEAM_RUN_STATUS.completed);
+    expect(next.errorMessage).toBeNull();
+  });
+
+  it("running → waitForResolution → waiting", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.running, null);
+    const next = transitionAgentTeamRun(ctx, { type: "waitForResolution" });
+    expect(next.status).toBe(AGENT_TEAM_RUN_STATUS.waiting);
+  });
+
+  it("running → fail → failed", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.running, null);
+    const next = transitionAgentTeamRun(ctx, { type: "fail", error: "max turns exceeded" });
+    expect(next.status).toBe(AGENT_TEAM_RUN_STATUS.failed);
+    expect(next.errorMessage).toBe("max turns exceeded");
+  });
+
+  it("waiting → resume → running (clears error)", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.waiting, "paused");
+    const next = transitionAgentTeamRun(ctx, { type: "resume" });
+    expect(next.status).toBe(AGENT_TEAM_RUN_STATUS.running);
+    expect(next.errorMessage).toBeNull();
+  });
+
+  it("waiting → fail → failed", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.waiting, null);
+    const next = transitionAgentTeamRun(ctx, { type: "fail", error: "abandoned" });
+    expect(next.status).toBe(AGENT_TEAM_RUN_STATUS.failed);
+  });
+
+  it("rejects invalid: queued → complete (must start first)", () => {
+    const ctx = createAgentTeamRunContext("run_1");
+    expect(() => transitionAgentTeamRun(ctx, { type: "complete" })).toThrow(
+      InvalidAgentTeamRunTransitionError
+    );
+  });
+
+  it("rejects invalid: queued → resume (waiting only)", () => {
+    const ctx = createAgentTeamRunContext("run_1");
+    expect(() => transitionAgentTeamRun(ctx, { type: "resume" })).toThrow(
+      InvalidAgentTeamRunTransitionError
+    );
+  });
+
+  it("rejects invalid: completed → resume (terminal)", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.completed, null);
+    expect(() => transitionAgentTeamRun(ctx, { type: "resume" })).toThrow(
+      InvalidAgentTeamRunTransitionError
+    );
+  });
+
+  it("rejects invalid: completed → fail (terminal)", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.completed, null);
+    expect(() => transitionAgentTeamRun(ctx, { type: "fail", error: "x" })).toThrow(
+      InvalidAgentTeamRunTransitionError
+    );
+  });
+
+  it("rejects invalid: failed → resume (terminal)", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.failed, "boom");
+    expect(() => transitionAgentTeamRun(ctx, { type: "resume" })).toThrow(
+      InvalidAgentTeamRunTransitionError
+    );
+  });
+
+  it("rejects invalid: running → start (already started)", () => {
+    const ctx = restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.running, null);
+    expect(() => transitionAgentTeamRun(ctx, { type: "start" })).toThrow(
+      InvalidAgentTeamRunTransitionError
+    );
+  });
+
+  describe("getAllowedAgentTeamRunEvents", () => {
+    it("queued allows start + fail", () => {
+      const allowed = new Set(getAllowedAgentTeamRunEvents(createAgentTeamRunContext("run_1")));
+      expect(allowed).toEqual(new Set(["start", "fail"]));
+    });
+
+    it("running allows complete + waitForResolution + fail", () => {
+      const allowed = new Set(
+        getAllowedAgentTeamRunEvents(
+          restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.running, null)
+        )
+      );
+      expect(allowed).toEqual(new Set(["complete", "waitForResolution", "fail"]));
+    });
+
+    it("waiting allows resume + fail", () => {
+      const allowed = new Set(
+        getAllowedAgentTeamRunEvents(
+          restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.waiting, null)
+        )
+      );
+      expect(allowed).toEqual(new Set(["resume", "fail"]));
+    });
+
+    it("completed and failed are terminal (no allowed events)", () => {
+      const completed = getAllowedAgentTeamRunEvents(
+        restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.completed, null)
+      );
+      const failed = getAllowedAgentTeamRunEvents(
+        restoreAgentTeamRunContext("run_1", AGENT_TEAM_RUN_STATUS.failed, null)
+      );
+      expect(completed).toEqual([]);
+      expect(failed).toEqual([]);
     });
   });
 });

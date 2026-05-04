@@ -40,6 +40,12 @@ export interface CreateDraftPullRequestInput {
   description: string;
   changes: DraftPullRequestChange[];
   baseBranch?: string;
+  // Audit-trail context. When the agent service threads these through
+  // (the analyze path), the persisted AgentPullRequest row links back
+  // to the originating support conversation + analysis so the inbox UI
+  // can show "Draft PR opened: #N →" pills for the operator.
+  conversationId?: string;
+  analysisId?: string;
 }
 
 export type CreateDraftPullRequestResult =
@@ -109,6 +115,35 @@ export async function createDraftPullRequest(
     };
   }
 
+  // Idempotency on activity retry. The Temporal activity that drives
+  // /analyze retries on transient failure (maximumAttempts: 2). If the
+  // first attempt opened a PR but threw afterwards (response read timeout,
+  // post-response Zod failure, persistence error), the retry would re-run
+  // the agent and open another GitHub PR with another Date.now() branch
+  // and another fresh prNumber. Short-circuit here when an audit row
+  // already exists for this analysis + repo so retries return the original
+  // PR URL instead of duplicating draft PRs in the customer's repo.
+  if (input.analysisId) {
+    const existing = await prisma.agentPullRequest.findFirst({
+      where: {
+        workspaceId: input.workspaceId,
+        analysisId: input.analysisId,
+        repositoryId: repo.id,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { prNumber: true, prUrl: true, branchName: true },
+    });
+    if (existing) {
+      console.log("[draft-pr] Returning existing PR for analysis (idempotency):", existing.prUrl);
+      return {
+        success: true,
+        prUrl: existing.prUrl,
+        prNumber: existing.prNumber,
+        branchName: existing.branchName,
+      };
+    }
+  }
+
   const baseBranch = input.baseBranch ?? repo.defaultBranch ?? "main";
   const branchName = `trustloop/fix-${Date.now()}`;
   const [owner = "", repoName = ""] = input.repositoryFullName.split("/");
@@ -151,6 +186,77 @@ export async function createDraftPullRequest(
       base: baseBranch,
       draft: true,
     });
+
+    // Tenant-verify the audit linkage. The FKs only check that the row
+    // exists, not that it belongs to input.workspaceId. Without this check,
+    // a caller could write an AgentPullRequest in workspace A whose
+    // conversationId points at workspace B — poisoning agent-pr-service
+    // queries that filter on conversationId. Drop the linkage if it
+    // doesn't belong to this workspace.
+    let conversationIdToWrite = input.conversationId ?? null;
+    let analysisIdToWrite = input.analysisId ?? null;
+    if (conversationIdToWrite) {
+      const conv = await prisma.supportConversation.findFirst({
+        where: { id: conversationIdToWrite, workspaceId: input.workspaceId },
+        select: { id: true },
+      });
+      if (!conv) {
+        console.warn(
+          "[draft-pr] conversationId does not belong to workspace; dropping audit linkage:",
+          { workspaceId: input.workspaceId, conversationId: conversationIdToWrite }
+        );
+        conversationIdToWrite = null;
+      }
+    }
+    if (analysisIdToWrite) {
+      const analysis = await prisma.supportAnalysis.findFirst({
+        where: { id: analysisIdToWrite, workspaceId: input.workspaceId },
+        select: { id: true },
+      });
+      if (!analysis) {
+        console.warn(
+          "[draft-pr] analysisId does not belong to workspace; dropping audit linkage:",
+          { workspaceId: input.workspaceId, analysisId: analysisIdToWrite }
+        );
+        analysisIdToWrite = null;
+      }
+    }
+
+    // Orphan guard: if neither linkage survived verification (or neither
+    // was provided), an audit row would be invisible to both
+    // listForConversation and listForAnalysis. Skip persistence and log
+    // loudly. The PR exists in GitHub regardless — this just keeps the
+    // table free of unreachable rows.
+    if (!conversationIdToWrite && !analysisIdToWrite) {
+      console.warn(
+        "[draft-pr] Skipping AgentPullRequest persistence: no conversationId or analysisId linkage. PR was opened in GitHub but will not appear in the inbox.",
+        { workspaceId: input.workspaceId, prUrl: pr.html_url }
+      );
+    } else {
+      // Persist for the inbox UI. Log + swallow on persistence failure:
+      // the GitHub PR is already real, so failing to write the audit row
+      // shouldn't roll back a successful PR.
+      try {
+        await prisma.agentPullRequest.create({
+          data: {
+            workspaceId: input.workspaceId,
+            repositoryId: repo.id,
+            conversationId: conversationIdToWrite,
+            analysisId: analysisIdToWrite,
+            prNumber: pr.number,
+            prUrl: pr.html_url,
+            branchName,
+            baseBranch,
+            title: input.title,
+          },
+        });
+      } catch (persistError) {
+        console.error(
+          "[draft-pr] Persisted PR but failed to write AgentPullRequest row:",
+          persistError instanceof Error ? persistError.message : persistError
+        );
+      }
+    }
 
     return {
       success: true,

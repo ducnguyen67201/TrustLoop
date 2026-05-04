@@ -17,6 +17,7 @@ interface ApiKeyOneTimeSecretDisplayProps {
  * Prefix-only display for persisted API key rows.
  */
 export function ApiKeyPrefixDisplay({ keyPrefix }: ApiKeyPrefixDisplayProps) {
+  const [isPrefixVisible, setIsPrefixVisible] = useState(false);
   const [prefixCopied, setPrefixCopied] = useState(false);
 
   async function handleCopyPrefix(): Promise<void> {
@@ -31,7 +32,19 @@ export function ApiKeyPrefixDisplay({ keyPrefix }: ApiKeyPrefixDisplayProps) {
 
   return (
     <div className="flex items-center gap-2">
-      <code className="text-xs">{keyPrefix}</code>
+      <code className="min-w-[22ch] text-xs">
+        {isPrefixVisible ? keyPrefix : "•".repeat(Math.min(24, keyPrefix.length))}
+      </code>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        onClick={() => setIsPrefixVisible((value) => !value)}
+        aria-label={isPrefixVisible ? "Hide key prefix" : "Show key prefix"}
+        title={isPrefixVisible ? "Hide key prefix" : "Show key prefix"}
+      >
+        {isPrefixVisible ? <RiEyeOffLine /> : <RiEyeLine />}
+      </Button>
       <Button
         type="button"
         variant="ghost"
@@ -53,7 +66,8 @@ export function ApiKeyOneTimeSecretDisplay({
   secret,
   onCopyError,
 }: ApiKeyOneTimeSecretDisplayProps) {
-  const [isSecretVisible, setIsSecretVisible] = useState(false);
+  // Default visible: this is the only chance the user has to read the secret.
+  const [isSecretVisible, setIsSecretVisible] = useState(true);
   const [secretCopied, setSecretCopied] = useState(false);
 
   async function handleCopySecret(): Promise<void> {
@@ -68,8 +82,8 @@ export function ApiKeyOneTimeSecretDisplay({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-start gap-2">
-        <code className="bg-muted block flex-1 overflow-x-auto rounded p-2 text-xs">
+      <div className="flex min-w-0 items-start gap-2">
+        <code className="bg-muted block min-w-0 flex-1 break-all rounded p-2 font-mono text-xs leading-relaxed">
           {isSecretVisible ? secret : "•".repeat(Math.min(64, secret.length))}
         </code>
         <Button

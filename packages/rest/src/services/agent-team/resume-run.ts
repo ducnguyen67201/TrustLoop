@@ -11,10 +11,14 @@ import {
   type PendingResolutionQuestion,
   ValidationError,
   type WorkflowDispatchResponse,
+  agentTeamConfigSchema,
+  agentTeamRunStatusSchema,
   agentTeamSnapshotSchema,
   getPendingResolutionQuestionsInputSchema,
   recordOperatorAnswerInputSchema,
+  restoreAgentTeamRunContext,
   resumeAgentTeamRunInputSchema,
+  transitionAgentTeamRun,
 } from "@shared/types";
 
 interface RecordOperatorAnswerArgs {
@@ -190,6 +194,7 @@ export async function resumeRun(
       teamId: true,
       conversationId: true,
       analysisId: true,
+      teamConfig: true,
       status: true,
       teamSnapshot: true,
     },
@@ -221,23 +226,49 @@ export async function resumeRun(
     teamId: run.teamId,
     conversationId: run.conversationId ?? undefined,
     analysisId: run.analysisId ?? undefined,
+    teamConfig: agentTeamConfigSchema.parse(run.teamConfig),
     teamSnapshot,
     threadSnapshot,
     isResume: true,
     resumeNonce,
   });
 
-  // Flip status back to running and record the new workflowId so the run row
-  // points at the live execution. Done after dispatch succeeded so a Temporal
-  // failure leaves the row in `waiting` for retry.
+  // Flip status back to running via the FSM and record the new workflowId so
+  // the run row points at the live execution. Done after dispatch succeeded so
+  // a Temporal failure leaves the row in `waiting` for retry.
   await prisma.$transaction(async (tx) => {
-    await tx.agentTeamRun.update({
+    const current = await tx.agentTeamRun.findUniqueOrThrow({
       where: { id: run.id },
-      data: {
-        status: AGENT_TEAM_RUN_STATUS.running,
-        workflowId: dispatch.workflowId,
-      },
+      select: { id: true, status: true, errorMessage: true },
     });
+    // Idempotency: a previous resume attempt may have committed the status
+    // flip but failed before the new workflowId was persisted (or before
+    // event log write). On retry we still need to record the new workflowId
+    // and event, but we skip the FSM transition to avoid the running -> resume
+    // throw. Status is already running; just update the workflowId.
+    if (current.status === AGENT_TEAM_RUN_STATUS.running) {
+      await tx.agentTeamRun.update({
+        where: { id: run.id },
+        data: { workflowId: dispatch.workflowId },
+      });
+    } else {
+      const next = transitionAgentTeamRun(
+        restoreAgentTeamRunContext(
+          run.id,
+          agentTeamRunStatusSchema.parse(current.status),
+          current.errorMessage
+        ),
+        { type: "resume" }
+      );
+      await tx.agentTeamRun.update({
+        where: { id: run.id },
+        data: {
+          status: next.status,
+          errorMessage: next.errorMessage,
+          workflowId: dispatch.workflowId,
+        },
+      });
+    }
     await recordEvent(tx, {
       kind: AGENT_TEAM_EVENT_KIND.runStarted,
       runId: run.id,

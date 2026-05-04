@@ -187,6 +187,7 @@ model SupportConversation {
   analyses               SupportAnalysis[]
   drafts                 SupportDraft[]
   attachments            SupportMessageAttachment[]
+  agentPullRequests      AgentPullRequest[]
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
 

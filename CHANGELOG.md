@@ -2,6 +2,264 @@
 
 All notable changes to TrustLoop will be documented in this file.
 
+## [0.2.17.5] - 2026-05-04
+
+### Removed
+- **Legacy single-agent `support-analysis` workflow rollback artifacts.**
+  After three releases of the agent-team-only pipeline (v0.2.17.1 cutover,
+  v0.2.17.3 FSM hardening, v0.2.17.4 idempotency fixes) running in
+  production without rollback, the legacy code is deleted.
+  - `apps/queue/src/domains/support/support-analysis.workflow.ts` and
+    `support-analysis.activity.ts` — the orchestrator + activities. Not
+    reached by the live code path since v0.2.17.1.
+  - `apps/queue/test/support-analysis.activity.test.ts` — tested the
+    deleted activity.
+  - `WorkflowDispatcher.startSupportAnalysisWorkflow` method and its
+    Temporal binding in `temporal-dispatcher.ts`.
+  - `support-analysis` discriminator branch from `workflow-router.ts` and
+    the matching `workflowDispatchSchema` member.
+  - `supportAnalysisWorkflowInputSchema` /
+    `supportAnalysisWorkflowResultSchema` and the `supportAnalysis`
+    workflow name from `workflow.schema.ts`.
+  - `supportAnalysis.triggerAnalysis` tRPC mutation and its
+    `supportAnalysis.trigger` service backing.
+  - `triggerAnalysisInputSchema` / `triggerAnalysisResultSchema` from
+    support-analysis schema (frontend renamed its input to
+    `getLatestAnalysisInputSchema` to match its only remaining caller).
+  - `POST /analyze` HTTP route on the agents service. The `runAnalysis`
+    function stays — it's still called as a function by `runTeamTurn`'s
+    drafter short-circuit.
+  - Worker registration entries for the deleted workflow + activities in
+    `apps/queue/src/runtime/{workflows,activities}.ts`.
+  - Test mocks of `startSupportAnalysisWorkflow` removed from
+    `agent-team-run-service.test.ts`, `agent-team-resume-run.test.ts`,
+    `workflow-router.test.ts`, and `procedure-auth.test.ts`.
+
+### Notes
+- `SupportAnalysis` and `SupportDraft` Prisma models stay — they're now
+  derived projections written by `markRunCompleted` from drafter output.
+  The right-rail UI reads them unchanged via
+  `supportAnalysis.getLatestAnalysis` and approve/dismiss still operate on
+  `SupportDraft` rows.
+- The `runAnalysis` function in `apps/agents/src/agent.ts` and the
+  `support-analysis*.ts` prompt files stay — they're still the LLM call
+  the drafter delegates to. Quality unchanged.
+- Rollback path: the prior cutover commits would need to be reverted
+  along with this one. After three stable releases, that's not a path
+  worth keeping the dead code for.
+
+## [0.2.17.4] - 2026-05-04
+
+### Fixed
+- **AgentTeamRun status mutators are now idempotent under Temporal retries.**
+  After v0.2.17.3 introduced the FSM, `markRunCompleted` / `markRunFailed` /
+  `markRunWaiting` / `initializeRunState` would throw
+  `InvalidAgentTeamRunTransitionError` if Temporal retried the activity after
+  a successful DB commit (e.g. a network blip between commit and ack). The
+  retry would treat the activity as failed and could trigger a cascade. Each
+  function now early-returns when the run is already in the target state — no
+  FSM call, no double-emit of terminal events.
+- **Replaces `current.status as never` casts with
+  `agentTeamRunStatusSchema.parse(current.status)`** at all 5 FSM-driven write
+  sites (4 in `agent-team-run.activity.ts`, 1 in `resume-run.ts`). Per
+  CLAUDE.md "no `any`, no `as unknown as`" rule. The cast bypassed Zod
+  validation on the way in; the parse catches a malformed status at the
+  boundary with a typed error instead of letting an invalid value reach the
+  FSM as "unknown status".
+- **`markRunWaiting` now writes `errorMessage: next.errorMessage`** for
+  consistency with the other four FSM-driven update sites. Runtime effect
+  was a no-op (the `waitForResolution` handler preserves errorMessage), but
+  the inconsistency read as a bug.
+
+### Notes
+- Activity-level idempotency tests are not included in this PR. The
+  FSM-rejection tests in `state-machines.test.ts` already cover the
+  underlying transition rules; the activity-layer guards are best validated
+  by integration tests against a real DB. Worth a follow-up.
+
+## [0.2.17.3] - 2026-05-04
+
+### Changed
+- **AgentTeamRun status now driven by a finite-state machine.** Mirrors the
+  existing `draft-state-machine.ts` pattern using the shared `defineFsm`
+  helper. Replaces five scattered `status: AGENT_TEAM_RUN_STATUS.*` direct
+  writes (in `run-service.start`, `initializeRunState`, `markRunCompleted`,
+  `markRunWaiting`, `markRunFailed`, and the resume path in `resume-run.ts`)
+  with `transitionAgentTeamRun(ctx, event)` calls. Illegal transitions
+  (e.g. completed → resume, queued → complete) now throw
+  `InvalidAgentTeamRunTransitionError` at the call site instead of
+  silently corrupting state.
+
+### Added
+- **`packages/types/src/agent-team/state-machines/agent-team-run-state-machine.ts`.**
+  States: `queued | running | waiting | completed | failed`. Events:
+  `start | complete | waitForResolution | fail | resume`. Terminal:
+  `completed`, `failed`. Public API: `createAgentTeamRunContext`,
+  `restoreAgentTeamRunContext`, `transitionAgentTeamRun`,
+  `getAllowedAgentTeamRunEvents`, plus the
+  `InvalidAgentTeamRunTransitionError` class for `instanceof` checks at
+  service-layer error translation boundaries.
+- **15 new unit tests** in `packages/types/test/state-machines.test.ts`
+  covering every valid transition, every terminal-state rejection, and
+  the `getAllowedAgentTeamRunEvents` reflection of current state.
+
+### Notes
+- The FSM event type is named `AgentTeamRunFsmEvent` (not
+  `AgentTeamRunEvent`) to avoid colliding with the existing event-log
+  `AgentTeamRunEvent` discriminated union — they live in adjacent
+  modules and are conceptually different layers.
+- Test fixtures across `packages/rest/test/*` still use string literals
+  for `AgentTeamRun.status` (e.g. `status: "queued"` instead of
+  `AGENT_TEAM_RUN_STATUS.queued`). The literal-to-enum sweep is a
+  separate housekeeping refactor — not blocking.
+
+## [0.2.17.2] - 2026-05-03
+
+### Changed
+- **Drafter projects to SupportAnalysis + SupportDraft on completion.**
+  When a FAST agent-team run completes, `markRunCompleted` writes a
+  `SupportAnalysis` row (with the new `agentTeamRunId` link) and a
+  `SupportDraft` row driven through the draft FSM
+  (`generating → awaitingApproval`). The right-rail panel and the existing
+  approve/dismiss flow read from `SupportAnalysis` unchanged. The
+  `useAnalysis` hook reverts to its pre-cutover read path; only its trigger
+  call was swapped to `agentTeam.startRun({ teamConfig: 'FAST' })`.
+- **Removed `AGENT_TEAM_AS_DEFAULT_PIPELINE` flag.** Agent team is the only
+  pipeline. Rollback is via `git revert` of the cutover commits — no flag
+  flip required.
+
+### Added
+- **`SupportAnalysis.agentTeamRunId` column** with migration. Indexed and
+  used for projection idempotency (re-running `markRunCompleted` for the
+  same run does not double-write).
+- **PR-creator + reviewer prompt hardening.** `pr-creator.prompt.ts` now
+  spells out hard preconditions before `createPullRequest` (reviewer
+  approval present, file located + read first, full file content
+  reconstructed not blind-edited, size self-checked). `reviewer.prompt.ts`
+  now defines the explicit approval contract — five conditions that must
+  all be true before emitting `kind: approval`.
+- **Unit tests for `DraftProjection` service** in
+  `packages/rest/test/draft-projection-service.test.ts`. Status-mapping
+  parametrized tests, missing-conversation handling, empty-message handling.
+- **`docs/concepts/agent-team.md` updated** with the new trigger paths,
+  team configurations table, drafter delegation flow, and SupportAnalysis
+  projection mechanics.
+
+### Notes
+- The legacy `support-analysis.workflow.ts` and `supportAnalysis.*` router
+  remain in the tree for one release as a rollback artifact. Not reached
+  by the live code path. Physical deletion ships in a follow-up.
+- AgentTeamRun status is currently set via direct writes; a finite-state
+  machine (matching the existing `draft-state-machine.ts` pattern) is on
+  the project's stated FSM follow-up list and is its own refactor. Test
+  fixtures still use string literals for `AgentTeamRun.status`; cleanup to
+  the typed `AGENT_TEAM_RUN_STATUS` enum constants is a sweep follow-up.
+- Pre-existing apps/queue env-validation failures
+  (`agent-team-archive.test.ts`, `agent-team-metrics-rollup.test.ts`)
+  require server env vars not in the local `.env`. Unrelated to this
+  change; CI provisions them.
+
+## [0.2.17.1] - 2026-05-03
+
+### Changed
+- **Agent team is the only AI pipeline now.** The single-agent
+  `support-analysis` pipeline is retired in favor of the agent team running
+  in a sized configuration (FAST | STANDARD | DEEP). Auto-trigger always
+  dispatches the agent-team FAST run. The right-rail draft panel reads from
+  the new `DraftProjection` service via the existing `useAnalysis` hook
+  (adapter pattern: hook surface unchanged, data source swapped underneath).
+- **New `drafter` role** in the agent team. The FAST configuration runs the
+  drafter only — it replaces the legacy single-agent analysis. The drafter
+  role at the agent service layer delegates to `runAnalysis()` so the prompt,
+  tools, and model are identical to the old `/analyze` path. Quality is
+  unchanged by construction; the wrapper just maps the analysis output onto
+  one team-event-log proposal message + facts.
+
+### Added
+- **`AGENT_TEAM_CONFIG` enum** (FAST | STANDARD | DEEP) and the matching
+  `AgentTeamRun.teamConfig` column with migration. Existing runs are
+  backfilled to DEEP since they were created via the manual full-team button.
+- **`DraftProjection` service** that reads an agent-team run's drafter
+  output and shapes it as `{ insights, draftBody, references, status }`. New
+  tRPC procedure `agentTeam.getLatestDraftForConversation`. The right-rail
+  panel hook (`useAnalysis`) reads through this projection.
+- **Idempotent `agentTeam.startRun`.** A queued or running run for the same
+  `(workspaceId, conversationId)` returns the existing run instead of
+  starting a duplicate. Mirrors the GATHERING_CONTEXT|ANALYZING dedupe in
+  the legacy supportAnalysis service.
+
+### Notes
+- The legacy `support-analysis.workflow` and the `supportAnalysis.*` tRPC
+  procedures stay in the codebase for one release as a rollback path. The
+  auto-trigger no longer reaches them. Approve/dismiss flows on
+  pre-cutover SupportDraft rows continue to work via
+  `supportAnalysis.approveDraft` / `dismissDraft`.
+- Post-cutover drafts produced by the agent team are read-only in the UI
+  until a follow-up wires SupportDraft writes (or an equivalent) into the
+  agent-team event log.
+
+## [0.2.16.5] - 2026-05-03
+
+### Changed
+- **API key creation dialog is now hard to close accidentally.** While the
+  request is in flight or the one-time secret is on screen, the dialog blocks
+  outside-click, Escape, and the X close button. The only way out during the
+  reveal is the explicit "I've saved my key" button. This prevents the most
+  common way to lose a one-time secret.
+- **The new key defaults to visible on first reveal.** This is the only chance
+  the user has to read it; making them click "show" first added friction
+  without protection.
+- **The reveal panel uses the destructive Alert variant** with stronger copy
+  warning that the secret cannot be recovered after closing.
+
+### Fixed
+- **Rapid double-click on "Create" no longer creates duplicate API keys.** A
+  synchronous in-flight ref rejects the second submission before React
+  re-renders the disabled button.
+
+### Added
+- **API keys settings page now explains the `tlk_<prefix>.<secret>` format**
+  with a persistent alert showing the exact bearer-token shape, so the auth
+  format is discoverable without reading docs.
+
+## [0.2.16.4] - 2026-05-03
+
+### Added
+- **Inbox now shows "Draft PR opened: #N →" pills when the AI agent files a PR.**
+  Every successful `createDraftPullRequest` writes an `AgentPullRequest`
+  audit row that links back to the originating conversation and analysis.
+  The analysis panel renders one link per PR, so multi-PR analyses
+  (e.g. fix + tests in separate PRs) are all surfaced.
+
+### Changed
+- **Agent tools no longer accept `workspaceId` from the LLM.** Each tool
+  ships as a factory (`buildSearchCodeTool`, `buildCreatePullRequestTool`,
+  `buildSearchSentryTool`) that closes over the per-request workspaceId.
+  The analyze and team-turn prompts no longer include a `WORKSPACE_ID:`
+  line. A hallucinated workspaceId in tool args can no longer cross
+  tenants.
+- **Agent service `/analyze` and `/team-turn` now require `INTERNAL_SERVICE_KEY`.**
+  The closure-bound workspaceId is only safe if the body it comes from
+  is trusted; without auth the trust boundary just moved upstream. The
+  queue worker forwards the key in both call sites; the agent service
+  rejects unauthenticated calls with 401.
+- **PR creation is idempotent on Temporal activity retry.** If the
+  agent opens a PR but the activity throws after the response, the
+  retry now returns the existing PR URL instead of opening a duplicate
+  draft PR in the customer's repo.
+- **Drops unused `SupportDraft.prUrl`/`prNumber` columns.** Replaced by
+  `AgentPullRequest`; no writers remained.
+
+### Fixed
+- **`createDraftPullRequest` tenant-verifies `conversationId` and
+  `analysisId` against `workspaceId` before persisting** the audit row.
+  Defense-in-depth: rows whose linkages don't belong to the workspace
+  drop the linkage and log; rows with no linkage at all skip persistence
+  rather than becoming invisible to the inbox queries.
+- **Inbox PR-list keeps previously-rendered pills on transient fetch
+  error** instead of silently emptying the panel. Cap of 25 rows per
+  conversation prevents unbounded growth.
+
 ## [0.2.16.3] - 2026-05-03
 
 ### Tests

@@ -14,11 +14,6 @@ function createDispatcher(): WorkflowDispatcher {
       runId: "run_repository_index_1",
       queue: "codex-intensive",
     })),
-    startSupportAnalysisWorkflow: vi.fn(async () => ({
-      workflowId: "support-analysis-conv_1-1700000000",
-      runId: "run_analysis_1",
-      queue: "support-general",
-    })),
     startSupportSummaryWorkflow: vi.fn(async () => ({
       workflowId: "support-summary-conv_1",
       runId: "run_summary_1",
@@ -76,22 +71,6 @@ describe("dispatchWorkflow", () => {
     expect(dispatcher.startRepositoryIndexWorkflow).toHaveBeenCalledTimes(1);
   });
 
-  it("routes support-analysis payloads to analysis dispatcher", async () => {
-    const dispatcher = createDispatcher();
-
-    const result = await dispatchWorkflow(dispatcher, {
-      type: "support-analysis",
-      payload: {
-        workspaceId: "ws_1",
-        conversationId: "conv_1",
-        triggerType: "MANUAL" as const,
-      },
-    });
-
-    expect(result.workflowId).toContain("support-analysis");
-    expect(dispatcher.startSupportAnalysisWorkflow).toHaveBeenCalledTimes(1);
-  });
-
   it("routes agent-team-run payloads to the dedicated dispatcher", async () => {
     const dispatcher = createDispatcher();
 
@@ -101,6 +80,7 @@ describe("dispatchWorkflow", () => {
         workspaceId: "ws_1",
         runId: "run_1",
         teamId: "team_1",
+        teamConfig: "FAST",
         threadSnapshot: "thread snapshot",
         teamSnapshot: {
           roles: [

@@ -7,6 +7,7 @@ import {
   AGENT_TEAM_ROLE_SLUG,
   AGENT_TEAM_TARGET,
   type AgentTeamDialogueMessageDraft,
+  type AgentTeamFactDraft,
   type AgentTeamRole,
   type AgentTeamRoleTurnInput,
   type AgentTeamRoleTurnOutput,
@@ -20,6 +21,7 @@ import {
   type SessionDigest,
   TOOL_STRUCTURED_RESULT_KIND,
   TOOL_STRUCTURED_RESULT_METADATA_KEY,
+  type ThreadSnapshot,
   type ToneConfig,
   agentProviderConfigSchema,
   agentTeamDialogueMessageDraftSchema,
@@ -33,6 +35,7 @@ import {
   parseJsonModelOutput,
   reconstructAgentTeamTurnOutput,
   reconstructAnalysisOutput,
+  threadSnapshotSchema,
 } from "@shared/types";
 
 import { resolveProviderConfig } from "./agent-config";
@@ -44,19 +47,31 @@ import {
 import { renderThreadSnapshotPrompt } from "./prompts/thread-snapshot";
 import { resolveModel } from "./providers";
 import { getRoleMaxSteps, getRoleSystemPrompt, getRoleToolIds } from "./roles/role-registry";
-import { createPullRequestTool } from "./tools/create-pr";
-import { searchCodeTool } from "./tools/search-code";
-import { searchSentryTool } from "./tools/search-sentry";
+import { buildCreatePullRequestTool } from "./tools/create-pr";
+import { buildSearchCodeTool } from "./tools/search-code";
+import { buildSearchSentryTool } from "./tools/search-sentry";
 
 const DEFAULT_MAX_STEPS = 8;
 const DEFAULT_TEAM_MAX_STEPS = 6;
 const shouldLogLocalAgentDebug = checkEnv(env.NODE_ENV, NODE_ENV.DEVELOPMENT);
 
-const AVAILABLE_TOOLS = {
-  searchCode: searchCodeTool,
-  searchSentry: searchSentryTool,
-  createPullRequest: createPullRequestTool,
-} as const;
+// Tool factories close over per-request context (workspaceId + optional
+// conversationId/analysisId). The LLM never sees workspace identity in
+// its tool input schemas — that prevents a hallucinated workspaceId from
+// crossing tenants. Build fresh tools for every agent.generate() call.
+interface ToolBuildContext {
+  workspaceId: string;
+  conversationId?: string;
+  analysisId?: string;
+}
+
+function buildToolsForAgent(ctx: ToolBuildContext) {
+  return {
+    searchCode: buildSearchCodeTool({ workspaceId: ctx.workspaceId }),
+    searchSentry: buildSearchSentryTool({ workspaceId: ctx.workspaceId }),
+    createPullRequest: buildCreatePullRequestTool(ctx),
+  } as const;
+}
 
 // ── Agent Factory ───────────────────────────────────────────────────
 //
@@ -72,6 +87,7 @@ const AVAILABLE_TOOLS = {
 
 function createSupportAgent(
   target: llmManager.LlmResolvedTarget,
+  ctx: ToolBuildContext,
   options?: { toneConfig?: ToneConfig; sessionDigest?: SessionDigest; hasVisualEvidence?: boolean }
 ) {
   let instructions: string;
@@ -86,25 +102,30 @@ function createSupportAgent(
     instructions = SUPPORT_AGENT_SYSTEM_PROMPT;
   }
 
+  const tools = buildToolsForAgent(ctx);
   return new Agent({
     id: "trustloop-support-agent",
     name: "TrustLoop AI Support Agent",
     instructions,
     model: resolveModel(target),
     tools: {
-      searchCode: searchCodeTool,
-      createPullRequest: createPullRequestTool,
+      searchCode: tools.searchCode,
+      createPullRequest: tools.createPullRequest,
     },
   });
 }
 
-function createAgentForRole(role: AgentTeamRole, target: llmManager.LlmResolvedTarget) {
+function createAgentForRole(
+  role: AgentTeamRole,
+  target: llmManager.LlmResolvedTarget,
+  ctx: ToolBuildContext
+) {
   return new Agent({
     id: `trustloop-agent-team-${role.roleKey}`,
     name: role.label,
     instructions: getRoleSystemPrompt(role),
     model: resolveModel(target),
-    tools: pickToolsForRole(role),
+    tools: pickToolsForRole(role, ctx),
   });
 }
 
@@ -136,17 +157,24 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
   });
 
   const messages = buildAgentMessages({
-    workspaceId: request.workspaceId,
     threadSnapshot: renderThreadSnapshotPrompt(request.threadSnapshot),
     failureFrames: request.failureFrames,
     failureFrameCaptions: request.failureFrameCaptions,
   });
   const { result, target } = await llmManager.executeWithFallback(route, async (candidate) => {
-    const agent = createSupportAgent(candidate, {
-      toneConfig: request.config?.toneConfig,
-      sessionDigest: request.sessionDigest,
-      hasVisualEvidence,
-    });
+    const agent = createSupportAgent(
+      candidate,
+      {
+        workspaceId: request.workspaceId,
+        conversationId: request.conversationId,
+        analysisId: request.analysisId,
+      },
+      {
+        toneConfig: request.config?.toneConfig,
+        sessionDigest: request.sessionDigest,
+        hasVisualEvidence,
+      }
+    );
     // Mastra's `agent.generate` accepts either a string (legacy text path) or
     // a messages array (multimodal path). Cast at the boundary because the
     // public type doesn't model multimodal content parts in every alpha; we
@@ -192,6 +220,13 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
 export async function runTeamTurn(
   request: AgentTeamRoleTurnInput
 ): Promise<AgentTeamRoleTurnOutput> {
+  // FAST path: drafter delegates to runAnalysis. Same prompt, same model, same
+  // tools as the legacy /analyze pipeline — quality is identical by construction.
+  // The result is wrapped as a single proposal message + facts for the team event log.
+  if (request.role.slug === AGENT_TEAM_ROLE_SLUG.drafter) {
+    return runDrafterAsTeamTurn(request);
+  }
+
   const startTime = Date.now();
   const providerConfig = agentProviderConfigSchema.parse({
     provider: request.role.provider,
@@ -201,7 +236,10 @@ export async function runTeamTurn(
   const target = route.targets[0];
   const maxSteps = getRoleMaxSteps(request.role) ?? DEFAULT_TEAM_MAX_STEPS;
 
-  const agent = createAgentForRole(request.role, target);
+  const agent = createAgentForRole(request.role, target, {
+    workspaceId: request.workspaceId,
+    conversationId: request.conversationId ?? undefined,
+  });
   const userMessage = buildTeamTurnUserMessage(request);
   logLocalAgentDebug("[agents:debug] Starting team turn", {
     endpoint: "/team-turn",
@@ -270,6 +308,83 @@ export async function runTeamTurn(
   });
 }
 
+// ── Drafter Delegation (FAST path) ───────────────────────────────────
+//
+// The drafter slug is the FAST agent-team config — replaces the legacy
+// support-analysis pipeline. It delegates to runAnalysis() so the LLM call,
+// prompt, and tool set are identical to the old /analyze path. The
+// AnalyzeResponse is then mapped onto the team event log shape:
+//   - one proposal message containing the draft body (or a "no draft" message
+//     when analysis declines to produce one)
+//   - one fact per analysis insight (problemStatement + likelySubsystem)
+//   - done: true so the workflow proceeds to terminal state
+async function runDrafterAsTeamTurn(
+  request: AgentTeamRoleTurnInput
+): Promise<AgentTeamRoleTurnOutput> {
+  const threadSnapshot = parseDrafterThreadSnapshot(request.requestSummary);
+
+  const analyzeRequest: AnalyzeRequest = {
+    workspaceId: request.workspaceId,
+    conversationId: request.conversationId ?? threadSnapshot.conversationId,
+    threadSnapshot,
+    sessionDigest: request.sessionDigest ?? undefined,
+    config: {
+      provider: request.role.provider,
+      model: request.role.model ?? undefined,
+      maxSteps: request.role.maxSteps ?? undefined,
+    },
+  };
+
+  const response = await runAnalysis(analyzeRequest);
+
+  const proposalContent =
+    response.draft?.body ??
+    `Could not produce a draft. Likely subsystem: ${response.analysis.likelySubsystem}. Confidence: ${response.analysis.confidence.toFixed(2)}. Missing info: ${response.analysis.missingInfo.join("; ") || "none"}.`;
+
+  const message: AgentTeamDialogueMessageDraft = {
+    toRoleKey: AGENT_TEAM_TARGET.broadcast,
+    kind: AGENT_TEAM_MESSAGE_KIND.proposal,
+    subject: response.draft ? "Draft reply" : "Analysis only — no draft",
+    content: proposalContent,
+    refs: [],
+  };
+
+  const proposedFacts: AgentTeamFactDraft[] = [
+    {
+      statement: `Problem: ${response.analysis.problemStatement}`,
+      confidence: response.analysis.confidence,
+      sourceMessageIds: [],
+    },
+    {
+      statement: `Likely subsystem: ${response.analysis.likelySubsystem}`,
+      confidence: response.analysis.confidence,
+      sourceMessageIds: [],
+    },
+  ];
+
+  return {
+    messages: [message],
+    proposedFacts,
+    resolvedQuestionIds: [],
+    nextSuggestedRoleKeys: [],
+    done: true,
+    resolution: null,
+    meta: response.meta,
+  };
+}
+
+// Run-service builds requestSummary as JSON of the conversation snapshot. Older
+// rows may omit the customer field that threadSnapshotSchema.strict() requires;
+// fall back to a placeholder when missing rather than refusing the FAST run.
+function parseDrafterThreadSnapshot(requestSummary: string): ThreadSnapshot {
+  const raw = JSON.parse(requestSummary) as Record<string, unknown>;
+  const candidate = {
+    ...raw,
+    customer: (raw.customer as { email: string | null } | undefined) ?? { email: null },
+  };
+  return threadSnapshotSchema.parse(candidate);
+}
+
 // ── Private Helpers ─────────────────────────────────────────────────
 function parseAgentOutput(rawOutput: string | undefined) {
   if (!rawOutput) {
@@ -317,6 +432,12 @@ function parseTeamTurnOutput(
 
 function resolveAgentTeamRoleUseCase(role: AgentTeamRole): LlmUseCase {
   switch (role.slug) {
+    // Drafter is short-circuited at the top of runTeamTurn — it delegates to
+    // runAnalysis (LLM_USE_CASE.supportAnalysis), so this mapping only matters
+    // if the short-circuit is removed in the future. Keeping it consistent
+    // with the underlying delegation.
+    case AGENT_TEAM_ROLE_SLUG.drafter:
+      return LLM_USE_CASE.supportAnalysis;
     case AGENT_TEAM_ROLE_SLUG.architect:
       return LLM_USE_CASE.agentTeamArchitect;
     case AGENT_TEAM_ROLE_SLUG.reviewer:
@@ -400,10 +521,11 @@ function logLocalAgentDebug(label: string, payload: Record<string, unknown>): vo
   console.log(label, payload);
 }
 
-function pickToolsForRole(role: AgentTeamRole) {
-  return Object.fromEntries(
-    getRoleToolIds(role).map((toolId) => [toolId, AVAILABLE_TOOLS[toolId]])
-  ) as { [Key in AgentTeamToolId]?: (typeof AVAILABLE_TOOLS)[Key] };
+function pickToolsForRole(role: AgentTeamRole, ctx: ToolBuildContext) {
+  const tools = buildToolsForAgent(ctx);
+  return Object.fromEntries(getRoleToolIds(role).map((toolId) => [toolId, tools[toolId]])) as {
+    [Key in AgentTeamToolId]?: ReturnType<typeof buildToolsForAgent>[Key];
+  };
 }
 
 function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
@@ -444,8 +566,10 @@ function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
     ? JSON.stringify(request.sessionDigest, null, 2)
     : "None";
 
-  return `WORKSPACE_ID: ${request.workspaceId}
-RUN_ID: ${request.runId}
+  // No WORKSPACE_ID in the prompt — tools bind workspace identity server-side
+  // via their factory closures. CONVERSATION_ID is non-secret and useful as
+  // narrative context for the role to ground its messaging.
+  return `RUN_ID: ${request.runId}
 CONVERSATION_ID: ${request.conversationId ?? "standalone"}
 ROLE_KEY: ${request.role.roleKey}
 ROLE_TYPE: ${request.role.slug}
@@ -556,7 +680,6 @@ function formatDialogueMessages(
 }
 
 interface BuildMessagesInput {
-  workspaceId: string;
   threadSnapshot: string;
   failureFrames?: FailureFrame[];
   failureFrameCaptions?: FailureFrameCaption[];
@@ -583,7 +706,9 @@ type MessagePart = { type: "text"; text: string } | { type: "image"; image: stri
 function buildAgentMessages(
   input: BuildMessagesInput
 ): string | Array<{ role: "user"; content: MessagePart[] }> {
-  const baseText = `WORKSPACE_ID: ${input.workspaceId}\n\n${input.threadSnapshot}`;
+  // No workspace identity in the prompt — tools bind it server-side via
+  // their factory closures. The model can't leak it because it never sees it.
+  const baseText = input.threadSnapshot;
 
   if (input.failureFrames && input.failureFrames.length > 0) {
     const content: MessagePart[] = [{ type: "text", text: baseText }];

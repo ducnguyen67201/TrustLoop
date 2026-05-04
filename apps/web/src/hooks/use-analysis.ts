@@ -1,14 +1,28 @@
 "use client";
 
 import { trpcMutation, trpcQuery } from "@/lib/trpc-http";
-import type { SupportAnalysisWithRelations, TriggerAnalysisResult } from "@shared/types";
+import {
+  AGENT_TEAM_CONFIG,
+  type AgentTeamRunSummary,
+  type StartAgentTeamRunInput,
+  type SupportAnalysisWithRelations,
+} from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const POLL_INTERVAL_MS = 2_000;
 
 /**
- * Manages AI analysis lifecycle for a single conversation:
- * fetch latest, trigger, approve/dismiss drafts, poll while analyzing.
+ * Manages the conversation right-rail draft lifecycle.
+ *
+ * Read path: SupportAnalysis is the source of truth for the panel. Pre-cutover
+ * rows came from the standalone support-analysis workflow; post-cutover rows
+ * are projected from the agent-team FAST run's drafter output (see
+ * markRunCompleted in agent-team-run.activity.ts). Either way, the panel reads
+ * the same shape.
+ *
+ * Trigger path: starts an agent-team FAST run. The drafter terminal step
+ * projects onto SupportAnalysis + SupportDraft so the polling loop sees
+ * the new row when status flips to ANALYZED.
  */
 export function useAnalysis(conversationId: string | null, workspaceId: string) {
   const [analysis, setAnalysis] = useState<SupportAnalysisWithRelations | null>(null);
@@ -47,7 +61,7 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
     stopPolling();
     pollRef.current = setInterval(async () => {
       const latest = await fetchLatest();
-      if (latest && latest.status !== "ANALYZING") {
+      if (latest && latest.status !== "ANALYZING" && latest.status !== "GATHERING_CONTEXT") {
         setIsAnalyzing(false);
         stopPolling();
       }
@@ -60,24 +74,15 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
     setIsMutating(true);
 
     try {
-      const result = await trpcMutation<{ conversationId: string }, TriggerAnalysisResult>(
-        "supportAnalysis.triggerAnalysis",
-        { conversationId },
+      await trpcMutation<StartAgentTeamRunInput, AgentTeamRunSummary>(
+        "agentTeam.startRun",
+        { conversationId, teamConfig: AGENT_TEAM_CONFIG.FAST },
         { withCsrf: true }
       );
       setIsAnalyzing(true);
-
-      if (result.alreadyInProgress && result.analysisId) {
-        setAnalysis(
-          (prev) =>
-            prev ??
-            ({ id: result.analysisId!, status: "ANALYZING" } as SupportAnalysisWithRelations)
-        );
-      }
-
       startPolling();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to trigger analysis");
+      setError(err instanceof Error ? err.message : "Failed to trigger draft");
     } finally {
       setIsMutating(false);
     }
@@ -119,7 +124,6 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
     [fetchLatest]
   );
 
-  // Fetch on conversation change
   useEffect(() => {
     setIsAnalyzing(false);
     stopPolling();
@@ -131,7 +135,7 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
     }
 
     fetchLatest().then((result) => {
-      if (result?.status === "ANALYZING") {
+      if (result?.status === "ANALYZING" || result?.status === "GATHERING_CONTEXT") {
         setIsAnalyzing(true);
         startPolling();
       }

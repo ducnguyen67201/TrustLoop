@@ -53,6 +53,10 @@ model SupportAnalysis {
   id                String                      @id @default(cuid())
   workspaceId       String
   conversationId    String
+  // Post-cutover: the AgentTeamRun that produced this analysis. Null for
+  // pre-cutover rows (the standalone support-analysis workflow created them
+  // directly). Indexed so projection writes can dedupe per-run.
+  agentTeamRunId    String?
   status            SupportAnalysisStatus       @default(GATHERING_CONTEXT)
   triggerType        SupportAnalysisTriggerType  @default(MANUAL)
   threadSnapshot    Json?
@@ -76,11 +80,13 @@ model SupportAnalysis {
   evidence          AnalysisEvidence[]
   drafts            SupportDraft[]
   frames            SupportAnalysisFrame[]
+  agentPullRequests AgentPullRequest[]
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
 
   @@index([conversationId, createdAt])
   @@index([workspaceId, status])
+  @@index([agentTeamRunId])
 }
 
 model AnalysisEvidence {
@@ -137,8 +143,6 @@ model SupportDraft {
   sendAttempts     Int                 @default(0)
   slackClientMsgId String?             @unique
   slackMessageTs   String?
-  prUrl          String?
-  prNumber       Int?
   errorMessage   String?             @db.Text
   deletedAt      DateTime?
   analysis       SupportAnalysis     @relation(fields: [analysisId], references: [id], onDelete: Restrict)
