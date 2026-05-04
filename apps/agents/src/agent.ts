@@ -44,19 +44,31 @@ import {
 import { renderThreadSnapshotPrompt } from "./prompts/thread-snapshot";
 import { resolveModel } from "./providers";
 import { getRoleMaxSteps, getRoleSystemPrompt, getRoleToolIds } from "./roles/role-registry";
-import { createPullRequestTool } from "./tools/create-pr";
-import { searchCodeTool } from "./tools/search-code";
-import { searchSentryTool } from "./tools/search-sentry";
+import { buildCreatePullRequestTool } from "./tools/create-pr";
+import { buildSearchCodeTool } from "./tools/search-code";
+import { buildSearchSentryTool } from "./tools/search-sentry";
 
 const DEFAULT_MAX_STEPS = 8;
 const DEFAULT_TEAM_MAX_STEPS = 6;
 const shouldLogLocalAgentDebug = checkEnv(env.NODE_ENV, NODE_ENV.DEVELOPMENT);
 
-const AVAILABLE_TOOLS = {
-  searchCode: searchCodeTool,
-  searchSentry: searchSentryTool,
-  createPullRequest: createPullRequestTool,
-} as const;
+// Tool factories close over per-request context (workspaceId + optional
+// conversationId/analysisId). The LLM never sees workspace identity in
+// its tool input schemas — that prevents a hallucinated workspaceId from
+// crossing tenants. Build fresh tools for every agent.generate() call.
+interface ToolBuildContext {
+  workspaceId: string;
+  conversationId?: string;
+  analysisId?: string;
+}
+
+function buildToolsForAgent(ctx: ToolBuildContext) {
+  return {
+    searchCode: buildSearchCodeTool({ workspaceId: ctx.workspaceId }),
+    searchSentry: buildSearchSentryTool({ workspaceId: ctx.workspaceId }),
+    createPullRequest: buildCreatePullRequestTool(ctx),
+  } as const;
+}
 
 // ── Agent Factory ───────────────────────────────────────────────────
 //
@@ -72,6 +84,7 @@ const AVAILABLE_TOOLS = {
 
 function createSupportAgent(
   target: llmManager.LlmResolvedTarget,
+  ctx: ToolBuildContext,
   options?: { toneConfig?: ToneConfig; sessionDigest?: SessionDigest; hasVisualEvidence?: boolean }
 ) {
   let instructions: string;
@@ -86,25 +99,30 @@ function createSupportAgent(
     instructions = SUPPORT_AGENT_SYSTEM_PROMPT;
   }
 
+  const tools = buildToolsForAgent(ctx);
   return new Agent({
     id: "trustloop-support-agent",
     name: "TrustLoop AI Support Agent",
     instructions,
     model: resolveModel(target),
     tools: {
-      searchCode: searchCodeTool,
-      createPullRequest: createPullRequestTool,
+      searchCode: tools.searchCode,
+      createPullRequest: tools.createPullRequest,
     },
   });
 }
 
-function createAgentForRole(role: AgentTeamRole, target: llmManager.LlmResolvedTarget) {
+function createAgentForRole(
+  role: AgentTeamRole,
+  target: llmManager.LlmResolvedTarget,
+  ctx: ToolBuildContext
+) {
   return new Agent({
     id: `trustloop-agent-team-${role.roleKey}`,
     name: role.label,
     instructions: getRoleSystemPrompt(role),
     model: resolveModel(target),
-    tools: pickToolsForRole(role),
+    tools: pickToolsForRole(role, ctx),
   });
 }
 
@@ -136,17 +154,24 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
   });
 
   const messages = buildAgentMessages({
-    workspaceId: request.workspaceId,
     threadSnapshot: renderThreadSnapshotPrompt(request.threadSnapshot),
     failureFrames: request.failureFrames,
     failureFrameCaptions: request.failureFrameCaptions,
   });
   const { result, target } = await llmManager.executeWithFallback(route, async (candidate) => {
-    const agent = createSupportAgent(candidate, {
-      toneConfig: request.config?.toneConfig,
-      sessionDigest: request.sessionDigest,
-      hasVisualEvidence,
-    });
+    const agent = createSupportAgent(
+      candidate,
+      {
+        workspaceId: request.workspaceId,
+        conversationId: request.conversationId,
+        analysisId: request.analysisId,
+      },
+      {
+        toneConfig: request.config?.toneConfig,
+        sessionDigest: request.sessionDigest,
+        hasVisualEvidence,
+      }
+    );
     // Mastra's `agent.generate` accepts either a string (legacy text path) or
     // a messages array (multimodal path). Cast at the boundary because the
     // public type doesn't model multimodal content parts in every alpha; we
@@ -201,7 +226,10 @@ export async function runTeamTurn(
   const target = route.targets[0];
   const maxSteps = getRoleMaxSteps(request.role) ?? DEFAULT_TEAM_MAX_STEPS;
 
-  const agent = createAgentForRole(request.role, target);
+  const agent = createAgentForRole(request.role, target, {
+    workspaceId: request.workspaceId,
+    conversationId: request.conversationId ?? undefined,
+  });
   const userMessage = buildTeamTurnUserMessage(request);
   logLocalAgentDebug("[agents:debug] Starting team turn", {
     endpoint: "/team-turn",
@@ -400,10 +428,11 @@ function logLocalAgentDebug(label: string, payload: Record<string, unknown>): vo
   console.log(label, payload);
 }
 
-function pickToolsForRole(role: AgentTeamRole) {
-  return Object.fromEntries(
-    getRoleToolIds(role).map((toolId) => [toolId, AVAILABLE_TOOLS[toolId]])
-  ) as { [Key in AgentTeamToolId]?: (typeof AVAILABLE_TOOLS)[Key] };
+function pickToolsForRole(role: AgentTeamRole, ctx: ToolBuildContext) {
+  const tools = buildToolsForAgent(ctx);
+  return Object.fromEntries(getRoleToolIds(role).map((toolId) => [toolId, tools[toolId]])) as {
+    [Key in AgentTeamToolId]?: ReturnType<typeof buildToolsForAgent>[Key];
+  };
 }
 
 function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
@@ -444,8 +473,10 @@ function buildTeamTurnUserMessage(request: AgentTeamRoleTurnInput): string {
     ? JSON.stringify(request.sessionDigest, null, 2)
     : "None";
 
-  return `WORKSPACE_ID: ${request.workspaceId}
-RUN_ID: ${request.runId}
+  // No WORKSPACE_ID in the prompt — tools bind workspace identity server-side
+  // via their factory closures. CONVERSATION_ID is non-secret and useful as
+  // narrative context for the role to ground its messaging.
+  return `RUN_ID: ${request.runId}
 CONVERSATION_ID: ${request.conversationId ?? "standalone"}
 ROLE_KEY: ${request.role.roleKey}
 ROLE_TYPE: ${request.role.slug}
@@ -556,7 +587,6 @@ function formatDialogueMessages(
 }
 
 interface BuildMessagesInput {
-  workspaceId: string;
   threadSnapshot: string;
   failureFrames?: FailureFrame[];
   failureFrameCaptions?: FailureFrameCaption[];
@@ -583,7 +613,9 @@ type MessagePart = { type: "text"; text: string } | { type: "image"; image: stri
 function buildAgentMessages(
   input: BuildMessagesInput
 ): string | Array<{ role: "user"; content: MessagePart[] }> {
-  const baseText = `WORKSPACE_ID: ${input.workspaceId}\n\n${input.threadSnapshot}`;
+  // No workspace identity in the prompt — tools bind it server-side via
+  // their factory closures. The model can't leak it because it never sees it.
+  const baseText = input.threadSnapshot;
 
   if (input.failureFrames && input.failureFrames.length > 0) {
     const content: MessagePart[] = [{ type: "text", text: baseText }];

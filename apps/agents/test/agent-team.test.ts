@@ -22,15 +22,15 @@ vi.mock("@mastra/core/agent", () => ({
 }));
 
 vi.mock("../src/tools/create-pr", () => ({
-  createPullRequestTool: {},
+  buildCreatePullRequestTool: () => ({}),
 }));
 
 vi.mock("../src/tools/search-code", () => ({
-  searchCodeTool: {},
+  buildSearchCodeTool: () => ({}),
 }));
 
 vi.mock("../src/tools/search-sentry", () => ({
-  searchSentryTool: {},
+  buildSearchSentryTool: () => ({}),
 }));
 
 const { runTeamTurn } = await import("../src/agent");
@@ -182,7 +182,7 @@ describe("runTeamTurn", () => {
       toolResults: [
         {
           toolName: "create_pull_request",
-          args: { workspaceId: "ws_1", repositoryFullName: "acme/repo" },
+          args: { repositoryFullName: "acme/repo" },
           result: {
             success: true,
             prUrl: "https://github.com/acme/repo/pull/42",
