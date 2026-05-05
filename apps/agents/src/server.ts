@@ -66,7 +66,17 @@ app.post("/team-turn", requireServiceKey, async (c) => {
     // Flush Langfuse so traces show up in the UI before the queue activity
     // returns. Periodic flushes would catch up eventually, but waiting on the
     // explicit flush is what makes the trace visible "instantly" during dev.
-    await flushLangfuse();
+    // Swallow flush errors — a Langfuse network blip must not mask a real
+    // failure thrown from runTeamTurn(). Cap at 2s so an unreachable Langfuse
+    // (DNS-resolvable, HTTP unresponsive) cannot hang the request.
+    try {
+      await flushLangfuse(2000);
+    } catch (flushError) {
+      console.warn(
+        "[agents] Langfuse flush failed (non-blocking):",
+        flushError instanceof Error ? flushError.message : String(flushError)
+      );
+    }
   }
 });
 

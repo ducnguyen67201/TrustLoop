@@ -38,18 +38,30 @@ export function maybeObserveOpenAI(client: OpenAI): OpenAI {
   if (!getLangfuseClient()) {
     return client;
   }
-  return observeOpenAI(client) as unknown as OpenAI;
+  return observeOpenAI(client);
 }
 
 /**
  * Flushes pending Langfuse events. Call from request handlers that are about
  * to return so traces show up promptly during local development. In long-lived
  * processes the periodic flush would catch up eventually anyway.
+ *
+ * `timeoutMs` caps the wall time spent flushing so an unreachable Langfuse
+ * host (DNS resolves but HTTP hangs) cannot block the calling request. The
+ * cap is best-effort: pending events stay in the queue and ship on the next
+ * flush instead of blocking the response.
  */
-export async function flushLangfuse(): Promise<void> {
+export async function flushLangfuse(timeoutMs?: number): Promise<void> {
   const client = getLangfuseClient();
   if (!client) {
     return;
   }
-  await client.flushAsync();
+  if (timeoutMs === undefined) {
+    await client.flushAsync();
+    return;
+  }
+  await Promise.race([
+    client.flushAsync(),
+    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
 }
