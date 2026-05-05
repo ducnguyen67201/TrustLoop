@@ -376,6 +376,10 @@ export const agentTeamTurnMetaSchema = z.object({
   model: z.string(),
   totalDurationMs: z.number().int().nonnegative(),
   turnCount: z.number().int().nonnegative(),
+  // Token accounting from the model provider (when reported). Optional so
+  // older snapshots and providers that don't surface usage still validate.
+  tokensIn: z.number().int().nonnegative().nullable().optional(),
+  tokensOut: z.number().int().nonnegative().nullable().optional(),
 });
 
 // Consumers derive blocked-state semantics from `resolution.status`

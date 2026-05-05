@@ -22,6 +22,7 @@
     "@shared/rest": "*",
     "@shared/types": "*",
     "hono": "^4.0.0",
+    "langfuse": "^3.38.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

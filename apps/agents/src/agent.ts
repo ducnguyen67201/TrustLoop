@@ -1,6 +1,7 @@
 import { Agent } from "@mastra/core/agent";
 import { env } from "@shared/env";
 import { NODE_ENV, checkEnv } from "@shared/env/shared";
+import { flushLangfuse, getLangfuseClient } from "@shared/rest/observability/langfuse";
 import * as llmManager from "@shared/rest/services/llm-manager-service";
 import {
   AGENT_TEAM_MESSAGE_KIND,
@@ -52,6 +53,35 @@ import { buildSearchSentryTool } from "./tools/search-sentry";
 const DEFAULT_MAX_STEPS = 8;
 const DEFAULT_TEAM_MAX_STEPS = 6;
 const shouldLogLocalAgentDebug = checkEnv(env.NODE_ENV, NODE_ENV.DEVELOPMENT);
+
+interface AgentCallUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+// Mastra returns AI SDK `usage` which has shifted between SDK majors. Read both
+// the v5 shape (inputTokens/outputTokens) and the v3 shape (promptTokens/
+// completionTokens) so this helper survives an SDK bump without code changes.
+function readAgentCallUsage(result: { usage?: unknown }): AgentCallUsage | null {
+  const usage = result.usage;
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+  const record = usage as Record<string, unknown>;
+  const input = pickNonNegativeInt(record.inputTokens ?? record.promptTokens);
+  const output = pickNonNegativeInt(record.outputTokens ?? record.completionTokens);
+  if (input === null || output === null) {
+    return null;
+  }
+  return { inputTokens: input, outputTokens: output };
+}
+
+function pickNonNegativeInt(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  return Math.trunc(value);
+}
 
 // Tool factories close over per-request context (workspaceId + optional
 // conversationId/analysisId). The LLM never sees workspace identity in
@@ -159,6 +189,20 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     failureFrames: request.failureFrames,
     failureFrameCaptions: request.failureFrameCaptions,
   });
+  const langfuseClient = getLangfuseClient();
+  const trace = langfuseClient?.trace({
+    name: "support-analysis",
+    // Group by conversation so multiple analyses on the same thread cluster.
+    sessionId: request.conversationId ?? undefined,
+    metadata: {
+      conversationId: request.conversationId,
+      analysisId: request.analysisId,
+      workspaceId: request.workspaceId,
+      maxSteps,
+      hasVisualEvidence,
+    },
+    tags: ["analysis"],
+  });
   const { result, target } = await llmManager.executeWithFallback(route, async (candidate) => {
     const agent = createSupportAgent(
       candidate,
@@ -173,12 +217,39 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
         hasVisualEvidence,
       }
     );
+    const generation = trace?.generation({
+      name: "agent.generate",
+      model: candidate.model,
+      modelParameters: { maxSteps, toolChoice: "auto" },
+      input: messages,
+    });
     // Mastra's `agent.generate` accepts either a string (legacy text path) or
     // a messages array (multimodal path). Cast at the boundary because the
     // public type doesn't model multimodal content parts in every alpha; we
     // forward what the LLM SDK natively understands.
-    return agent.generate(messages as never, { maxSteps, toolChoice: "auto" });
+    try {
+      const generated = await agent.generate(messages as never, { maxSteps, toolChoice: "auto" });
+      const usage = readAgentCallUsage(generated);
+      generation?.end({
+        output: generated.text,
+        usage: usage
+          ? {
+              input: usage.inputTokens,
+              output: usage.outputTokens,
+              total: usage.inputTokens + usage.outputTokens,
+            }
+          : undefined,
+      });
+      return generated;
+    } catch (error) {
+      generation?.end({
+        level: "ERROR",
+        statusMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   });
+  trace?.update({ output: result.text });
 
   const output = parseAgentOutput(result.text);
   const toolCalls = extractToolCalls(result);
@@ -253,7 +324,52 @@ export async function runTeamTurn(
     availableTools: getRoleToolIds(request.role),
   });
 
-  const result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
+  const langfuseClient = getLangfuseClient();
+  const trace = langfuseClient?.trace({
+    name: "team-turn",
+    // Group all turns of one agent-team run under a single Langfuse session
+    // so the per-run token cost is one click away in the UI.
+    sessionId: request.runId,
+    metadata: {
+      runId: request.runId,
+      conversationId: request.conversationId ?? null,
+      workspaceId: request.workspaceId,
+      roleKey: request.role.roleKey,
+      roleSlug: request.role.slug,
+      turnIndex: request.turnIndex,
+      maxSteps,
+    },
+    tags: ["team-turn", request.role.slug],
+  });
+  const generation = trace?.generation({
+    name: "agent.generate",
+    model: target.model,
+    modelParameters: { maxSteps, toolChoice: "auto" },
+    input: userMessage,
+  });
+
+  let result: Awaited<ReturnType<typeof agent.generate>>;
+  try {
+    result = await agent.generate(userMessage, { maxSteps, toolChoice: "auto" });
+  } catch (error) {
+    generation?.end({
+      level: "ERROR",
+      statusMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+  const usage = readAgentCallUsage(result);
+  generation?.end({
+    output: result.text,
+    usage: usage
+      ? {
+          input: usage.inputTokens,
+          output: usage.outputTokens,
+          total: usage.inputTokens + usage.outputTokens,
+        }
+      : undefined,
+  });
+
   const output = parseTeamTurnOutput(result.text, {
     runId: request.runId,
     turnIndex: request.turnIndex,
@@ -276,7 +392,10 @@ export async function runTeamTurn(
     model: target.model,
     totalDurationMs: Date.now() - startTime,
     turnCount: result.steps?.length ?? 0,
+    tokensIn: usage?.inputTokens ?? null,
+    tokensOut: usage?.outputTokens ?? null,
   };
+  trace?.update({ output: result.text });
 
   logLocalAgentDebug("[agents:debug] Team turn complete", {
     endpoint: "/team-turn",
