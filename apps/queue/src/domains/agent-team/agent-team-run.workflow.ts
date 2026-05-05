@@ -5,7 +5,7 @@ import { proxyActivities } from "@temporalio/workflow";
 const harnessActivities = proxyActivities<typeof agentTeamHarnessActivities>({
   startToCloseTimeout: "5 minutes",
   heartbeatTimeout: "45 seconds",
-  retry: { maximumAttempts: 1 },
+  retry: { maximumAttempts: 3 },
 });
 
 export async function agentTeamRunWorkflow(

@@ -5,6 +5,7 @@ import {
   AGENT_MODEL_CAPABILITY,
   AGENT_TEAM_ARTIFACT_TYPE,
   AGENT_TEAM_JOB_CLASS,
+  AGENT_TEAM_JOB_STATUS,
   AGENT_TEAM_JOB_TYPE,
   AGENT_TEAM_MESSAGE_KIND,
   AGENT_TEAM_ROLE_SLUG,
@@ -14,6 +15,7 @@ import {
   ANALYSIS_SEVERITY,
   ANALYSIS_STATUS,
   ANALYSIS_TRIGGER_TYPE,
+  type AgentTeamArtifactType,
   type AgentTeamJob,
   type AgentTeamRole,
   type AgentTeamRoleTurnInput,
@@ -36,6 +38,12 @@ import { heartbeat } from "@temporalio/activity";
 
 const AGENT_TIMEOUT_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 10_000;
+const MAX_HARNESS_ATTEMPTS = 3;
+
+interface CompletedHarnessJob {
+  job: AgentTeamJob;
+  artifactId: string;
+}
 
 export async function executeHarnessRun(
   input: AgentTeamRunWorkflowInput
@@ -48,12 +56,12 @@ export async function executeHarnessRun(
     await markRunStarted(input.runId);
 
     const triageJob = await runTriageJob(input);
-    const draftJob = await runDraftReplyJob(input, triageJob.id);
-    const finalJob = await runSynthesisJob(input, draftJob.id);
+    const draftJob = await runDraftReplyJob(input, triageJob.artifactId);
+    const finalJob = await runSynthesisJob(input, draftJob.artifactId);
 
     await projectHarnessRunToSupportAnalysis({
       input,
-      draftJobId: draftJob.id,
+      draftJobId: draftJob.job.id,
     });
 
     await markRunCompleted(input.runId, AGENT_WORK_LEDGER_OUTCOME.replyReady);
@@ -62,9 +70,13 @@ export async function executeHarnessRun(
       runId: input.runId,
       status: AGENT_TEAM_RUN_STATUS.completed,
       messageCount: 0,
-      completedRoleKeys: [triageJob.type, draftJob.type, finalJob.type],
+      completedRoleKeys: [triageJob.job.type, draftJob.job.type, finalJob.type],
     };
   } catch (error) {
+    if (isRetryableHarnessRunError(error)) {
+      throw error;
+    }
+
     const errorMessage = error instanceof Error ? error.message : String(error);
     await markRunFailed(input.runId, errorMessage);
 
@@ -77,7 +89,7 @@ export async function executeHarnessRun(
   }
 }
 
-async function runTriageJob(input: AgentTeamRunWorkflowInput): Promise<AgentTeamJob> {
+async function runTriageJob(input: AgentTeamRunWorkflowInput): Promise<CompletedHarnessJob> {
   const job = await createAndClaimJob(input, {
     type: AGENT_TEAM_JOB_TYPE.triage,
     jobClass: AGENT_TEAM_JOB_CLASS.control,
@@ -86,6 +98,16 @@ async function runTriageJob(input: AgentTeamRunWorkflowInput): Promise<AgentTeam
     controllerReason: "hard-cutover FAST harness starts with deterministic triage",
     plannedTransitionKey: `${input.runId}:triage`,
   });
+  if (job.status === AGENT_TEAM_JOB_STATUS.completed) {
+    return {
+      job,
+      artifactId: await findJobArtifactId(
+        input.runId,
+        job.id,
+        AGENT_TEAM_ARTIFACT_TYPE.triageSummary
+      ),
+    };
+  }
 
   const summary = summarizeThread(input);
   const content: TriageSummaryArtifactContent = {
@@ -97,7 +119,7 @@ async function runTriageJob(input: AgentTeamRunWorkflowInput): Promise<AgentTeam
     missingEvidence: [],
   };
 
-  await harness.artifacts.write({
+  const artifact = await harness.artifacts.write({
     workspaceId: input.workspaceId,
     runId: input.runId,
     jobId: job.id,
@@ -106,41 +128,41 @@ async function runTriageJob(input: AgentTeamRunWorkflowInput): Promise<AgentTeam
     confidence: 0.72,
   });
 
-  return harness.jobs.complete({ jobId: job.id, completedAt: new Date() });
+  return {
+    job: await harness.jobs.complete({ jobId: job.id, completedAt: new Date() }),
+    artifactId: artifact.id,
+  };
 }
 
 async function runDraftReplyJob(
   input: AgentTeamRunWorkflowInput,
-  triageArtifactJobId: string
-): Promise<AgentTeamJob> {
+  triageArtifactId: string
+): Promise<CompletedHarnessJob> {
   const role = selectDrafterRole(input.teamSnapshot.roles);
+  const providerPreference = resolveProviderPreference(role.provider);
   const job = await createAndClaimJob(input, {
     type: AGENT_TEAM_JOB_TYPE.draftReply,
     jobClass: AGENT_TEAM_JOB_CLASS.model,
     assignedRoleKey: role.roleKey,
     objective: "Produce a customer-ready draft reply from the compiled thread context.",
-    inputArtifactIds: [triageArtifactJobId],
+    inputArtifactIds: [triageArtifactId],
     requiredArtifactTypes: [AGENT_TEAM_ARTIFACT_TYPE.draftResponse],
+    modelProviderPreference: providerPreference,
     controllerReason: "triage recommended draft_reply",
     plannedTransitionKey: `${input.runId}:draft_reply`,
   });
+  if (job.status === AGENT_TEAM_JOB_STATUS.completed) {
+    return {
+      job,
+      artifactId: await findJobArtifactId(
+        input.runId,
+        job.id,
+        AGENT_TEAM_ARTIFACT_TYPE.draftResponse
+      ),
+    };
+  }
 
-  const result = await callAgentTeamTurn({
-    workspaceId: input.workspaceId,
-    conversationId: input.conversationId,
-    runId: input.runId,
-    turnIndex: 1,
-    teamRoles: input.teamSnapshot.roles,
-    role,
-    requestSummary: input.threadSnapshot,
-    inbox: [],
-    acceptedFacts: [],
-    openQuestions: [],
-    recentThread: [],
-    sessionDigest: input.sessionDigest ?? null,
-  });
-
-  const draftBody = extractDraftBody(result);
+  const { result, draftBody } = await runDraftModelTurn(input, role, job);
   const content: DraftResponseArtifactContent = {
     type: AGENT_TEAM_ARTIFACT_TYPE.draftResponse,
     body: draftBody,
@@ -177,7 +199,7 @@ async function runDraftReplyJob(
       },
     ],
     resolvedRoute: {
-      requestedProviderPreference: role.provider,
+      requestedProviderPreference: providerPreference,
       requestedModelPreference: role.model ?? null,
       requiredCapabilities: [AGENT_MODEL_CAPABILITY.jsonSchemaOutput],
       costTier: "balanced",
@@ -188,27 +210,35 @@ async function runDraftReplyJob(
     },
   });
 
-  await harness.jobs.complete({ jobId: job.id, completedAt: new Date() });
-  return { ...(await harness.jobs.find(job.id)), inputArtifactIds: [artifact.id] };
+  return {
+    job: await harness.jobs.complete({ jobId: job.id, completedAt: new Date() }),
+    artifactId: artifact.id,
+  };
 }
 
 async function runSynthesisJob(
   input: AgentTeamRunWorkflowInput,
-  draftArtifactJobId: string
+  draftArtifactId: string
 ): Promise<AgentTeamJob> {
   const job = await createAndClaimJob(input, {
     type: AGENT_TEAM_JOB_TYPE.synthesize,
     jobClass: AGENT_TEAM_JOB_CLASS.projection,
     objective: "Commit final ledger summary and projection artifacts.",
-    inputArtifactIds: [draftArtifactJobId],
+    inputArtifactIds: [draftArtifactId],
     requiredArtifactTypes: [AGENT_TEAM_ARTIFACT_TYPE.finalSummary],
     controllerReason: "draft_response is ready for projection",
     plannedTransitionKey: `${input.runId}:synthesize`,
   });
+  if (job.status === AGENT_TEAM_JOB_STATUS.completed) {
+    return job;
+  }
 
   const draftArtifact = (await harness.artifacts.listForRun(input.runId)).find(
-    (artifact) => artifact.type === AGENT_TEAM_ARTIFACT_TYPE.draftResponse
+    (artifact) => artifact.id === draftArtifactId
   );
+  if (!draftArtifact) {
+    throw new PermanentHarnessRunError(`Missing draft artifact ${draftArtifactId} for synthesis`);
+  }
   const customerFacingSummary =
     draftArtifact?.content.type === AGENT_TEAM_ARTIFACT_TYPE.draftResponse
       ? draftArtifact.content.body
@@ -218,7 +248,7 @@ async function runSynthesisJob(
     outcome: "completed",
     operatorSummary: "Harness FAST path produced a draft reply and support-analysis projection.",
     customerFacingSummary,
-    outputArtifactIds: draftArtifact ? [draftArtifact.id] : [],
+    outputArtifactIds: [draftArtifact.id],
   };
 
   await harness.artifacts.write({
@@ -242,36 +272,55 @@ async function createAndClaimJob(
     objective: string;
     inputArtifactIds?: string[];
     requiredArtifactTypes: string[];
+    modelProviderPreference?: LlmProvider | null;
     controllerReason: string;
     plannedTransitionKey: string;
   }
 ): Promise<AgentTeamJob> {
-  const job = await harness.jobs.create({
-    workspaceId: input.workspaceId,
-    runId: input.runId,
-    type: args.type,
-    jobClass: args.jobClass,
-    assignedRoleKey: args.assignedRoleKey ?? null,
-    objective: args.objective,
-    inputArtifactIds: args.inputArtifactIds ?? [],
-    allowedToolIds: [],
-    requiredArtifactTypes: args.requiredArtifactTypes,
-    modelPolicy: {
-      providerPreference: LLM_PROVIDER.openai,
-      requiredCapabilities: [AGENT_MODEL_CAPABILITY.jsonSchemaOutput],
-      costTier: "balanced",
-      fallbackAllowed: true,
-    },
-    budget: {
-      maxModelCalls: args.jobClass === AGENT_TEAM_JOB_CLASS.model ? 1 : 0,
-      maxToolCalls: 0,
-      maxTokens: 8000,
-      timeoutMs: AGENT_TIMEOUT_MS,
-    },
-    stopCondition: `${args.type} emitted required artifacts`,
-    controllerReason: args.controllerReason,
-    plannedTransitionKey: args.plannedTransitionKey,
-  });
+  const existing = await harness.jobs.findByPlannedTransitionKey(
+    input.runId,
+    args.plannedTransitionKey
+  );
+  const job =
+    existing ??
+    (await harness.jobs.create({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      type: args.type,
+      jobClass: args.jobClass,
+      assignedRoleKey: args.assignedRoleKey ?? null,
+      objective: args.objective,
+      inputArtifactIds: args.inputArtifactIds ?? [],
+      allowedToolIds: [],
+      requiredArtifactTypes: args.requiredArtifactTypes,
+      modelPolicy: {
+        providerPreference: args.modelProviderPreference ?? null,
+        requiredCapabilities: [AGENT_MODEL_CAPABILITY.jsonSchemaOutput],
+        costTier: "balanced",
+        fallbackAllowed: true,
+      },
+      budget: {
+        maxModelCalls: args.jobClass === AGENT_TEAM_JOB_CLASS.model ? 1 : 0,
+        maxToolCalls: 0,
+        maxTokens: 8000,
+        timeoutMs: AGENT_TIMEOUT_MS,
+      },
+      stopCondition: `${args.type} emitted required artifacts`,
+      controllerReason: args.controllerReason,
+      plannedTransitionKey: args.plannedTransitionKey,
+    }));
+
+  if (job.status === AGENT_TEAM_JOB_STATUS.completed) {
+    return job;
+  }
+  if (job.status === AGENT_TEAM_JOB_STATUS.running) {
+    return job;
+  }
+  if (job.status !== AGENT_TEAM_JOB_STATUS.queued) {
+    throw new PermanentHarnessRunError(
+      `Harness job ${job.id} is in non-runnable status "${job.status}"`
+    );
+  }
 
   const claimed = await harness.jobs.claim({
     jobId: job.id,
@@ -280,7 +329,7 @@ async function createAndClaimJob(
   });
 
   if (!claimed) {
-    throw new Error(`Could not claim harness job ${job.id}`);
+    throw new RetryableHarnessRunError(`Could not claim harness job ${job.id}`);
   }
 
   return claimed;
@@ -292,15 +341,21 @@ async function callAgentTeamTurn(input: AgentTeamRoleTurnInput): Promise<AgentTe
 
   let response: Response;
   try {
-    response = await fetch(`${resolveAgentServiceUrl()}/team-turn`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${env.INTERNAL_SERVICE_KEY}`,
-      },
-      body: JSON.stringify(input),
-      signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
-    });
+    try {
+      response = await fetch(`${resolveAgentServiceUrl()}/team-turn`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${env.INTERNAL_SERVICE_KEY}`,
+        },
+        body: JSON.stringify(input),
+        signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
+      });
+    } catch (error) {
+      throw new RetryableHarnessRunError(
+        `Harness draft job could not reach agent service: ${formatError(error)}`
+      );
+    }
   } finally {
     clearInterval(keepAlive);
     heartbeat();
@@ -308,10 +363,47 @@ async function callAgentTeamTurn(input: AgentTeamRoleTurnInput): Promise<AgentTe
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Harness draft job failed: ${response.status} ${errorBody.slice(0, 400)}`);
+    const message = `Harness draft job failed: ${response.status} ${errorBody.slice(0, 400)}`;
+    if (response.status === 429 || response.status >= 500) {
+      throw new RetryableHarnessRunError(message);
+    }
+    throw new PermanentHarnessRunError(message);
   }
 
-  return agentTeamRoleTurnOutputSchema.parse(await response.json());
+  try {
+    return agentTeamRoleTurnOutputSchema.parse(await response.json());
+  } catch (error) {
+    throw new RetryableHarnessRunError(
+      `Harness draft job returned invalid structured output: ${formatError(error)}`
+    );
+  }
+}
+
+async function runDraftModelTurn(
+  input: AgentTeamRunWorkflowInput,
+  role: AgentTeamRole,
+  job: AgentTeamJob
+): Promise<{ result: AgentTeamRoleTurnOutput; draftBody: string }> {
+  try {
+    const result = await callAgentTeamTurn({
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+      runId: input.runId,
+      turnIndex: 1,
+      teamRoles: input.teamSnapshot.roles,
+      role,
+      requestSummary: input.threadSnapshot,
+      inbox: [],
+      acceptedFacts: [],
+      openQuestions: [],
+      recentThread: [],
+      sessionDigest: input.sessionDigest ?? null,
+    });
+
+    return { result, draftBody: extractDraftBody(result) };
+  } catch (error) {
+    return finishDraftJobAfterError(job, error);
+  }
 }
 
 async function projectHarnessRunToSupportAnalysis(args: {
@@ -521,7 +613,7 @@ function extractDraftBody(result: AgentTeamRoleTurnOutput): string {
   );
   const body = proposal?.content.trim();
   if (!body) {
-    throw new Error("Harness draft job did not emit a proposal message");
+    throw new RetryableHarnessRunError("Harness draft job did not emit a proposal message");
   }
 
   return body;
@@ -535,6 +627,72 @@ function deriveDraftConfidence(result: AgentTeamRoleTurnOutput): number {
 function resolveProvider(provider: string): LlmProvider {
   const parsed = llmProviderSchema.safeParse(provider);
   return parsed.success ? parsed.data : LLM_PROVIDER.openai;
+}
+
+function resolveProviderPreference(provider: string): LlmProvider | null {
+  const parsed = llmProviderSchema.safeParse(provider);
+  if (!parsed.success || parsed.data === LLM_PROVIDER.openai) {
+    return null;
+  }
+
+  return parsed.data;
+}
+
+async function finishDraftJobAfterError(job: AgentTeamJob, error: unknown): Promise<never> {
+  const errorMessage = formatError(error);
+  if (isRetryableHarnessRunError(error) && job.attempt < MAX_HARNESS_ATTEMPTS) {
+    await harness.jobs.retry({
+      jobId: job.id,
+      reason: errorMessage,
+      nextAttemptAt: new Date(),
+    });
+    throw error;
+  }
+
+  await harness.jobs.fail({
+    jobId: job.id,
+    errorMessage,
+  });
+  throw error instanceof PermanentHarnessRunError
+    ? error
+    : new PermanentHarnessRunError(errorMessage);
+}
+
+async function findJobArtifactId(
+  runId: string,
+  jobId: string,
+  type: AgentTeamArtifactType
+): Promise<string> {
+  const artifact = (await harness.artifacts.listForRun(runId)).find(
+    (candidate) => candidate.jobId === jobId && candidate.type === type
+  );
+  if (!artifact) {
+    throw new PermanentHarnessRunError(`Harness job ${jobId} completed without ${type} artifact`);
+  }
+
+  return artifact.id;
+}
+
+function isRetryableHarnessRunError(error: unknown): error is RetryableHarnessRunError {
+  return error instanceof RetryableHarnessRunError;
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+class RetryableHarnessRunError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RetryableHarnessRunError";
+  }
+}
+
+class PermanentHarnessRunError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PermanentHarnessRunError";
+  }
 }
 
 function summarizeThread(input: AgentTeamRunWorkflowInput): string {

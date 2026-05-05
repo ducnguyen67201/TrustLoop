@@ -12,6 +12,7 @@ import {
 import { flushLangfuse, getLangfuseClient } from "@shared/rest/observability/langfuse";
 import * as llmManager from "@shared/rest/services/llm-manager-service";
 import {
+  AGENT_PROVIDER,
   AGENT_TEAM_MESSAGE_KIND,
   AGENT_TEAM_ROLE_SLUG,
   AGENT_TEAM_TARGET,
@@ -581,7 +582,7 @@ async function runDrafterAsTeamTurn(
     threadSnapshot,
     sessionDigest: request.sessionDigest ?? undefined,
     config: {
-      provider: request.role.provider,
+      provider: request.role.provider === AGENT_PROVIDER.openai ? undefined : request.role.provider,
       model: request.role.model ?? undefined,
       maxSteps: request.role.maxSteps ?? undefined,
     },

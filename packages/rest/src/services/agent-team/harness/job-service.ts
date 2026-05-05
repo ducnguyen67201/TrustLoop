@@ -75,28 +75,40 @@ export interface CancelJobInput {
 type JobRow = Awaited<ReturnType<typeof prisma.agentTeamJob.findUniqueOrThrow>>;
 
 export async function create(input: CreateJobInput): Promise<AgentTeamJob> {
-  const row = await prisma.agentTeamJob.create({
-    data: {
-      workspaceId: input.workspaceId,
-      runId: input.runId,
-      type: input.type,
-      jobClass: input.jobClass,
-      status: AGENT_TEAM_JOB_STATUS.queued,
-      assignedRoleKey: input.assignedRoleKey ?? null,
-      objective: input.objective,
-      inputArtifactIds: input.inputArtifactIds ?? [],
-      allowedToolIds: input.allowedToolIds ?? [],
-      requiredArtifactTypes: input.requiredArtifactTypes ?? [],
-      modelPolicy: input.modelPolicy,
-      budget: input.budget,
-      stopCondition: input.stopCondition,
-      controllerReason: input.controllerReason,
-      plannedTransitionKey: input.plannedTransitionKey ?? null,
-      startedAt: null,
-      completedAt: null,
-      errorMessage: null,
-    },
-  });
+  let row: JobRow;
+  try {
+    row = await prisma.agentTeamJob.create({
+      data: {
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        type: input.type,
+        jobClass: input.jobClass,
+        status: AGENT_TEAM_JOB_STATUS.queued,
+        assignedRoleKey: input.assignedRoleKey ?? null,
+        objective: input.objective,
+        inputArtifactIds: input.inputArtifactIds ?? [],
+        allowedToolIds: input.allowedToolIds ?? [],
+        requiredArtifactTypes: input.requiredArtifactTypes ?? [],
+        modelPolicy: input.modelPolicy,
+        budget: input.budget,
+        stopCondition: input.stopCondition,
+        controllerReason: input.controllerReason,
+        plannedTransitionKey: input.plannedTransitionKey ?? null,
+        startedAt: null,
+        completedAt: null,
+        errorMessage: null,
+      },
+    });
+  } catch (error) {
+    const existing =
+      input.plannedTransitionKey && isUniqueConstraintError(error)
+        ? await findByPlannedTransitionKey(input.runId, input.plannedTransitionKey)
+        : null;
+    if (!existing) {
+      throw error;
+    }
+    return existing;
+  }
 
   return mapJob(row);
 }
@@ -237,6 +249,22 @@ export async function find(jobId: string): Promise<AgentTeamJob> {
   return mapJob(row);
 }
 
+export async function findByPlannedTransitionKey(
+  runId: string,
+  plannedTransitionKey: string
+): Promise<AgentTeamJob | null> {
+  const row = await prisma.agentTeamJob.findUnique({
+    where: {
+      runId_plannedTransitionKey: {
+        runId,
+        plannedTransitionKey,
+      },
+    },
+  });
+
+  return row ? mapJob(row) : null;
+}
+
 async function finishWithoutRunning(
   jobId: string,
   reason: string,
@@ -278,6 +306,15 @@ function mapJob(row: JobRow): AgentTeamJob {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   });
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown };
+  return candidate.code === "P2002";
 }
 
 export { InvalidAgentTeamJobTransitionError };

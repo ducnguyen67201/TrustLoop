@@ -328,7 +328,9 @@ function buildTeamSnapshotForConfig(args: {
     });
   }
 
-  const drafter = synthesizeDrafterRole(args.teamId);
+  const drafter =
+    args.teamRoles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.drafter) ??
+    synthesizeDrafterRole(args.teamId);
   if (args.teamConfig === AGENT_TEAM_CONFIG.FAST) {
     return agentTeamSnapshotSchema.parse({ roles: [drafter], edges: [] });
   }
