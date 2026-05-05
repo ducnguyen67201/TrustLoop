@@ -111,7 +111,7 @@ not the queue scheduler.
 - `llm-routing-and-provider-fallback.md` — provider/model selection and fallback
 - `ai-draft-generation.md` — draft approval and Slack delivery after projection
 
-## Keep This Doc Honest
+## Keep this doc honest
 
 Update when you change:
 

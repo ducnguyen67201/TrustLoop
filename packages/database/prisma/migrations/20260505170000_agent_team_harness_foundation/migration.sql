@@ -14,9 +14,9 @@ CREATE TABLE "AgentTeamJob" (
   "status" TEXT NOT NULL DEFAULT 'queued',
   "assignedRoleKey" TEXT,
   "objective" TEXT NOT NULL,
-  "inputArtifactIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-  "allowedToolIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-  "requiredArtifactTypes" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "inputArtifactIds" TEXT[] NOT NULL,
+  "allowedToolIds" TEXT[] NOT NULL,
+  "requiredArtifactTypes" TEXT[] NOT NULL,
   "modelPolicy" JSONB NOT NULL,
   "budget" JSONB NOT NULL,
   "stopCondition" TEXT NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE "AgentTeamArtifact" (
   "content" JSONB NOT NULL,
   "contentRef" TEXT,
   "contentHash" TEXT NOT NULL,
-  "evidenceRefs" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  "evidenceRefs" JSONB NOT NULL,
   "confidence" DOUBLE PRECISION NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -67,10 +67,10 @@ CREATE TABLE "AgentTeamJobReceipt" (
   "compiledContextRef" TEXT,
   "rawModelOutputRef" TEXT,
   "rawModelOutputHash" TEXT,
-  "toolCalls" JSONB NOT NULL DEFAULT '[]'::jsonb,
-  "contextSections" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  "toolCalls" JSONB NOT NULL,
+  "contextSections" JSONB NOT NULL,
   "controllerDecision" TEXT NOT NULL,
-  "gateResults" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  "gateResults" JSONB NOT NULL,
   "approval" JSONB,
   "resolvedRoute" JSONB NOT NULL,
   "circuitBreakerStateBeforeCall" JSONB,
@@ -82,35 +82,28 @@ CREATE TABLE "AgentTeamJobReceipt" (
   CONSTRAINT "AgentTeamJobReceipt_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "AgentTeamRun_runtimeVersion_idx" ON "AgentTeamRun"("runtimeVersion");
-CREATE INDEX "AgentTeamRun_ledgerOutcome_idx" ON "AgentTeamRun"("ledgerOutcome");
-
 CREATE UNIQUE INDEX "AgentTeamJob_runId_plannedTransitionKey_key"
   ON "AgentTeamJob"("runId", "plannedTransitionKey");
-CREATE INDEX "AgentTeamJob_runId_createdAt_id_idx"
-  ON "AgentTeamJob"("runId", "createdAt", "id");
-CREATE INDEX "AgentTeamJob_runId_status_idx"
-  ON "AgentTeamJob"("runId", "status");
-CREATE INDEX "AgentTeamJob_status_jobClass_leaseUntil_nextAttemptAt_idx"
-  ON "AgentTeamJob"("status", "jobClass", "leaseUntil", "nextAttemptAt");
-CREATE INDEX "AgentTeamJob_workspaceId_jobClass_status_createdAt_idx"
-  ON "AgentTeamJob"("workspaceId", "jobClass", "status", "createdAt");
+CREATE INDEX "AgentTeamJob_workspaceId_status_nextAttemptAt_idx"
+  ON "AgentTeamJob"("workspaceId", "status", "nextAttemptAt");
+CREATE INDEX "AgentTeamJob_runId_status_createdAt_idx"
+  ON "AgentTeamJob"("runId", "status", "createdAt");
+CREATE INDEX "AgentTeamJob_runId_type_idx"
+  ON "AgentTeamJob"("runId", "type");
 
 CREATE UNIQUE INDEX "AgentTeamArtifact_jobId_type_artifactKey_key"
   ON "AgentTeamArtifact"("jobId", "type", "artifactKey");
 CREATE INDEX "AgentTeamArtifact_runId_type_createdAt_idx"
   ON "AgentTeamArtifact"("runId", "type", "createdAt");
-CREATE INDEX "AgentTeamArtifact_jobId_idx" ON "AgentTeamArtifact"("jobId");
-CREATE INDEX "AgentTeamArtifact_contentHash_idx" ON "AgentTeamArtifact"("contentHash");
+CREATE INDEX "AgentTeamArtifact_workspaceId_type_createdAt_idx"
+  ON "AgentTeamArtifact"("workspaceId", "type", "createdAt");
 
 CREATE UNIQUE INDEX "AgentTeamJobReceipt_jobId_attempt_key"
   ON "AgentTeamJobReceipt"("jobId", "attempt");
 CREATE INDEX "AgentTeamJobReceipt_runId_createdAt_idx"
   ON "AgentTeamJobReceipt"("runId", "createdAt");
-CREATE INDEX "AgentTeamJobReceipt_provider_model_jobType_createdAt_idx"
-  ON "AgentTeamJobReceipt"("provider", "model", "jobType", "createdAt");
-CREATE INDEX "AgentTeamJobReceipt_workspaceId_createdAt_idx"
-  ON "AgentTeamJobReceipt"("workspaceId", "createdAt");
+CREATE INDEX "AgentTeamJobReceipt_workspaceId_provider_model_jobType_createdAt_idx"
+  ON "AgentTeamJobReceipt"("workspaceId", "provider", "model", "jobType", "createdAt");
 
 ALTER TABLE "AgentTeamJob"
   ADD CONSTRAINT "AgentTeamJob_workspaceId_fkey"
