@@ -131,11 +131,14 @@ export async function getCandidateCount(workspaceId: string): Promise<number> {
   return Number(total);
 }
 
+// NOT YET WIRED: cascade hook for retiring embeddings when a SupportConversation
+// is soft-deleted or marked sensitive. The concept doc lists this as an invariant
+// (`docs/concepts/workspace-knowledge.md` → "Deletion lifecycle"), but no caller
+// dispatches it yet — every conversation soft-delete path needs to invoke this
+// to keep the KB clean. v1 ships without callers because no real customer pilot
+// has landed yet; before pilot install, find every soft-delete path and add the
+// call. TODO(workspace-knowledge-cascade-hook): wire this up.
 export async function softDeleteByConversation(conversationId: string): Promise<void> {
-  // Cascade hook: when a SupportConversation is soft-deleted (or marked
-  // sensitive in future), retire all its embeddings so they stop appearing
-  // in retrieval. Caller is responsible for the conversation soft-delete
-  // itself; this is the embedding cleanup half.
   await prisma.supportResolutionEmbedding.updateMany({
     where: { conversationId, deletedAt: null },
     data: { deletedAt: new Date() },

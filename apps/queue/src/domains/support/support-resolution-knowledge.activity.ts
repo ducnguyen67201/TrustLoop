@@ -233,7 +233,7 @@ async function embedOne(input: EmbedSingleInput): Promise<EmbedOutcome> {
     });
   }
 
-  await prisma.$transaction(async (tx) => {
+  const insertOutcome = await prisma.$transaction(async (tx) => {
     const inserted = await tx.$queryRawUnsafe<Array<{ id: string }>>(
       `INSERT INTO "SupportResolutionEmbedding" (
          "id", "workspaceId", "conversationId", "sourceEventId",
@@ -254,8 +254,9 @@ async function embedOne(input: EmbedSingleInput): Promise<EmbedOutcome> {
     );
     const created = inserted[0];
     if (!created) {
-      // Conflict won — another writer beat us to it. Treat as already-indexed.
-      return;
+      // Conflict won — another writer beat us to it. Bubble up as already-indexed
+      // so the workflow's count metrics don't double-count this as a fresh embed.
+      return { embedded: false } as const;
     }
 
     await tx.knowledgeIndexEntry.create({
@@ -265,9 +266,10 @@ async function embedOne(input: EmbedSingleInput): Promise<EmbedOutcome> {
         sourceRecordId: created.id,
       },
     });
+    return { embedded: true } as const;
   });
 
-  return "embedded";
+  return insertOutcome.embedded ? "embedded" : "already_indexed";
 }
 
 type QAExtractionInput = {
