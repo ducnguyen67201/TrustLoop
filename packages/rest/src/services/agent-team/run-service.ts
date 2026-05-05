@@ -11,6 +11,7 @@ import {
   type AgentTeamRole,
   type AgentTeamRunSummary,
   type AgentTeamSnapshot,
+  ConflictError,
   type SessionDigest,
   type ThreadSnapshot,
   ValidationError,
@@ -21,6 +22,11 @@ import {
   startAgentTeamRunInputSchema,
   threadSnapshotSchema,
 } from "@shared/types";
+
+// Minimum gap between consecutive force=true starts for the same (workspace,
+// conversation). Each agent-team run consumes real LLM budget, so we throttle
+// rapid clicks of the explicit "Re-run" override even when it bypasses dedupe.
+const FORCE_RUN_MIN_INTERVAL_MS = 30_000;
 
 interface StartRunArgs {
   workspaceId: string;
@@ -63,6 +69,31 @@ export async function start(
     });
     if (inFlight) {
       return mapRun(inFlight);
+    }
+  } else {
+    // force=true bypasses dedupe but is still throttled per (workspace,
+    // conversation) so a stuck "Re-run" button can't spawn N concurrent paid
+    // LLM runs. Anything created in the last FORCE_RUN_MIN_INTERVAL_MS counts,
+    // regardless of status — the user already has an answer in flight or just
+    // got one back.
+    const recent = await prisma.agentTeamRun.findFirst({
+      where: {
+        workspaceId: input.workspaceId,
+        conversationId: parsed.conversationId,
+        createdAt: { gte: new Date(Date.now() - FORCE_RUN_MIN_INTERVAL_MS) },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, createdAt: true },
+    });
+    if (recent) {
+      const waitSeconds = Math.ceil(
+        (FORCE_RUN_MIN_INTERVAL_MS - (Date.now() - recent.createdAt.getTime())) / 1000
+      );
+      throw new ConflictError(
+        `An agent-team run for this conversation was started ${Math.ceil(
+          (Date.now() - recent.createdAt.getTime()) / 1000
+        )}s ago. Wait ${Math.max(waitSeconds, 1)}s before forcing another run.`
+      );
     }
   }
 

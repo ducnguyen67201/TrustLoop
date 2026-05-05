@@ -32,9 +32,11 @@ describe("useAnalysis", () => {
       await result.current.triggerAnalysis();
     });
 
+    // Initial trigger must respect the in-flight dedupe — only the explicit
+    // "Re-run" button in AgentTeamRunView opts into force:true.
     expect(mocks.trpcMutation).toHaveBeenCalledWith(
       "agentTeam.startRun",
-      { conversationId: "conversation_1", teamConfig: AGENT_TEAM_CONFIG.DEEP, force: true },
+      { conversationId: "conversation_1", teamConfig: AGENT_TEAM_CONFIG.DEEP, force: false },
       { withCsrf: true }
     );
   });

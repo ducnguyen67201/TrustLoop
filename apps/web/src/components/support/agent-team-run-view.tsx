@@ -121,7 +121,7 @@ export function AgentTeamRunView({
               size="sm"
               className="h-6 px-2 text-xs"
               onClick={onStartRun}
-              disabled={isMutating}
+              disabled={isMutating || isStreaming}
             >
               <RiRefreshLine className="h-3.5 w-3.5" />
               Re-run

@@ -875,15 +875,14 @@ function resolveTeamTurnToolChoice(request: AgentTeamRoleTurnInput): "auto" | "r
 
 function selectToolIdsForTeamTurn(
   request: AgentTeamRoleTurnInput,
-  preloadedFiles: readonly PreloadedRepositoryFile[]
+  _preloadedFiles: readonly PreloadedRepositoryFile[]
 ): readonly AgentTeamToolId[] {
-  if (
-    request.role.slug === AGENT_TEAM_ROLE_SLUG.prCreator &&
-    preloadedFiles.some((file) => file.result.success)
-  ) {
-    return [AGENT_TEAM_TOOL_ID.createPullRequest];
-  }
-
+  // Always expose the role's full toolset. Stripping searchCode/readRepositoryFile
+  // when preloads succeed forces createPullRequest on whatever the regex picked,
+  // even when the LLM would otherwise verify the target via a follow-up read.
+  // The "preloaded files" prompt section already steers the LLM toward the
+  // right file; combined with toolChoice="required" the model still has to call
+  // a tool, but it can choose readRepositoryFile to confirm before committing.
   return getRoleToolIds(request.role);
 }
 

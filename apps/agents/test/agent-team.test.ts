@@ -607,16 +607,17 @@ describe("runTeamTurn", () => {
       expect.stringContaining("export function ErrorPanel() {}"),
       expect.any(Object)
     );
+    // PR Creator keeps the full toolset even when files preload successfully:
+    // stripping searchCode/readRepositoryFile forced createPullRequest on
+    // whatever the regex picked, so the model could no longer verify the
+    // target. The "Preloaded Repository Files" prompt section already steers
+    // the model toward the right file without removing the verification path.
     expect(mockAgentConstructor).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        tools: expect.objectContaining({ createPullRequest: expect.any(Object) }),
-      })
-    );
-    expect(mockAgentConstructor).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        tools: expect.not.objectContaining({
-          readRepositoryFile: expect.anything(),
-          searchCode: expect.anything(),
+        tools: expect.objectContaining({
+          createPullRequest: expect.any(Object),
+          readRepositoryFile: expect.any(Object),
+          searchCode: expect.any(Object),
         }),
       })
     );

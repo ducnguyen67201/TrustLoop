@@ -521,6 +521,31 @@ describe("agentTeamRuns.start", () => {
       })
     );
   });
+
+  it("rejects force=true when a run for the same conversation was created within the throttle window", async () => {
+    const dispatcher = createDispatcher();
+    mockFindFirstRun.mockResolvedValue({
+      id: "run_recent",
+      // 5s ago — well inside the 30s throttle window.
+      createdAt: new Date(Date.now() - 5_000),
+    });
+
+    await expect(
+      agentTeamRuns.start(
+        {
+          workspaceId: "ws_1",
+          conversationId: "conv_1",
+          teamConfig: AGENT_TEAM_CONFIG.DEEP,
+          force: true,
+        },
+        dispatcher
+      )
+    ).rejects.toThrow(/wait/i);
+
+    expect(mockFindFirstTeam).not.toHaveBeenCalled();
+    expect(mockCreateRun).not.toHaveBeenCalled();
+    expect(dispatcher.startAgentTeamRunWorkflow).not.toHaveBeenCalled();
+  });
 });
 
 describe("agentTeamRuns.getRun", () => {

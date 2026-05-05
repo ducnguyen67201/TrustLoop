@@ -160,7 +160,7 @@ describe("AgentTeamRunView", () => {
     expect(screen.getByText("running")).toBeTruthy();
   });
 
-  it("keeps the re-run button enabled while a run is streaming", () => {
+  it("disables the re-run button while a run is streaming so rapid clicks cannot spawn concurrent paid runs", () => {
     const onStartRun = vi.fn();
     render(
       <AgentTeamRunView
@@ -174,9 +174,9 @@ describe("AgentTeamRunView", () => {
     );
 
     const button = screen.getByRole("button", { name: /Re-run/i });
-    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect((button as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(button);
-    expect(onStartRun).toHaveBeenCalledTimes(1);
+    expect(onStartRun).not.toHaveBeenCalled();
   });
 
   it("labels empty serialized tool results instead of rendering raw quotes", () => {

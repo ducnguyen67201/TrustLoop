@@ -409,31 +409,28 @@ function hasActionablePrCreatorHandoff(
   );
 }
 
+// Decide whether a message routed at pr_creator is concrete enough to wake them.
+//
+// `kind === approval` is always actionable (the structured "ship it" signal
+// from a reviewer). For every other wake-eligible kind we trust the kind +
+// addressing decision the LLM made and only suppress the wake if the body
+// contains a self-cancelling phrase like "no further action" or
+// "cannot locate target file".
+//
+// We deliberately do NOT scan the body for positive keywords like "fix",
+// "update", "change", "edit": those tokens are too common in unrelated
+// discussion (e.g. "this won't fix the underlying issue") and were causing
+// false negatives on legitimate handoffs that didn't happen to use the magic
+// words. The right long-term fix is a structured `prCreatorIntent` field on
+// the dialogue message; until then this negative-only gate is the safer
+// default.
 function isActionablePrCreatorMessage(message: AgentTeamDialogueMessageDraft): boolean {
   if (message.kind === AGENT_TEAM_MESSAGE_KIND.approval) {
     return true;
   }
 
   const text = `${message.subject}\n${message.content}`.toLowerCase();
-  const hasPositiveSignal =
-    text.includes("create pr") ||
-    text.includes("draft pr") ||
-    text.includes("open pr") ||
-    text.includes("pull request") ||
-    text.includes("bounded fix") ||
-    text.includes("target file") ||
-    text.includes("implement") ||
-    text.includes("fix") ||
-    text.includes("change") ||
-    text.includes("update") ||
-    text.includes("edit") ||
-    text.includes("ship");
-
-  if (!hasPositiveSignal) {
-    return false;
-  }
-
-  return !(
+  const hasNegativeSignal =
     text.includes("no specific file") ||
     text.includes("no file") ||
     text.includes("cannot locate") ||
@@ -442,8 +439,9 @@ function isActionablePrCreatorMessage(message: AgentTeamDialogueMessageDraft): b
     text.includes("confirm if") ||
     text.includes("recommend confirming") ||
     text.includes("no further action") ||
-    text.includes("no action needed")
-  );
+    text.includes("no action needed");
+
+  return !hasNegativeSignal;
 }
 
 export function isHumanResolutionTarget(target: string): boolean {
