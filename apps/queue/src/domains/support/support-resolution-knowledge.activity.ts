@@ -67,10 +67,29 @@ export async function embedBackfillBatch(input: EmbedBackfillInput): Promise<Emb
   const cap = input.maxConversations ?? Number.POSITIVE_INFINITY;
   const effectiveTotal = Math.min(total, cap);
 
-  // Pull the next batch of unindexed (workspace, conversation, event) tuples.
-  // Use a JOIN against SupportResolutionEmbedding to skip already-embedded
-  // events. Bounded concurrency = BACKFILL_CONCURRENCY per iteration; this is
-  // the natural rate-limit gate (per D13 — bounded concurrency, exp. backoff).
+  // Cap remaining candidates by the explicit maxConversations limit. Without
+  // this, an iteration's LIMIT pulls BACKFILL_CONCURRENCY rows even when only
+  // 1 row is requested overall.
+  const remaining = Math.max(0, effectiveTotal - input.iteration * BACKFILL_CONCURRENCY);
+  const batchSize = Math.min(BACKFILL_CONCURRENCY, remaining);
+  if (batchSize === 0) {
+    return {
+      totalCandidates: effectiveTotal,
+      embedded: 0,
+      skippedAlreadyIndexed: 0,
+      skippedQTooShort: 0,
+      failed: 0,
+      done: true,
+    };
+  }
+
+  // Pull the next batch using OFFSET as the cursor. Without OFFSET, rows that
+  // resolve to "q_too_short" or "failed" don't write a SupportResolutionEmbedding
+  // row, so they reselect on every iteration and the workflow spins on the
+  // same 5 unembeddable rows up to 1000 iterations (codex outside-voice F1).
+  // OFFSET advances past anything we've already attempted in this run, even
+  // when that attempt didn't produce a row.
+  const offset = input.iteration * BACKFILL_CONCURRENCY;
   const candidates = await prisma.$queryRawUnsafe<
     Array<{ conversationId: string; sourceEventId: string }>
   >(
@@ -85,9 +104,11 @@ export async function embedBackfillBatch(input: EmbedBackfillInput): Promise<Emb
        AND e."eventType" = 'DRAFT_APPROVED'
        AND r."id" IS NULL
      ORDER BY e."createdAt" ASC
+     OFFSET $3
      LIMIT $2`,
     input.workspaceId,
-    BACKFILL_CONCURRENCY
+    batchSize,
+    offset
   );
 
   if (candidates.length === 0) {
@@ -149,12 +170,24 @@ type EmbedOutcome = "embedded" | "already_indexed" | "q_too_short" | "failed";
 async function embedOne(input: EmbedSingleInput): Promise<EmbedOutcome> {
   const conversation = await prisma.supportConversation.findUnique({
     where: { id: input.conversationId },
-    select: { id: true, deletedAt: true },
+    select: { id: true, workspaceId: true, deletedAt: true },
   });
   if (!conversation || conversation.deletedAt !== null) {
     throw ApplicationFailure.create({
       type: "ConversationNotFoundError",
       message: `Conversation ${input.conversationId} not found or deleted.`,
+      nonRetryable: true,
+    });
+  }
+  // Cross-tenant consistency guard (codex outside-voice F3): the workflow
+  // dispatcher is trusted, but defense in depth is cheap and a malformed
+  // start would silently embed cross-tenant data. Search filters by
+  // workspaceId so reads stay safe — the write side has to refuse mismatched
+  // input here.
+  if (conversation.workspaceId !== input.workspaceId) {
+    throw ApplicationFailure.create({
+      type: "ConversationNotFoundError",
+      message: `Conversation ${input.conversationId} belongs to workspace ${conversation.workspaceId}, not ${input.workspaceId}.`,
       nonRetryable: true,
     });
   }
@@ -164,6 +197,7 @@ async function embedOne(input: EmbedSingleInput): Promise<EmbedOutcome> {
     select: {
       id: true,
       conversationId: true,
+      workspaceId: true,
       eventType: true,
       detailsJson: true,
       createdAt: true,
@@ -173,6 +207,16 @@ async function embedOne(input: EmbedSingleInput): Promise<EmbedOutcome> {
     throw ApplicationFailure.create({
       type: "ConversationNotFoundError",
       message: `Source event ${input.sourceEventId} is not a DRAFT_APPROVED event.`,
+      nonRetryable: true,
+    });
+  }
+  if (
+    approvedEvent.workspaceId !== input.workspaceId ||
+    approvedEvent.conversationId !== input.conversationId
+  ) {
+    throw ApplicationFailure.create({
+      type: "ConversationNotFoundError",
+      message: `Source event ${input.sourceEventId} does not belong to conversation ${input.conversationId} in workspace ${input.workspaceId}.`,
       nonRetryable: true,
     });
   }

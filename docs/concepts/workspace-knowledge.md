@@ -164,6 +164,12 @@ This addresses the cross-model dissent that approved replies are not authoritati
 - **Q extraction is heuristic.** `embedSingleResolution` skips conversations whose customer-side text totals less than 20 characters. Multi-turn threads where the question is implicit will misfire; dogfood will surface real cases and we tune.
 - **The reranker is a best-effort improver, not a dependency.** Any failure path falls back to input ordering. Draft generation is never blocked by a rerank outage.
 
+## Known limitation: timeout doesn't cancel background work
+
+The umbrella searcher uses `Promise.race` against a 800ms `setTimeout`. When a per-source searcher is slow, `runWithTimeout` returns `[]` and the umbrella moves on — but the underlying work (DB query, embedding API call, rerank) keeps running to completion in the background. Under load this means "timed out" requests can still consume connection-pool slots and burn LLM budget invisibly.
+
+The fix is `AbortController` plumbing through every searcher (codex search, notes search, past-resolution search, rerank). That's real work — every raw SQL call needs a cancel signal, every fetch needs `signal:` wired, and the codex hybrid-search internals would need to thread the abort signal through `vectorSearch` / `keywordSearch` / `literalSearch`. Deferred from v1; revisit if real workspace load shows pile-up.
+
 ## NOT in v1 (deliberate)
 
 - **External ingestion** (Notion, Drive, Confluence, URL crawler). Architecture supports them via the searcher contract — add as separate PRs.

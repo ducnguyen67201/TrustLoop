@@ -56,6 +56,7 @@ export async function search(
             1 - (s."embedding" <=> $1::vector) AS score
      FROM "SupportResolutionEmbedding" s
      JOIN "SupportConversationEvent" e ON e."id" = s."sourceEventId"
+     JOIN "SupportConversation" c ON c."id" = s."conversationId" AND c."deletedAt" IS NULL
      WHERE s."workspaceId" = $2
        AND s."deletedAt" IS NULL
        AND s."embedding" IS NOT NULL
@@ -76,6 +77,7 @@ export async function search(
               ts_rank_cd(s."tsv", to_tsquery('english', $1)) AS score
          FROM "SupportResolutionEmbedding" s
          JOIN "SupportConversationEvent" e ON e."id" = s."sourceEventId"
+         JOIN "SupportConversation" c ON c."id" = s."conversationId" AND c."deletedAt" IS NULL
          WHERE s."workspaceId" = $2
            AND s."deletedAt" IS NULL
            AND s."tsv" @@ to_tsquery('english', $1)
