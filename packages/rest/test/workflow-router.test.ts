@@ -52,6 +52,11 @@ function createDispatcher(): WorkflowDispatcher {
       runId: "run_send_draft_1",
       queue: "support-general",
     })),
+    startSupportResolutionKnowledgeWorkflow: vi.fn(async () => ({
+      workflowId: "support-resolution-knowledge-single-ws_1-evt_1",
+      runId: "run_support_resolution_knowledge_1",
+      queue: "codex-intensive",
+    })),
   };
 }
 

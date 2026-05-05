@@ -1,0 +1,133 @@
+// Workspace Knowledge Base v1 (manual notes + past resolutions, with code via adapter).
+// See ~/.gstack/projects/ducnguyen67201-TrustLoop/ducng-main-design-20260505-143500.md
+// for design context and decisions D1–D19.
+
+enum KnowledgeChunkSource {
+  CODE
+  MANUAL_NOTE
+  PAST_RESOLUTION
+}
+
+/// Operator-curated knowledge note. Free-form markdown chunk + title pasted via
+/// Settings UI. Embedded inline on create. Treated as authoritative
+/// policy/runbook in prompt injection.
+model WorkspaceKnowledgeNote {
+  id              String                @id @default(cuid())
+  workspaceId     String
+  title           String
+  content         String                @db.Text
+  embedding       Unsupported("vector(1536)")?
+  tsv             Unsupported("tsvector")?
+  contentHash     String
+  createdByUserId String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  deletedAt       DateTime?
+
+  workspace       Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  createdBy       User?                 @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
+  @@unique([workspaceId, contentHash])
+  @@index([workspaceId])
+  @@index([tsv], type: Gin)
+  // embedding uses an HNSW index created via raw SQL in
+  // 20260505200000_workspace_knowledge. Prisma's schema cannot express
+  // `USING hnsw` — the CI drift check tolerates this single unrepresentable
+  // index (same pattern as RepositoryIndexChunk).
+}
+
+/// Past-resolution embedding. Created when a SupportConversationEvent of type
+/// DRAFT_APPROVED lands. Stores the customer-question + operator-approved-reply
+/// pair as a single embedded chunk. Treated as "examples for tone/structure;
+/// verify current policy before reusing language" in prompt injection.
+model SupportResolutionEmbedding {
+  id              String                @id @default(cuid())
+  workspaceId     String
+  conversationId  String
+  /// Provenance: the DRAFT_APPROVED SupportConversationEvent that triggered embedding.
+  sourceEventId   String
+  /// Q+A concatenated text that was actually embedded (per D5).
+  embeddedText    String                @db.Text
+  embedding       Unsupported("vector(1536)")?
+  tsv             Unsupported("tsvector")?
+  /// sha256(embeddedText). Semantic dedup key — same Q+A across multiple events
+  /// will deduplicate at this level (closes the codex outside-voice idempotency
+  /// concern).
+  contentHash     String
+  createdAt       DateTime              @default(now())
+  deletedAt       DateTime?
+
+  workspace       Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation    SupportConversation      @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sourceEvent     SupportConversationEvent @relation(fields: [sourceEventId], references: [id], onDelete: Restrict)
+
+  // TYPE GENERATION ONLY: DB uses partial unique indexes (WHERE deletedAt IS NULL).
+  // Two distinct guarantees:
+  //   - (workspaceId, sourceEventId) = "this event has been processed" (provenance)
+  //   - (workspaceId, contentHash)   = "this Q+A text already exists" (semantic)
+  @@unique([workspaceId, sourceEventId])
+  @@unique([workspaceId, contentHash])
+  @@index([workspaceId])
+  @@index([conversationId])
+  @@index([tsv], type: Gin)
+  // embedding uses an HNSW index created via raw SQL in
+  // 20260505200000_workspace_knowledge. Prisma's schema cannot express
+  // `USING hnsw` — the CI drift check tolerates this single unrepresentable
+  // index (same pattern as RepositoryIndexChunk).
+}
+
+/// Index registry. One entry per knowledge chunk that has been embedded and is
+/// searchable. Replaces the would-be `KB_INDEXED` SupportConversationEvent
+/// (which would have polluted the conversation event stream consumed by
+/// projections, timelines, and FSM).
+model KnowledgeIndexEntry {
+  id             String                @id @default(cuid())
+  workspaceId    String
+  source         KnowledgeChunkSource
+  /// FK shape varies by source: WorkspaceKnowledgeNote.id, SupportResolutionEmbedding.id, or
+  /// (future) NotionPage.id, etc. Unenforced by DB; service layer maintains integrity.
+  sourceRecordId String
+  indexedAt      DateTime              @default(now())
+  deletedAt      DateTime?
+
+  workspace      Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, source, sourceRecordId])
+  @@index([workspaceId, indexedAt])
+}
+
+/// Search audit. Records every umbrella knowledge search call. NOTED DISSENT
+/// (codex T-AUDIT): adds PII surface and write load before knowing if feature
+/// helps. User chose to keep DB audit (D9 + D19); revisit in v1.5.
+model KnowledgeSearchQuery {
+  id             String                  @id @default(cuid())
+  workspaceId    String
+  query          String                  @db.Text
+  conversationId String?
+  rerankerUsed   Boolean                 @default(false)
+  totalHits      Int
+  createdAt      DateTime                @default(now())
+
+  workspace      Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  results        KnowledgeSearchResult[]
+
+  @@index([workspaceId, createdAt])
+}
+
+model KnowledgeSearchResult {
+  id              String                @id @default(cuid())
+  queryId         String
+  source          KnowledgeChunkSource
+  /// Free-form identifier of the chunk: WorkspaceKnowledgeNote.id,
+  /// SupportResolutionEmbedding.id, or RepositoryIndexChunk.id (for code hits).
+  /// Unenforced FK; service layer is authoritative.
+  chunkIdentifier String
+  rank            Int
+  rawScore        Float
+  rerankedScore   Float?
+
+  query           KnowledgeSearchQuery  @relation(fields: [queryId], references: [id], onDelete: Cascade)
+
+  @@index([queryId, rank])
+}

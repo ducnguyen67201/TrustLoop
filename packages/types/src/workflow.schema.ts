@@ -15,6 +15,7 @@ export const workflowNames = {
   agentTeamRun: "agentTeamRunWorkflow",
   sendDraftToSlack: "sendDraftToSlackWorkflow",
   repositoryIndex: "repositoryIndexWorkflow",
+  supportResolutionKnowledge: "supportResolutionKnowledgeWorkflow",
 } as const;
 
 /**

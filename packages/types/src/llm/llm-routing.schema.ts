@@ -22,6 +22,10 @@ export const QUEUE_LLM_USE_CASE = {
   codexRerank: "codex-rerank",
   codexEmbedding: "codex-embedding",
   frameCaption: "frame-caption",
+  /// Cross-source rerank for the workspace knowledge base (code + manual notes
+  /// + past resolutions). LLM-based, routed through OpenAI / OpenRouter — no
+  /// separate Cohere/cross-encoder vendor.
+  knowledgeRerank: "knowledge-rerank",
 } as const;
 
 /*
@@ -49,6 +53,7 @@ export const queueLlmUseCaseValues = [
   QUEUE_LLM_USE_CASE.codexRerank,
   QUEUE_LLM_USE_CASE.codexEmbedding,
   QUEUE_LLM_USE_CASE.frameCaption,
+  QUEUE_LLM_USE_CASE.knowledgeRerank,
 ] as const;
 
 export const agentServiceLlmUseCaseValues = [
@@ -108,6 +113,14 @@ export const LLM_USE_CASE_DEFAULTS: Record<
     fallbackProviders: [LLM_PROVIDER.openrouter],
   },
   [LLM_USE_CASE.codexRerank]: {
+    model: MODEL_CONFIG.fast,
+    primaryProvider: LLM_PROVIDER.openai,
+    fallbackProviders: [LLM_PROVIDER.openrouter],
+  },
+  [LLM_USE_CASE.knowledgeRerank]: {
+    // Same shape as codexRerank: a fast scoring call. OpenAI primary,
+    // OpenRouter fallback. Both reachable via existing API keys; no new
+    // vendor needed.
     model: MODEL_CONFIG.fast,
     primaryProvider: LLM_PROVIDER.openai,
     fallbackProviders: [LLM_PROVIDER.openrouter],

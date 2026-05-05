@@ -55,6 +55,9 @@ const noopDispatcher = {
   async startSendDraftToSlackWorkflow() {
     return { workflowId: "wf", runId: "run", queue: TASK_QUEUES.SUPPORT };
   },
+  async startSupportResolutionKnowledgeWorkflow() {
+    return { workflowId: "wf", runId: "run", queue: TASK_QUEUES.CODEX };
+  },
 } satisfies WorkflowDispatcher;
 
 describe("workspaceRoleProcedure", () => {

@@ -25,4 +25,8 @@ export {
   sendDraftActivity,
 } from "@/domains/support/send-draft-to-slack.activity";
 export { runSupportPipeline } from "@/domains/support/support.activity";
+export {
+  embedBackfillBatch,
+  embedSingleResolution,
+} from "@/domains/support/support-resolution-knowledge.activity";
 export { generateConversationSummary } from "@/domains/support/support-summary.activity";

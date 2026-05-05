@@ -188,6 +188,7 @@ model SupportConversation {
   drafts                 SupportDraft[]
   attachments            SupportMessageAttachment[]
   agentPullRequests      AgentPullRequest[]
+  resolutionEmbeddings   SupportResolutionEmbedding[]
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
 
@@ -263,6 +264,10 @@ model SupportConversationEvent {
   reassignedCorrections SupportGroupingCorrection[] @relation("GroupingCorrectionSourceEvent")
   attachments    SupportMessageAttachment[]
   reactions      SupportMessageReaction[]
+  /// Knowledge embeddings derived from this event (DRAFT_APPROVED only in v1).
+  /// Cardinality is 0 or 1 in practice; modeled as one-to-many for soft-delete
+  /// re-embedding flexibility.
+  resolutionEmbeddings SupportResolutionEmbedding[]
   createdAt      DateTime                       @default(now())
 
   @@index([conversationId, createdAt])

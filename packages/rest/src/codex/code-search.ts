@@ -1,5 +1,5 @@
 import { prisma } from "@shared/database";
-import { hybridSearch } from "@shared/rest/codex/hybrid-search";
+import { hybridSearch } from "@shared/rest/codex/code-hybrid-search";
 import { requireRepositorySnapshot } from "@shared/rest/codex/shared";
 import {
   ConflictError,

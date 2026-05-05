@@ -1,32 +1,29 @@
 import { prisma } from "@shared/database";
 import * as embeddings from "@shared/rest/services/codex/embedding";
-import * as llmManager from "@shared/rest/services/llm-manager-service";
-import { LLM_USE_CASE, parseJsonModelOutput } from "@shared/types";
-import { z } from "zod";
+import * as toolkit from "@shared/rest/services/hybrid-search-toolkit";
 
-const RRF_K = 60;
+// ---------------------------------------------------------------------------
+// code-hybrid-search
+//
+// Codex-specific hybrid search over `RepositoryIndexChunk`. The agnostic
+// primitives (embedQuery, RRF, LLM rerank) live in
+// `services/hybrid-search-toolkit.ts`. This module owns the codex-shaped
+// concerns: vector / keyword / literal queries against the codex tables,
+// path-bonus heuristic, code-shaped literal-term extraction.
+//
+// Renamed from `codex/hybrid-search.ts` per workspace-knowledge plan D10.
+// Existing call sites import from `@shared/rest/codex/code-hybrid-search`.
+// ---------------------------------------------------------------------------
+
 const VECTOR_CANDIDATE_LIMIT = 50;
 const KEYWORD_CANDIDATE_LIMIT = 50;
 const LITERAL_CANDIDATE_LIMIT = 25;
-const RERANK_CANDIDATE_LIMIT = 20;
-const RERANK_RETURN_LIMIT = 5;
-const RERANK_TIMEOUT_MS = 800;
 const RERANK_SNIPPET_LINES = 35;
 const QUALITY_THRESHOLD = 0.2;
 
-const rerankScoreSchema = z.object({
-  index: z.number().int().nonnegative(),
-  score: z.number().min(0).max(10),
-  reason: z.string(),
-});
-
-const rerankOutputSchema = z.union([
-  z.array(rerankScoreSchema),
-  z.object({
-    results: z.array(rerankScoreSchema).optional(),
-    rankings: z.array(rerankScoreSchema).optional(),
-  }),
-]);
+export { QUALITY_THRESHOLD };
+// Backwards-compat re-export for code-search.ts and workspace-code-search.ts.
+export const embedQuery = toolkit.embedQuery;
 
 export type ScoredChunk = {
   id: string;
@@ -50,12 +47,6 @@ export type RerankedChunk = RankedChunk & {
   rerankerScore: number | null;
   rerankerReason: string | null;
 };
-
-export async function embedQuery(query: string): Promise<number[]> {
-  const preprocessed = embeddings.splitIdentifiers(query);
-  const results = await embeddings.generate([preprocessed]);
-  return results[0]!;
-}
 
 export async function vectorSearch(
   versionId: string,
@@ -100,7 +91,6 @@ export async function keywordSearch(
   limit = KEYWORD_CANDIDATE_LIMIT
 ): Promise<ScoredChunk[]> {
   const tokens = buildKeywordTsQuery(query);
-
   if (!tokens) return [];
 
   try {
@@ -194,128 +184,41 @@ function computePathBonus(query: string, chunk: ScoredChunk): number {
   return matches > 0 ? 0.1 * (matches / queryTokens.length) : 0;
 }
 
+/// RRF + code-specific path bonus. Wraps `toolkit.reciprocalRankFusion` to
+/// preserve the existing scoring behaviour of codex search (path-name
+/// proximity boost). New sources should NOT use this — they should call
+/// `toolkit.reciprocalRankFusion` directly with their own scoring extras.
 export function reciprocalRankFusion(
   query: string,
   vectorResults: ScoredChunk[],
   keywordResults: ScoredChunk[],
-  k = RRF_K
+  k = toolkit.DEFAULT_RRF_K
 ): RankedChunk[] {
-  const chunkMap = new Map<string, RankedChunk>();
-
-  for (const [rank, chunk] of vectorResults.entries()) {
-    const existing = chunkMap.get(chunk.id);
-    if (existing) {
-      existing.vectorRank = rank + 1;
-      existing.rrfScore += 1 / (k + rank + 1);
-    } else {
-      chunkMap.set(chunk.id, {
-        ...chunk,
-        rrfScore: 1 / (k + rank + 1),
-        vectorRank: rank + 1,
-        keywordRank: null,
-      });
-    }
-  }
-
-  for (const [rank, chunk] of keywordResults.entries()) {
-    const existing = chunkMap.get(chunk.id);
-    if (existing) {
-      existing.keywordRank = rank + 1;
-      existing.rrfScore += 1 / (k + rank + 1);
-    } else {
-      chunkMap.set(chunk.id, {
-        ...chunk,
-        rrfScore: 1 / (k + rank + 1),
-        vectorRank: null,
-        keywordRank: rank + 1,
-      });
-    }
-  }
-
-  const ranked = Array.from(chunkMap.values());
+  const ranked = toolkit.reciprocalRankFusion<ScoredChunk>(vectorResults, keywordResults, k);
   for (const chunk of ranked) {
     chunk.rrfScore += computePathBonus(query, chunk);
   }
-
   return ranked.sort((a, b) => b.rrfScore - a.rrfScore);
 }
 
 export async function rerankWithLlm(
   query: string,
   candidates: RankedChunk[],
-  timeoutMs = RERANK_TIMEOUT_MS
+  timeoutMs?: number
 ): Promise<RerankedChunk[]> {
-  const top = candidates.slice(0, RERANK_CANDIDATE_LIMIT);
-
-  if (top.length === 0) {
-    return top.map((c) => ({ ...c, rerankerScore: null, rerankerReason: null }));
-  }
-
-  const route = llmManager.resolveRoute(LLM_USE_CASE.codexRerank);
-  if (!route) {
-    return top.map((c) => ({ ...c, rerankerScore: null, rerankerReason: null }));
-  }
-
-  const snippets = top.map((chunk, i) => {
-    const lines = chunk.content.split("\n").slice(0, RERANK_SNIPPET_LINES).join("\n");
-    return `[${i}] ${chunk.filePath}:${chunk.lineStart}\n${lines}`;
-  });
-
-  const prompt = `Given this support question: "${query}"
+  return toolkit.rerankWithLlm<RankedChunk>(query, candidates, {
+    formatSnippet: (i, chunk) => {
+      const lines = chunk.content.split("\n").slice(0, RERANK_SNIPPET_LINES).join("\n");
+      return `[${i}] ${chunk.filePath}:${chunk.lineStart}\n${lines}`;
+    },
+    buildPrompt: (q, snippets) => `Given this support question: "${q}"
 
 Rate the relevance of each code snippet on a scale of 0-10. Return ONLY a JSON array of objects with fields: index (number), score (number 0-10), reason (string, 1 sentence).
 
-${snippets.join("\n\n")}`;
-
-  try {
-    const { result: content } = await llmManager.executeWithFallback(route, async (target) => {
-      const client = llmManager.createOpenAiCompatibleClient(target);
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-      try {
-        const response = await client.chat.completions.create(
-          {
-            model: target.apiModel,
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" },
-            temperature: 0,
-          },
-          { signal: controller.signal }
-        );
-
-        return response.choices[0]?.message?.content ?? null;
-      } finally {
-        clearTimeout(timer);
-      }
-    });
-
-    if (!content) {
-      return top.map((c) => ({ ...c, rerankerScore: null, rerankerReason: null }));
-    }
-
-    const parsed = rerankOutputSchema.parse(
-      parseJsonModelOutput(content, "Codex reranker returned non-JSON response")
-    );
-    const scores = Array.isArray(parsed) ? parsed : (parsed.results ?? parsed.rankings ?? []);
-
-    const reranked: RerankedChunk[] = top.map((chunk, i) => {
-      const match = scores.find((s) => s.index === i);
-      return {
-        ...chunk,
-        rerankerScore: match?.score ?? null,
-        rerankerReason: match?.reason ?? null,
-      };
-    });
-
-    return reranked
-      .sort((a, b) => (b.rerankerScore ?? -1) - (a.rerankerScore ?? -1))
-      .slice(0, RERANK_RETURN_LIMIT);
-  } catch {
-    return top
-      .slice(0, RERANK_RETURN_LIMIT)
-      .map((c) => ({ ...c, rerankerScore: null, rerankerReason: null }));
-  }
+${snippets.join("\n\n")}`,
+    useCase: "codexRerank",
+    timeoutMs,
+  });
 }
 
 export async function hybridSearch(query: string, versionId: string): Promise<RerankedChunk[]> {
@@ -335,13 +238,11 @@ export async function hybridSearch(query: string, versionId: string): Promise<Re
 
 async function vectorSearchForQuery(versionId: string, query: string): Promise<ScoredChunk[]> {
   try {
-    return await vectorSearch(versionId, await embedQuery(query));
+    return await vectorSearch(versionId, await toolkit.embedQuery(query));
   } catch {
     return [];
   }
 }
-
-export { QUALITY_THRESHOLD };
 
 export function buildKeywordTsQuery(query: string): string {
   const preprocessed = embeddings.splitIdentifiers(query);
@@ -386,7 +287,6 @@ function isUsefulLiteralTerm(term: string): boolean {
   if (term.length < 3 || term.length > 160) {
     return false;
   }
-
   return /[./_-]/.test(term);
 }
 
@@ -401,6 +301,5 @@ function mergeUniqueChunks(first: ScoredChunk[], second: ScoredChunk[]): ScoredC
       chunks.set(chunk.id, chunk);
     }
   }
-
   return [...chunks.values()];
 }

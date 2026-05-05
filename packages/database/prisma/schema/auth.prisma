@@ -56,6 +56,13 @@ model Workspace {
   sessionEvents            SessionEvent[]
   sessionReplayChunks      SessionReplayChunk[]
   analysisTriggerMode      AnalysisTriggerMode        @default(AUTO)
+  /// Per-workspace gate for the knowledge-base feature. Default OFF; flip ON
+  /// per-workspace for dogfood. See workspace-knowledge.prisma.
+  knowledgeSearchEnabled   Boolean                    @default(false)
+  knowledgeNotes           WorkspaceKnowledgeNote[]
+  knowledgeIndexEntries    KnowledgeIndexEntry[]
+  knowledgeSearchQueries   KnowledgeSearchQuery[]
+  supportResolutionEmbeddings SupportResolutionEmbedding[]
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt
 
@@ -81,6 +88,7 @@ model User {
   assignedSupportConvos      SupportConversation[] @relation("SupportConversationAssignee")
   messageReactions           SupportMessageReaction[] @relation("SupportMessageReactionActor")
   groupingCorrections        SupportGroupingCorrection[] @relation("SupportGroupingCorrectionActor")
+  createdKnowledgeNotes      WorkspaceKnowledgeNote[]
   createdAt                  DateTime              @default(now())
   updatedAt                  DateTime              @updatedAt
 

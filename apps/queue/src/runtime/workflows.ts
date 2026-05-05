@@ -7,4 +7,5 @@ export { sendDraftSweepWorkflow } from "../domains/support/send-draft-sweep.work
 export { sendDraftToSlackWorkflow } from "../domains/support/send-draft-to-slack.workflow";
 export { analysisTriggerWorkflow } from "../domains/support/support-analysis-trigger.workflow";
 export { supportInboxWorkflow } from "../domains/support/support.workflow";
+export { supportResolutionKnowledgeWorkflow } from "../domains/support/support-resolution-knowledge.workflow";
 export { supportSummaryWorkflow } from "../domains/support/support-summary.workflow";
