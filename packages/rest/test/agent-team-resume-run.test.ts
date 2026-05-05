@@ -6,10 +6,12 @@ const mockFindFirstRun = vi.fn();
 const mockUpdateRun = vi.fn();
 const mockFindUniqueConversation = vi.fn();
 const mockFindFirstEvent = vi.fn();
+const mockFindManyEvent = vi.fn();
 const mockCreateMessage = vi.fn();
 const mockUpdateRoleInbox = vi.fn();
 const mockCreateManyAndReturnEvent = vi.fn();
 const mockTransaction = vi.fn();
+const mockGetConversationSessionContext = vi.fn();
 
 vi.mock("@shared/database", () => {
   const tx = {
@@ -20,6 +22,7 @@ vi.mock("@shared/database", () => {
     },
     agentTeamRunEvent: {
       findFirst: mockFindFirstEvent,
+      findMany: mockFindManyEvent,
       createManyAndReturn: mockCreateManyAndReturnEvent,
     },
     agentTeamMessage: { create: mockCreateMessage },
@@ -31,6 +34,7 @@ vi.mock("@shared/database", () => {
       supportConversation: { findUnique: mockFindUniqueConversation },
       agentTeamRunEvent: {
         findFirst: mockFindFirstEvent,
+        findMany: mockFindManyEvent,
         createManyAndReturn: mockCreateManyAndReturnEvent,
       },
       agentTeamMessage: { create: mockCreateMessage },
@@ -41,6 +45,10 @@ vi.mock("@shared/database", () => {
     },
   };
 });
+
+vi.mock("@shared/rest/services/support/session-thread-match-service", () => ({
+  getConversationSessionContext: mockGetConversationSessionContext,
+}));
 
 const resumeRunService = await import("@shared/rest/services/agent-team/resume-run");
 
@@ -82,6 +90,8 @@ function createDispatcher(): WorkflowDispatcher {
 describe("recordOperatorAnswer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindManyEvent.mockResolvedValue([]);
+    mockGetConversationSessionContext.mockResolvedValue({ sessionDigest: null });
     mockTransaction.mockImplementation(async (cb: (t: unknown) => unknown) =>
       cb({
         agentTeamRun: {
@@ -91,6 +101,7 @@ describe("recordOperatorAnswer", () => {
         },
         agentTeamRunEvent: {
           findFirst: mockFindFirstEvent,
+          findMany: mockFindManyEvent,
           createManyAndReturn: mockCreateManyAndReturnEvent,
         },
         agentTeamMessage: { create: mockCreateMessage },
@@ -254,6 +265,8 @@ describe("recordOperatorAnswer", () => {
 describe("resumeRun", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindManyEvent.mockResolvedValue([]);
+    mockGetConversationSessionContext.mockResolvedValue({ sessionDigest: null });
     mockTransaction.mockImplementation(async (cb: (t: unknown) => unknown) =>
       cb({
         agentTeamRun: {
@@ -263,7 +276,12 @@ describe("resumeRun", () => {
             .fn()
             .mockResolvedValue({ id: "run_1", status: "waiting", errorMessage: null }),
         },
-        agentTeamRunEvent: { createManyAndReturn: mockCreateManyAndReturnEvent },
+        agentTeamRunEvent: {
+          findMany: mockFindManyEvent,
+          createManyAndReturn: mockCreateManyAndReturnEvent,
+        },
+        agentTeamMessage: { create: mockCreateMessage },
+        agentTeamRoleInbox: { update: mockUpdateRoleInbox },
       })
     );
   });
@@ -328,6 +346,148 @@ describe("resumeRun", () => {
         data: expect.objectContaining({ status: "running" }),
       })
     );
+  });
+
+  it("rejects customer-bound resume when no newer customer reply exists", async () => {
+    const dispatcher = createDispatcher();
+    mockFindFirstRun.mockResolvedValue({
+      id: "run_1",
+      workspaceId: "ws_1",
+      teamId: "team_1",
+      conversationId: "conv_1",
+      analysisId: null,
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
+      status: "waiting",
+      teamSnapshot: baseTeamSnapshot,
+    });
+    mockFindUniqueConversation.mockResolvedValue({
+      id: "conv_1",
+      channelId: "C123",
+      threadTs: "1700000000.0001",
+      status: "UNREAD",
+      events: [
+        {
+          eventType: "MESSAGE_RECEIVED",
+          eventSource: "OPERATOR",
+          summary: "Could you share more details?",
+          detailsJson: null,
+          createdAt: new Date("2026-04-25T12:01:00Z"),
+        },
+      ],
+    });
+    mockFindManyEvent
+      .mockResolvedValueOnce([
+        {
+          ts: new Date("2026-04-25T12:00:00Z"),
+          actor: "architect",
+          payload: {
+            questionId: "run_1-0-0",
+            target: "customer",
+            question: "What error are you seeing?",
+            suggestedReply: "Could you share the error?",
+            assignedRole: null,
+          },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      resumeRunService.resumeRun({ workspaceId: "ws_1", runId: "run_1" }, dispatcher)
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(dispatcher.startAgentTeamRunResumeWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("records a newer customer reply before dispatching resume", async () => {
+    const dispatcher = createDispatcher();
+    mockFindFirstRun.mockResolvedValue({
+      id: "run_1",
+      workspaceId: "ws_1",
+      teamId: "team_1",
+      conversationId: "conv_1",
+      analysisId: null,
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
+      status: "waiting",
+      teamSnapshot: baseTeamSnapshot,
+    });
+    mockFindUniqueConversation.mockResolvedValue({
+      id: "conv_1",
+      channelId: "C123",
+      threadTs: "1700000000.0001",
+      status: "UNREAD",
+      events: [
+        {
+          eventType: "MESSAGE_RECEIVED",
+          eventSource: "CUSTOMER",
+          summary: "The app crashes after I navigate to Settings.",
+          detailsJson: null,
+          createdAt: new Date("2026-04-25T12:03:00Z"),
+        },
+      ],
+    });
+    mockFindManyEvent
+      .mockResolvedValueOnce([
+        {
+          ts: new Date("2026-04-25T12:00:00Z"),
+          actor: "architect",
+          payload: {
+            questionId: "run_1-0-0",
+            target: "customer",
+            question: "What error are you seeing?",
+            suggestedReply: "Could you share the error?",
+            assignedRole: null,
+          },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    mockCreateMessage.mockResolvedValue({ id: "msg_customer_answer" });
+    mockUpdateRoleInbox.mockResolvedValue({});
+    mockUpdateRun.mockResolvedValue({});
+    mockCreateManyAndReturnEvent.mockResolvedValue([
+      {
+        id: "evt_1",
+        runId: "run_1",
+        workspaceId: "ws_1",
+        ts: new Date("2026-04-25T12:03:01Z"),
+        actor: "customer",
+        kind: "question_answered",
+        target: "architect",
+        messageKind: null,
+        payload: {
+          questionId: "run_1-0-0",
+          target: "customer",
+          source: "customer",
+          answer: "The app crashes after I navigate to Settings.",
+        },
+        latencyMs: null,
+        tokensIn: null,
+        tokensOut: null,
+        truncated: false,
+      },
+    ]);
+
+    await resumeRunService.resumeRun({ workspaceId: "ws_1", runId: "run_1" }, dispatcher);
+
+    expect(mockCreateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fromRoleKey: "customer",
+          toRoleKey: "architect",
+          kind: "answer",
+          content: "The app crashes after I navigate to Settings.",
+          refs: ["run_1-0-0"],
+        }),
+      })
+    );
+    expect(mockUpdateRoleInbox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { runId_roleKey: { runId: "run_1", roleKey: "architect" } },
+        data: expect.objectContaining({
+          state: "queued",
+          wakeReason: "customer-answer",
+        }),
+      })
+    );
+    expect(dispatcher.startAgentTeamRunResumeWorkflow).toHaveBeenCalledTimes(1);
   });
 
   it("rejects with ConflictError when the run is not in waiting status", async () => {

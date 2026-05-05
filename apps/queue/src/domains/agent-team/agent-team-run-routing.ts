@@ -14,9 +14,21 @@ import {
   isRoleTarget,
 } from "@shared/types";
 
-export const MAX_AGENT_TEAM_MESSAGES = 40;
-export const MAX_AGENT_TEAM_TURNS = 20;
-export const MAX_ROLE_TURNS = 8;
+export const MAX_AGENT_TEAM_MESSAGES = 160;
+export const MAX_AGENT_TEAM_TURNS = 40;
+export const MAX_ROLE_TURNS = 24;
+
+export interface MessageBudgetResult {
+  messages: AgentTeamDialogueMessageDraft[];
+  droppedCount: number;
+  remainingCapacity: number;
+}
+
+export interface RunBudgetProgress {
+  queuedInboxCount: number;
+  blockedInboxCount: number;
+  openQuestionCount: number;
+}
 
 export function selectInitialRole(snapshot: AgentTeamSnapshot): AgentTeamRole {
   const architect = snapshot.roles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.architect);
@@ -32,6 +44,35 @@ export function selectInitialRole(snapshot: AgentTeamSnapshot): AgentTeamRole {
   return fallback;
 }
 
+export function selectBudgetSynthesisRole(snapshot: AgentTeamSnapshot): AgentTeamRole {
+  const architect = snapshot.roles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.architect);
+  if (architect) {
+    return architect;
+  }
+
+  const synthesisFallbackOrder = [
+    AGENT_TEAM_ROLE_SLUG.reviewer,
+    AGENT_TEAM_ROLE_SLUG.rcaAnalyst,
+    AGENT_TEAM_ROLE_SLUG.codeReader,
+    AGENT_TEAM_ROLE_SLUG.prCreator,
+    AGENT_TEAM_ROLE_SLUG.drafter,
+  ];
+
+  for (const slug of synthesisFallbackOrder) {
+    const role = snapshot.roles.find((candidate) => candidate.slug === slug);
+    if (role) {
+      return role;
+    }
+  }
+
+  const [fallback] = [...snapshot.roles].sort(compareRoles);
+  if (!fallback) {
+    throw new Error("Agent team snapshot has no roles to synthesize budget findings");
+  }
+
+  return fallback;
+}
+
 export function collectQueuedTargets(input: {
   senderRole: AgentTeamRole;
   teamRoles: AgentTeamRole[];
@@ -41,10 +82,17 @@ export function collectQueuedTargets(input: {
 }): string[] {
   const targets = new Set<string>();
   const rolesByKey = new Map(input.teamRoles.map((role) => [role.roleKey, role]));
+  const hasReviewerRole = input.teamRoles.some(
+    (role) => role.slug === AGENT_TEAM_ROLE_SLUG.reviewer
+  );
 
   for (const message of input.messages) {
     if (isRoleTarget(message.toRoleKey) && shouldWakeTarget(message.kind)) {
-      if (!rolesByKey.has(message.toRoleKey)) {
+      const targetRole = rolesByKey.get(message.toRoleKey);
+      if (!targetRole) {
+        continue;
+      }
+      if (!shouldWakeRoleForMessage(targetRole, message)) {
         continue;
       }
       targets.add(message.toRoleKey);
@@ -52,6 +100,9 @@ export function collectQueuedTargets(input: {
 
     if (message.kind === AGENT_TEAM_MESSAGE_KIND.blocked) {
       for (const roleKey of listRoleKeysBySlug(input.teamRoles, AGENT_TEAM_ROLE_SLUG.architect)) {
+        if (roleKey === input.senderRole.roleKey) {
+          continue;
+        }
         targets.add(roleKey);
       }
     }
@@ -64,20 +115,53 @@ export function collectQueuedTargets(input: {
   }
 
   for (const nextRole of input.nextSuggestedRoleKeys) {
-    const targetRole = rolesByKey.get(nextRole);
+    const targetRole =
+      rolesByKey.get(nextRole) ??
+      resolveMissingCanonicalRoleTarget({
+        senderRole: input.senderRole,
+        teamRoles: input.teamRoles,
+        missingTarget: nextRole,
+      });
     if (!targetRole || !canRouteTo(input.senderRole.slug, targetRole.slug)) {
       continue;
     }
-    targets.add(nextRole);
+    if (
+      targetRole.slug === AGENT_TEAM_ROLE_SLUG.prCreator &&
+      !hasActionablePrCreatorHandoff(input.messages, targetRole.roleKey)
+    ) {
+      continue;
+    }
+    targets.add(targetRole.roleKey);
   }
 
-  if (!input.hasReviewerApproval) {
+  if (hasReviewerRole && !input.hasReviewerApproval) {
     for (const roleKey of listRoleKeysBySlug(input.teamRoles, AGENT_TEAM_ROLE_SLUG.prCreator)) {
       targets.delete(roleKey);
     }
   }
 
   return [...targets];
+}
+
+export function normalizeRoutableMessageTargets(input: {
+  senderRole: AgentTeamRole;
+  teamRoles: AgentTeamRole[];
+  messages: AgentTeamDialogueMessageDraft[];
+}): AgentTeamDialogueMessageDraft[] {
+  const rolesByKey = new Map(input.teamRoles.map((role) => [role.roleKey, role]));
+
+  return input.messages.map((message) => {
+    if (!isRoleTarget(message.toRoleKey) || rolesByKey.has(message.toRoleKey)) {
+      return message;
+    }
+
+    const fallbackRole = resolveMissingCanonicalRoleTarget({
+      senderRole: input.senderRole,
+      teamRoles: input.teamRoles,
+      missingTarget: message.toRoleKey,
+    });
+    return fallbackRole ? { ...message, toRoleKey: fallbackRole.roleKey } : message;
+  });
 }
 
 export function assertValidMessageRouting(input: {
@@ -205,6 +289,88 @@ export function resolveSelfTurnState(input: ResolveSelfTurnStateInput): ResolveS
   return { state, hallucinatedBlock };
 }
 
+export function hasHumanResolutionQuestion(
+  input: Pick<ResolveSelfTurnStateInput, "resolution" | "messageResolutionQuestionCount">
+): boolean {
+  const resolutionQuestionCount =
+    input.resolution?.questionsToResolve.filter(
+      (question) =>
+        question.target === RESOLUTION_TARGET.customer ||
+        question.target === RESOLUTION_TARGET.operator
+    ).length ?? 0;
+
+  return resolutionQuestionCount + input.messageResolutionQuestionCount > 0;
+}
+
+export function filterQueuedTargetsForHumanInput(input: {
+  hasHumanResolutionQuestion: boolean;
+  messages: AgentTeamDialogueMessageDraft[];
+  queueTargets: string[];
+  teamRoles: AgentTeamRole[];
+}): string[] {
+  if (!input.hasHumanResolutionQuestion) {
+    return input.queueTargets;
+  }
+
+  const roleKeys = new Set(input.teamRoles.map((role) => role.roleKey));
+  const directlyAddressedWakeTargets = new Set(
+    input.messages
+      .filter((message) => roleKeys.has(message.toRoleKey) && shouldWakeTarget(message.kind))
+      .map((message) => message.toRoleKey)
+  );
+
+  return input.queueTargets.filter((roleKey) => directlyAddressedWakeTargets.has(roleKey));
+}
+
+export function applyMessageBudget(input: {
+  currentMessageCount: number;
+  maxMessages: number;
+  messages: AgentTeamDialogueMessageDraft[];
+}): MessageBudgetResult {
+  const remainingCapacity = Math.max(input.maxMessages - input.currentMessageCount, 0);
+  if (input.messages.length <= remainingCapacity) {
+    return {
+      messages: input.messages,
+      droppedCount: 0,
+      remainingCapacity,
+    };
+  }
+
+  const prioritizedMessages = [...input.messages].sort(compareMessagesForBudget);
+  const messages = prioritizedMessages.slice(0, remainingCapacity);
+  return {
+    messages,
+    droppedCount: input.messages.length - messages.length,
+    remainingCapacity,
+  };
+}
+
+export function shouldWaitAtTurnBudget(progress: RunBudgetProgress): boolean {
+  return (
+    progress.queuedInboxCount > 0 ||
+    progress.blockedInboxCount > 0 ||
+    progress.openQuestionCount > 0
+  );
+}
+
+function compareMessagesForBudget(
+  left: AgentTeamDialogueMessageDraft,
+  right: AgentTeamDialogueMessageDraft
+): number {
+  return getMessageBudgetPriority(left.kind) - getMessageBudgetPriority(right.kind);
+}
+
+function getMessageBudgetPriority(kind: AgentTeamMessageKind): number {
+  switch (kind) {
+    case AGENT_TEAM_MESSAGE_KIND.toolCall:
+    case AGENT_TEAM_MESSAGE_KIND.toolResult:
+    case AGENT_TEAM_MESSAGE_KIND.status:
+      return 1;
+    default:
+      return 0;
+  }
+}
+
 export function shouldCreateOpenQuestion(kind: AgentTeamMessageKind): boolean {
   return (
     kind === AGENT_TEAM_MESSAGE_KIND.question ||
@@ -223,6 +389,61 @@ export function shouldWakeTarget(kind: AgentTeamMessageKind): boolean {
   return !passiveKinds.includes(kind);
 }
 
+function shouldWakeRoleForMessage(
+  targetRole: AgentTeamRole,
+  message: AgentTeamDialogueMessageDraft
+): boolean {
+  if (targetRole.slug !== AGENT_TEAM_ROLE_SLUG.prCreator) {
+    return true;
+  }
+
+  return isActionablePrCreatorMessage(message);
+}
+
+function hasActionablePrCreatorHandoff(
+  messages: AgentTeamDialogueMessageDraft[],
+  prCreatorRoleKey: string
+): boolean {
+  return messages.some(
+    (message) => message.toRoleKey === prCreatorRoleKey && isActionablePrCreatorMessage(message)
+  );
+}
+
+// Decide whether a message routed at pr_creator is concrete enough to wake them.
+//
+// `kind === approval` is always actionable (the structured "ship it" signal
+// from a reviewer). For every other wake-eligible kind we trust the kind +
+// addressing decision the LLM made and only suppress the wake if the body
+// contains a self-cancelling phrase like "no further action" or
+// "cannot locate target file".
+//
+// We deliberately do NOT scan the body for positive keywords like "fix",
+// "update", "change", "edit": those tokens are too common in unrelated
+// discussion (e.g. "this won't fix the underlying issue") and were causing
+// false negatives on legitimate handoffs that didn't happen to use the magic
+// words. The right long-term fix is a structured `prCreatorIntent` field on
+// the dialogue message; until then this negative-only gate is the safer
+// default.
+function isActionablePrCreatorMessage(message: AgentTeamDialogueMessageDraft): boolean {
+  if (message.kind === AGENT_TEAM_MESSAGE_KIND.approval) {
+    return true;
+  }
+
+  const text = `${message.subject}\n${message.content}`.toLowerCase();
+  const hasNegativeSignal =
+    text.includes("no specific file") ||
+    text.includes("no file") ||
+    text.includes("cannot locate") ||
+    text.includes("not found") ||
+    text.includes("unsuccessful") ||
+    text.includes("confirm if") ||
+    text.includes("recommend confirming") ||
+    text.includes("no further action") ||
+    text.includes("no action needed");
+
+  return !hasNegativeSignal;
+}
+
 export function isHumanResolutionTarget(target: string): boolean {
   return target === RESOLUTION_TARGET.customer || target === RESOLUTION_TARGET.operator;
 }
@@ -237,4 +458,25 @@ function compareRoles(left: AgentTeamRole, right: AgentTeamRole): number {
 
 function listRoleKeysBySlug(roles: AgentTeamRole[], slug: AgentTeamRole["slug"]): string[] {
   return roles.filter((role) => role.slug === slug).map((role) => role.roleKey);
+}
+
+function resolveMissingCanonicalRoleTarget(input: {
+  senderRole: AgentTeamRole;
+  teamRoles: AgentTeamRole[];
+  missingTarget: string;
+}): AgentTeamRole | null {
+  if (input.missingTarget !== AGENT_TEAM_ROLE_SLUG.reviewer) {
+    return null;
+  }
+
+  if (input.teamRoles.some((role) => role.slug === AGENT_TEAM_ROLE_SLUG.reviewer)) {
+    return null;
+  }
+
+  const prCreator = input.teamRoles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.prCreator);
+  if (!prCreator || !canRouteTo(input.senderRole.slug, prCreator.slug)) {
+    return null;
+  }
+
+  return prCreator;
 }

@@ -7,6 +7,7 @@ const mockFindUniqueConversation = vi.fn();
 const mockCreateRun = vi.fn();
 const mockUpdateRun = vi.fn();
 const mockFindFirstRun = vi.fn();
+const mockGetConversationSessionContext = vi.fn();
 
 vi.mock("@shared/database", () => ({
   prisma: {
@@ -18,6 +19,10 @@ vi.mock("@shared/database", () => ({
       findFirst: mockFindFirstRun,
     },
   },
+}));
+
+vi.mock("@shared/rest/services/support/session-thread-match-service", () => ({
+  getConversationSessionContext: mockGetConversationSessionContext,
 }));
 
 const agentTeamRuns = await import("@shared/rest/services/agent-team/run-service");
@@ -44,6 +49,7 @@ function createDispatcher(): WorkflowDispatcher {
 describe("agentTeamRuns.start", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetConversationSessionContext.mockResolvedValue({ sessionDigest: null });
   });
 
   it("creates a queued run and dispatches the workflow with the frozen team snapshot", async () => {
@@ -139,6 +145,10 @@ describe("agentTeamRuns.start", () => {
     expect(result.id).toBe("run_1");
     expect(result.workflowId).toBe("agent-team-run-run_1");
     expect(dispatcher.startAgentTeamRunWorkflow).toHaveBeenCalledTimes(1);
+    expect(mockGetConversationSessionContext).toHaveBeenCalledWith({
+      workspaceId: "ws_1",
+      conversationId: "conv_1",
+    });
     expect(mockCreateRun).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -227,6 +237,314 @@ describe("agentTeamRuns.start", () => {
     expect(dispatcher.startAgentTeamRunWorkflow).toHaveBeenCalledWith(
       expect.objectContaining({ analysisId: "analysis_99" })
     );
+  });
+
+  it("forwards matched session digest to the workflow input", async () => {
+    const dispatcher = createDispatcher();
+    const startedAt = new Date("2026-04-12T12:00:00Z");
+    const sessionDigest = {
+      sessionId: "sess_1",
+      userId: "user_1",
+      duration: "10s",
+      pageCount: 1,
+      routeHistory: ["/settings"],
+      lastActions: [
+        {
+          timestamp: "2026-04-12T12:00:01.000Z",
+          type: "click",
+          description: "Clicked Settings",
+        },
+      ],
+      errors: [],
+      failurePoint: {
+        type: "EXCEPTION",
+        timestamp: "2026-04-12T12:00:05.000Z",
+        description: "TypeError in settings route",
+        precedingActions: [
+          {
+            timestamp: "2026-04-12T12:00:01.000Z",
+            type: "click",
+            description: "Clicked Settings",
+          },
+        ],
+      },
+      networkFailures: [],
+      consoleErrors: [],
+      environment: {
+        url: "/settings",
+        userAgent: "Mozilla/5.0",
+        viewport: "",
+        release: null,
+      },
+    };
+    const baseTeam = {
+      id: "team_1",
+      workspaceId: "ws_1",
+      name: "Default Team",
+      isDefault: true,
+      deletedAt: null,
+      roles: [
+        {
+          id: "role_1",
+          teamId: "team_1",
+          slug: "architect",
+          label: "Architect",
+          provider: "openai",
+          model: null,
+          toolIds: ["searchCode"],
+          systemPromptOverride: null,
+          maxSteps: 6,
+          sortOrder: 0,
+          metadata: null,
+        },
+      ],
+      edges: [],
+    };
+    mockGetConversationSessionContext.mockResolvedValue({ sessionDigest });
+    mockFindFirstTeam.mockResolvedValue(baseTeam);
+    mockFindUniqueConversation.mockResolvedValue({
+      id: "conv_1",
+      channelId: "C123",
+      threadTs: "1710000000.0001",
+      status: "UNREAD",
+      events: [],
+    });
+    const createdRun = {
+      id: "run_1",
+      workspaceId: "ws_1",
+      teamId: "team_1",
+      conversationId: "conv_1",
+      analysisId: null,
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
+      status: "queued",
+      workflowId: null,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      teamSnapshot: { roles: baseTeam.roles, edges: [] },
+      messages: [],
+      roleInboxes: [],
+      facts: [],
+      openQuestions: [],
+    };
+    mockCreateRun.mockResolvedValue(createdRun);
+    mockUpdateRun.mockResolvedValue({ ...createdRun, workflowId: "agent-team-run-run_1" });
+
+    await agentTeamRuns.start(
+      {
+        workspaceId: "ws_1",
+        conversationId: "conv_1",
+      },
+      dispatcher
+    );
+
+    expect(dispatcher.startAgentTeamRunWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionDigest })
+    );
+  });
+
+  it("does not synthesize a reviewer for DEEP runs when the blueprint omits one", async () => {
+    const dispatcher = createDispatcher();
+    const startedAt = new Date("2026-04-12T12:00:00Z");
+    const baseTeam = {
+      id: "team_1",
+      workspaceId: "ws_1",
+      name: "Default Team",
+      isDefault: true,
+      deletedAt: null,
+      roles: [
+        {
+          id: "role_architect",
+          teamId: "team_1",
+          roleKey: "architect",
+          slug: "architect",
+          label: "Architect",
+          provider: "openai",
+          model: null,
+          toolIds: ["searchCode"],
+          systemPromptOverride: null,
+          maxSteps: 6,
+          sortOrder: 0,
+          metadata: null,
+        },
+        {
+          id: "role_pr_creator",
+          teamId: "team_1",
+          roleKey: "pr_creator",
+          slug: "pr_creator",
+          label: "PR Creator",
+          provider: "openai",
+          model: null,
+          toolIds: ["createPullRequest"],
+          systemPromptOverride: null,
+          maxSteps: 6,
+          sortOrder: 1,
+          metadata: null,
+        },
+      ],
+      edges: [],
+    };
+    const createdRun = {
+      id: "run_1",
+      workspaceId: "ws_1",
+      teamId: "team_1",
+      conversationId: "conv_1",
+      analysisId: null,
+      teamConfig: AGENT_TEAM_CONFIG.DEEP,
+      status: "queued",
+      workflowId: null,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      teamSnapshot: { roles: baseTeam.roles, edges: [] },
+      messages: [],
+      roleInboxes: [],
+      facts: [],
+      openQuestions: [],
+    };
+    mockFindFirstTeam.mockResolvedValue(baseTeam);
+    mockFindUniqueConversation.mockResolvedValue({
+      id: "conv_1",
+      channelId: "C123",
+      threadTs: "1710000000.0001",
+      status: "UNREAD",
+      events: [],
+    });
+    mockCreateRun.mockResolvedValue(createdRun);
+    mockUpdateRun.mockResolvedValue({ ...createdRun, workflowId: "agent-team-run-run_1" });
+
+    await agentTeamRuns.start(
+      {
+        workspaceId: "ws_1",
+        conversationId: "conv_1",
+        teamConfig: AGENT_TEAM_CONFIG.DEEP,
+      },
+      dispatcher
+    );
+
+    expect(dispatcher.startAgentTeamRunWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamSnapshot: expect.objectContaining({
+          roles: expect.not.arrayContaining([expect.objectContaining({ slug: "reviewer" })]),
+        }),
+      })
+    );
+  });
+
+  it("synthesizes a reviewer for STANDARD runs when the blueprint omits one", async () => {
+    const dispatcher = createDispatcher();
+    const startedAt = new Date("2026-04-12T12:00:00Z");
+    const baseTeam = {
+      id: "team_1",
+      workspaceId: "ws_1",
+      name: "Default Team",
+      isDefault: true,
+      deletedAt: null,
+      roles: [],
+      edges: [],
+    };
+    const createdRun = {
+      id: "run_1",
+      workspaceId: "ws_1",
+      teamId: "team_1",
+      conversationId: "conv_1",
+      analysisId: null,
+      teamConfig: AGENT_TEAM_CONFIG.STANDARD,
+      status: "queued",
+      workflowId: null,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      teamSnapshot: {
+        roles: [
+          {
+            id: "team_1-synthetic-drafter",
+            teamId: "team_1",
+            roleKey: "drafter",
+            slug: "drafter",
+            label: "Drafter",
+            provider: "openai",
+            toolIds: [],
+            maxSteps: 6,
+            sortOrder: 0,
+          },
+          {
+            id: "team_1-synthetic-reviewer",
+            teamId: "team_1",
+            roleKey: "reviewer",
+            slug: "reviewer",
+            label: "Reviewer",
+            provider: "openai",
+            toolIds: ["searchCode"],
+            maxSteps: 6,
+            sortOrder: 1,
+          },
+        ],
+        edges: [],
+      },
+      messages: [],
+      roleInboxes: [],
+      facts: [],
+      openQuestions: [],
+    };
+    mockFindFirstTeam.mockResolvedValue(baseTeam);
+    mockFindUniqueConversation.mockResolvedValue({
+      id: "conv_1",
+      channelId: "C123",
+      threadTs: "1710000000.0001",
+      status: "UNREAD",
+      events: [],
+    });
+    mockCreateRun.mockResolvedValue(createdRun);
+    mockUpdateRun.mockResolvedValue({ ...createdRun, workflowId: "agent-team-run-run_1" });
+
+    await agentTeamRuns.start(
+      {
+        workspaceId: "ws_1",
+        conversationId: "conv_1",
+        teamConfig: AGENT_TEAM_CONFIG.STANDARD,
+      },
+      dispatcher
+    );
+
+    expect(dispatcher.startAgentTeamRunWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamSnapshot: expect.objectContaining({
+          roles: expect.arrayContaining([expect.objectContaining({ slug: "reviewer" })]),
+        }),
+      })
+    );
+  });
+
+  it("rejects force=true when a run for the same conversation was created within the throttle window", async () => {
+    const dispatcher = createDispatcher();
+    mockFindFirstRun.mockResolvedValue({
+      id: "run_recent",
+      // 5s ago — well inside the 30s throttle window.
+      createdAt: new Date(Date.now() - 5_000),
+    });
+
+    await expect(
+      agentTeamRuns.start(
+        {
+          workspaceId: "ws_1",
+          conversationId: "conv_1",
+          teamConfig: AGENT_TEAM_CONFIG.DEEP,
+          force: true,
+        },
+        dispatcher
+      )
+    ).rejects.toThrow(/wait/i);
+
+    expect(mockFindFirstTeam).not.toHaveBeenCalled();
+    expect(mockCreateRun).not.toHaveBeenCalled();
+    expect(dispatcher.startAgentTeamRunWorkflow).not.toHaveBeenCalled();
   });
 });
 

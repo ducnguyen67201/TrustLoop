@@ -38,11 +38,6 @@ export function ErrorPanel() {
     addToast("console", "console.warn() fired");
   }
 
-  function fetchNotFound() {
-    fetch("/api/does-not-exist").catch(() => {});
-    addToast("network", "GET /api/does-not-exist → 404");
-  }
-
   function fetchUnreachable() {
     fetch("http://localhost:9999/unreachable").catch(() => {});
     addToast("network", "GET localhost:9999 → connection refused");
@@ -69,11 +64,6 @@ export function ErrorPanel() {
         <div className="btn-row">
           <button type="button" className="btn-warning" onClick={triggerConsoleWarn}>
             Console Warning
-          </button>
-        </div>
-        <div className="btn-row">
-          <button type="button" className="btn-danger" onClick={fetchNotFound}>
-            Fetch 404
           </button>
         </div>
         <div className="btn-row">

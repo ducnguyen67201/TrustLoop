@@ -23,6 +23,7 @@ vi.mock("@shared/database", () => ({
 }));
 
 const createDraftPullRequest = vi.fn();
+const readIndexedRepositoryFile = vi.fn();
 const searchWorkspaceCode = vi.fn();
 
 vi.mock("@shared/rest/codex/github/draft-pr", async () => {
@@ -39,12 +40,18 @@ vi.mock("@shared/rest/codex/workspace-code-search", () => ({
   searchWorkspaceCode: (...args: unknown[]) => searchWorkspaceCode(...args),
 }));
 
+vi.mock("@shared/rest/codex/github/content", () => ({
+  readIndexedRepositoryFile: (...args: unknown[]) => readIndexedRepositoryFile(...args),
+}));
+
 const { buildCreatePullRequestTool } = await import("../src/tools/create-pr");
+const { buildReadRepositoryFileTool } = await import("../src/tools/read-repository-file");
 const { buildSearchCodeTool } = await import("../src/tools/search-code");
 const { buildSearchSentryTool } = await import("../src/tools/search-sentry");
 
 beforeEach(() => {
   createDraftPullRequest.mockReset();
+  readIndexedRepositoryFile.mockReset();
   searchWorkspaceCode.mockReset();
 });
 
@@ -124,6 +131,31 @@ describe("buildSearchCodeTool — closure binds workspaceId server-side", () => 
     await callExecute(tool, { query: "auth", workspaceId: "ws_evil" });
     const lastCall = searchWorkspaceCode.mock.calls.at(-1);
     expect(lastCall?.[0]).toBe("ws_a");
+  });
+});
+
+describe("buildReadRepositoryFileTool — closure binds workspaceId server-side", () => {
+  it("passes ctx.workspaceId into readIndexedRepositoryFile", async () => {
+    readIndexedRepositoryFile.mockResolvedValueOnce({
+      success: true,
+      repositoryFullName: "acme/repo",
+      filePath: "x.ts",
+      baseBranch: "main",
+      content: "content",
+    });
+    const tool = buildReadRepositoryFileTool({ workspaceId: "ws_a" });
+    await callExecute(tool, {
+      repositoryFullName: "acme/repo",
+      filePath: "x.ts",
+      workspaceId: "ws_evil",
+    });
+    expect(readIndexedRepositoryFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws_a",
+        repositoryFullName: "acme/repo",
+        filePath: "x.ts",
+      })
+    );
   });
 });
 

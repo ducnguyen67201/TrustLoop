@@ -56,12 +56,14 @@ export const agentTeamConfigSchema = z.enum(agentTeamConfigValues);
 export const AGENT_TEAM_TOOL_ID = {
   searchCode: "searchCode",
   searchSentry: "searchSentry",
+  readRepositoryFile: "readRepositoryFile",
   createPullRequest: "createPullRequest",
 } as const;
 
 export const agentTeamToolIdValues = [
   AGENT_TEAM_TOOL_ID.searchCode,
   AGENT_TEAM_TOOL_ID.searchSentry,
+  AGENT_TEAM_TOOL_ID.readRepositoryFile,
   AGENT_TEAM_TOOL_ID.createPullRequest,
 ] as const;
 

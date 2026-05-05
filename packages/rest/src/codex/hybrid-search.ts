@@ -7,6 +7,7 @@ import { z } from "zod";
 const RRF_K = 60;
 const VECTOR_CANDIDATE_LIMIT = 50;
 const KEYWORD_CANDIDATE_LIMIT = 50;
+const LITERAL_CANDIDATE_LIMIT = 25;
 const RERANK_CANDIDATE_LIMIT = 20;
 const RERANK_RETURN_LIMIT = 5;
 const RERANK_TIMEOUT_MS = 800;
@@ -98,14 +99,61 @@ export async function keywordSearch(
   query: string,
   limit = KEYWORD_CANDIDATE_LIMIT
 ): Promise<ScoredChunk[]> {
-  const preprocessed = embeddings.splitIdentifiers(query);
-  const tokens = preprocessed
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length >= 2)
-    .join(" & ");
+  const tokens = buildKeywordTsQuery(query);
 
   if (!tokens) return [];
+
+  try {
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{
+        id: string;
+        filePath: string;
+        symbolName: string | null;
+        lineStart: number;
+        lineEnd: number;
+        content: string;
+        contentHash: string;
+        language: string;
+        keyword_score: number;
+      }>
+    >(
+      `SELECT "id", "filePath", "symbolName", "lineStart", "lineEnd",
+            "content", "contentHash", "language",
+            ts_rank_cd("tsv", to_tsquery('english', $1)) AS keyword_score
+     FROM "RepositoryIndexChunk"
+     WHERE "indexVersionId" = $2
+       AND "tsv" @@ to_tsquery('english', $1)
+       AND "qualityScore" > $3
+     ORDER BY keyword_score DESC
+     LIMIT $4`,
+      tokens,
+      versionId,
+      QUALITY_THRESHOLD,
+      limit
+    );
+
+    return rows.map((row: (typeof rows)[number]) => ({ ...row, score: row.keyword_score }));
+  } catch {
+    return [];
+  }
+}
+
+export async function literalSearch(
+  versionId: string,
+  query: string,
+  limit = LITERAL_CANDIDATE_LIMIT
+): Promise<ScoredChunk[]> {
+  const terms = extractLiteralSearchTerms(query);
+  if (terms.length === 0) return [];
+
+  const patterns = terms.map((term) => `%${escapeLikePattern(term)}%`);
+  const params: Array<string | number> = [versionId, QUALITY_THRESHOLD, limit, ...patterns];
+  const conditions = patterns
+    .map((_, index) => {
+      const placeholder = `$${index + 4}`;
+      return `("content" ILIKE ${placeholder} ESCAPE '\\' OR "filePath" ILIKE ${placeholder} ESCAPE '\\')`;
+    })
+    .join(" OR ");
 
   const rows = await prisma.$queryRawUnsafe<
     Array<{
@@ -117,25 +165,22 @@ export async function keywordSearch(
       content: string;
       contentHash: string;
       language: string;
-      keyword_score: number;
+      literal_score: number;
     }>
   >(
     `SELECT "id", "filePath", "symbolName", "lineStart", "lineEnd",
             "content", "contentHash", "language",
-            ts_rank_cd("tsv", to_tsquery('english', $1)) AS keyword_score
+            1.0 AS literal_score
      FROM "RepositoryIndexChunk"
-     WHERE "indexVersionId" = $2
-       AND "tsv" @@ to_tsquery('english', $1)
-       AND "qualityScore" > $3
-     ORDER BY keyword_score DESC
-     LIMIT $4`,
-    tokens,
-    versionId,
-    QUALITY_THRESHOLD,
-    limit
+     WHERE "indexVersionId" = $1
+       AND "qualityScore" > $2
+       AND (${conditions})
+     ORDER BY "filePath" ASC, "lineStart" ASC
+     LIMIT $3`,
+    ...params
   );
 
-  return rows.map((row: (typeof rows)[number]) => ({ ...row, score: row.keyword_score }));
+  return rows.map((row: (typeof rows)[number]) => ({ ...row, score: row.literal_score }));
 }
 
 function computePathBonus(query: string, chunk: ScoredChunk): number {
@@ -274,15 +319,88 @@ ${snippets.join("\n\n")}`;
 }
 
 export async function hybridSearch(query: string, versionId: string): Promise<RerankedChunk[]> {
-  const queryEmbedding = await embedQuery(query);
-
-  const [vectorResults, kwResults] = await Promise.all([
-    vectorSearch(versionId, queryEmbedding),
+  const [vectorResults, kwResults, literalResults] = await Promise.all([
+    vectorSearchForQuery(versionId, query),
     keywordSearch(versionId, query),
+    literalSearch(versionId, query),
   ]);
 
-  const fused = reciprocalRankFusion(query, vectorResults, kwResults);
+  const fused = reciprocalRankFusion(
+    query,
+    vectorResults,
+    mergeUniqueChunks(kwResults, literalResults)
+  );
   return rerankWithLlm(query, fused);
 }
 
+async function vectorSearchForQuery(versionId: string, query: string): Promise<ScoredChunk[]> {
+  try {
+    return await vectorSearch(versionId, await embedQuery(query));
+  } catch {
+    return [];
+  }
+}
+
 export { QUALITY_THRESHOLD };
+
+export function buildKeywordTsQuery(query: string): string {
+  const preprocessed = embeddings.splitIdentifiers(query);
+  const terms = preprocessed
+    .toLowerCase()
+    .match(/[a-z0-9_/-]+/g)
+    ?.map((term) => term.replace(/^[-_/]+|[-_/]+$/g, ""))
+    .filter((term) => term.length >= 2);
+
+  if (!terms || terms.length === 0) {
+    return "";
+  }
+
+  return [...new Set(terms)].slice(0, 24).join(" & ");
+}
+
+export function extractLiteralSearchTerms(query: string): string[] {
+  const terms = new Set<string>();
+  const trimmed = query.trim();
+  if (isUsefulLiteralTerm(trimmed)) {
+    terms.add(trimmed);
+  }
+
+  for (const match of trimmed.matchAll(/[`'"]([^`'"]{3,120})[`'"]/g)) {
+    const term = match[1]?.trim();
+    if (term && isUsefulLiteralTerm(term)) {
+      terms.add(term);
+    }
+  }
+
+  for (const token of trimmed.split(/\s+/)) {
+    const term = token.replace(/^[`'",;:()[\]{}]+|[`'",;:()[\]{}]+$/g, "");
+    if (isUsefulLiteralTerm(term)) {
+      terms.add(term);
+    }
+  }
+
+  return [...terms].slice(0, 5);
+}
+
+function isUsefulLiteralTerm(term: string): boolean {
+  if (term.length < 3 || term.length > 160) {
+    return false;
+  }
+
+  return /[./_-]/.test(term);
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+function mergeUniqueChunks(first: ScoredChunk[], second: ScoredChunk[]): ScoredChunk[] {
+  const chunks = new Map<string, ScoredChunk>();
+  for (const chunk of [...first, ...second]) {
+    if (!chunks.has(chunk.id)) {
+      chunks.set(chunk.id, chunk);
+    }
+  }
+
+  return [...chunks.values()];
+}

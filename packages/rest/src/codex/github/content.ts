@@ -1,3 +1,4 @@
+import { prisma } from "@shared/database";
 import { createInstallationOctokit } from "./_shared";
 
 // ---------------------------------------------------------------------------
@@ -17,6 +18,72 @@ export type RepoTreeEntry = {
   sha: string;
   size: number;
 };
+
+export type ReadIndexedRepositoryFileResult =
+  | {
+      success: true;
+      repositoryFullName: string;
+      filePath: string;
+      baseBranch: string;
+      content: string;
+    }
+  | {
+      success: false;
+      error: string;
+    };
+
+export async function readIndexedRepositoryFile(input: {
+  workspaceId: string;
+  repositoryFullName: string;
+  filePath: string;
+  ref?: string;
+}): Promise<ReadIndexedRepositoryFileResult> {
+  const repo = await prisma.repository.findFirst({
+    where: {
+      workspaceId: input.workspaceId,
+      fullName: input.repositoryFullName,
+      selected: true,
+    },
+    include: {
+      workspace: { include: { githubInstallation: true } },
+    },
+  });
+
+  if (!repo) {
+    return {
+      success: false,
+      error: `Repository ${input.repositoryFullName} is not indexed in this workspace.`,
+    };
+  }
+
+  const installationId = repo.workspace.githubInstallation?.githubInstallationId;
+  if (!installationId) {
+    return {
+      success: false,
+      error: "No GitHub installation found for this workspace.",
+    };
+  }
+
+  const [owner = "", repoName = ""] = input.repositoryFullName.split("/");
+  const baseBranch = input.ref ?? repo.defaultBranch ?? "main";
+  const [file] = await fetchFileContents(installationId, owner, repoName, baseBranch, [
+    input.filePath,
+  ]);
+  if (!file) {
+    return {
+      success: false,
+      error: `File ${input.filePath} was not found in ${input.repositoryFullName}@${baseBranch}.`,
+    };
+  }
+
+  return {
+    success: true,
+    repositoryFullName: input.repositoryFullName,
+    filePath: file.path,
+    baseBranch,
+    content: file.content,
+  };
+}
 
 export async function fetchRepoTree(
   installationId: number,

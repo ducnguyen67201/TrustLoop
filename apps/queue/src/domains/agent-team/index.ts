@@ -4,9 +4,12 @@ export {
   MAX_ROLE_TURNS,
   assertValidMessageRouting,
   collectQueuedTargets,
+  normalizeRoutableMessageTargets,
   partitionMessagesByRouting,
+  selectBudgetSynthesisRole,
   selectInitialRole,
   shouldCreateOpenQuestion,
+  shouldWaitAtTurnBudget,
   shouldWakeTarget,
 } from "@/domains/agent-team/agent-team-run-routing";
 export { agentTeamRunWorkflow } from "@/domains/agent-team/agent-team-run.workflow";
@@ -19,5 +22,7 @@ export {
   markRunFailed,
   markRunWaiting,
   persistRoleTurnResult,
+  prepareTurnBudgetSynthesis,
+  recordRunWarning,
   runTeamTurnActivity,
 } from "@/domains/agent-team/agent-team-run.activity";

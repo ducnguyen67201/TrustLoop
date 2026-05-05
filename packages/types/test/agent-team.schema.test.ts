@@ -150,6 +150,34 @@ describe("agent team positional format", () => {
     expect(result.resolution).toBeNull();
   });
 
+  it("reconstructs numeric message targets as addressable role-list indexes", () => {
+    const compressed = compressedAgentTeamTurnOutputSchema.parse({
+      m: [
+        {
+          k: 0,
+          t: 1,
+          s: "Runtime confirmation",
+          b: "Check the customer-visible error path.",
+          p: null,
+          r: [],
+        },
+      ],
+      f: [],
+      q: [],
+      n: [],
+      d: 0,
+      r: null,
+    });
+
+    const result = reconstructAgentTeamTurnOutput(compressed, {
+      runId: "run_test",
+      turnIndex: 0,
+      addressableRoleKeys: ["rca_analyst"],
+    });
+
+    expect(result.messages[0]?.toRoleKey).toBe("rca_analyst");
+  });
+
   it("documents the compressed format with examples", () => {
     expect(POSITIONAL_AGENT_TEAM_TURN_FORMAT_INSTRUCTIONS).toContain("Example with messages");
     expect(POSITIONAL_AGENT_TEAM_TURN_FORMAT_INSTRUCTIONS).toContain("Minimal example");

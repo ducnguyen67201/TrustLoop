@@ -1,14 +1,18 @@
 import { prisma } from "@shared/database";
+import * as sessionThreadMatch from "@shared/rest/services/support/session-thread-match-service";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
   AGENT_PROVIDER,
   AGENT_TEAM_CONFIG,
   AGENT_TEAM_ROLE_SLUG,
   AGENT_TEAM_RUN_STATUS,
+  AGENT_TEAM_TOOL_ID,
   type AgentTeamConfig,
   type AgentTeamRole,
   type AgentTeamRunSummary,
   type AgentTeamSnapshot,
+  ConflictError,
+  type SessionDigest,
   type ThreadSnapshot,
   ValidationError,
   agentTeamRunSummarySchema,
@@ -19,12 +23,18 @@ import {
   threadSnapshotSchema,
 } from "@shared/types";
 
+// Minimum gap between consecutive force=true starts for the same (workspace,
+// conversation). Each agent-team run consumes real LLM budget, so we throttle
+// rapid clicks of the explicit "Re-run" override even when it bypasses dedupe.
+const FORCE_RUN_MIN_INTERVAL_MS = 30_000;
+
 interface StartRunArgs {
   workspaceId: string;
   conversationId: string;
   teamId?: string;
   analysisId?: string;
   teamConfig?: AgentTeamConfig;
+  force?: boolean;
 }
 
 interface GetRunArgs {
@@ -47,17 +57,44 @@ export async function start(
   // Dedupe: a queued or running run for this (workspace, conversation) wins.
   // Mirrors the GATHERING_CONTEXT|ANALYZING dedupe in supportAnalysis. Race on
   // two near-simultaneous calls is a sub-100ms window — accept rare double-runs.
-  const inFlight = await prisma.agentTeamRun.findFirst({
-    where: {
-      workspaceId: input.workspaceId,
-      conversationId: parsed.conversationId,
-      status: { in: [AGENT_TEAM_RUN_STATUS.queued, AGENT_TEAM_RUN_STATUS.running] },
-    },
-    include: runInclude,
-    orderBy: { createdAt: "desc" },
-  });
-  if (inFlight) {
-    return mapRun(inFlight);
+  if (!parsed.force) {
+    const inFlight = await prisma.agentTeamRun.findFirst({
+      where: {
+        workspaceId: input.workspaceId,
+        conversationId: parsed.conversationId,
+        status: { in: [AGENT_TEAM_RUN_STATUS.queued, AGENT_TEAM_RUN_STATUS.running] },
+      },
+      include: runInclude,
+      orderBy: { createdAt: "desc" },
+    });
+    if (inFlight) {
+      return mapRun(inFlight);
+    }
+  } else {
+    // force=true bypasses dedupe but is still throttled per (workspace,
+    // conversation) so a stuck "Re-run" button can't spawn N concurrent paid
+    // LLM runs. Anything created in the last FORCE_RUN_MIN_INTERVAL_MS counts,
+    // regardless of status — the user already has an answer in flight or just
+    // got one back.
+    const recent = await prisma.agentTeamRun.findFirst({
+      where: {
+        workspaceId: input.workspaceId,
+        conversationId: parsed.conversationId,
+        createdAt: { gte: new Date(Date.now() - FORCE_RUN_MIN_INTERVAL_MS) },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, createdAt: true },
+    });
+    if (recent) {
+      const waitSeconds = Math.ceil(
+        (FORCE_RUN_MIN_INTERVAL_MS - (Date.now() - recent.createdAt.getTime())) / 1000
+      );
+      throw new ConflictError(
+        `An agent-team run for this conversation was started ${Math.ceil(
+          (Date.now() - recent.createdAt.getTime()) / 1000
+        )}s ago. Wait ${Math.max(waitSeconds, 1)}s before forcing another run.`
+      );
+    }
   }
 
   const team = await findTeam(input.workspaceId, parsed.teamId);
@@ -118,6 +155,11 @@ export async function start(
     teamConfig,
     teamSnapshot,
     threadSnapshot: buildConversationSnapshot(conversation),
+    sessionDigest:
+      (await loadSessionDigest({
+        workspaceId: input.workspaceId,
+        conversationId: conversation.id,
+      })) ?? undefined,
   });
 
   const updated = await prisma.agentTeamRun.update({
@@ -229,6 +271,23 @@ function buildConversationSnapshot(conversation: {
   });
 }
 
+async function loadSessionDigest(input: {
+  workspaceId: string;
+  conversationId: string;
+}): Promise<SessionDigest | null> {
+  try {
+    const context = await sessionThreadMatch.getConversationSessionContext(input);
+    return context.sessionDigest;
+  } catch (error) {
+    console.warn("[agent-team] failed to load session digest for run", {
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 // Build the snapshot of roles + edges for this run based on teamConfig.
 // FAST: single synthetic drafter (replaces the legacy single-agent analysis).
 // STANDARD: drafter + reviewer (drafts go through a review gate before exposure).
@@ -273,10 +332,9 @@ function buildTeamSnapshotForConfig(args: {
   }
 
   // STANDARD: drafter + first reviewer if the blueprint has one.
-  const reviewerRow = args.teamRoles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.reviewer);
-  if (!reviewerRow) {
-    return agentTeamSnapshotSchema.parse({ roles: [drafter], edges: [] });
-  }
+  const reviewerRow =
+    args.teamRoles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.reviewer) ??
+    synthesizeReviewerRole(args.teamId, 1);
   return agentTeamSnapshotSchema.parse({ roles: [drafter, reviewerRow], edges: [] });
 }
 
@@ -294,6 +352,24 @@ function synthesizeDrafterRole(teamId: string): AgentTeamRole {
     systemPromptOverride: null,
     maxSteps: 6,
     sortOrder: 0,
+    metadata: null,
+  };
+}
+
+function synthesizeReviewerRole(teamId: string, sortOrder: number): AgentTeamRole {
+  return {
+    id: `${teamId}-synthetic-reviewer`,
+    teamId,
+    roleKey: AGENT_TEAM_ROLE_SLUG.reviewer,
+    slug: AGENT_TEAM_ROLE_SLUG.reviewer,
+    label: "Reviewer",
+    description: null,
+    provider: AGENT_PROVIDER.openai,
+    model: null,
+    toolIds: [AGENT_TEAM_TOOL_ID.searchCode],
+    systemPromptOverride: null,
+    maxSteps: 6,
+    sortOrder,
     metadata: null,
   };
 }

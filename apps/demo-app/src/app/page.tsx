@@ -1,5 +1,6 @@
 "use client";
 
+import { AccountStatusPanel } from "@/components/account-status-panel";
 import { ErrorPanel } from "@/components/error-panel";
 import { IdentityBar } from "@/components/identity-bar";
 import { LoginForm } from "@/components/login-form";
@@ -34,6 +35,7 @@ export default function HomePage() {
         <LoginForm onLogin={setUser} />
       )}
 
+      <AccountStatusPanel />
       <ErrorPanel />
 
       <div className="card">

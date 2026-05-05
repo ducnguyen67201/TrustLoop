@@ -14,17 +14,22 @@ How TrustLoop indexes a customer's GitHub repos and returns code snippets as evi
 
 "Codex" in this codebase is the code-search subsystem — unrelated to OpenAI's Codex product. It's named for the domain where all code-related logic lives: `packages/rest/src/codex/` and `apps/queue/src/domains/codex/`.
 
-## The search surface
+## The agent code tools
 
-The agent calls one tool during analysis: `searchCode`. It expects a natural-language query and returns ranked code snippets with file paths and line numbers. Those snippets become `citations` in the draft.
+Agents use code tools in two stages. Investigation roles call `searchCode` to
+turn a natural-language query into ranked snippets with repository, file path,
+line numbers, and focused snippet evidence. When a fix is actionable, PR Creator
+uses that same repository/file evidence to call `readRepositoryFile`, reads the
+full current file content from the indexed GitHub repo, then calls
+`createPullRequest` with the full post-fix file content.
 
 ```
-agent ──▶  searchCode(query)
-             │
-             ▼
+investigation role ──▶ searchCode(query)
+                         │
+                         ▼
     packages/rest/src/codex/code-search.ts:searchRepositoryCode
-             │
-             ▼
+                         │
+                         ▼
     hybridSearch(query)
         ├─▶ embedQuery (OpenAI text-embedding-3-small)
         ├─▶ vectorSearch (pgvector <=> operator, HNSW index)
@@ -38,6 +43,17 @@ agent ──▶  searchCode(query)
              │
              ▼
     return top results to agent
+
+PR Creator ──▶ readRepositoryFile(repositoryFullName, filePath)
+                 │
+                 ▼
+    packages/rest/src/codex/github/content.ts:readIndexedRepositoryFile
+                 │
+                 ▼
+    GitHub contents API for the indexed repo/default branch
+                 │
+                 ▼
+    createPullRequest(full post-fix file content)
 ```
 
 ## Repository indexing
@@ -131,24 +147,24 @@ For each returned result:
 ## Agent tool integration
 
 - Tool definition lives in the agent's tool registry (exact path depends on the SDK — OpenAI Agents SDK today, migrating to Mastra)
-- Tool name: `searchCode` (stable across SDK migrations)
+- Tool names: `searchCode`, `readRepositoryFile`, `createPullRequest`
 - Agent invokes it via tool-call protocol → HTTP call back to `apps/web` REST endpoint (`/api/rest/codex/search` or similar)
 - Endpoint auth: `withServiceAuth` (internal `tli_` key) — agents service calls into web, not the other way around
 
-## PR intent (skeleton)
+## PR intent and draft PRs
 
 - `packages/rest/src/codex/pr-intent.ts:1-62`
 - `preparePullRequestIntent()` validates the repo is indexed + ready, then persists a `PullRequestIntent` row with title, target branch, problem statement, risk summary, validation checklist, human-approval flag
-- **Does NOT create a PR.** No GitHub API calls in this file. It's a staging table for future PR-creation automation.
-- Status enum: currently only `validated` — the downstream "create PR" flow is deferred
+- `packages/rest/src/codex/github/draft-pr.ts` is the active PR writer. It validates the indexed repo + GitHub installation, writes a branch with the supplied full file contents, opens a draft PR, and persists `AgentPullRequest` audit linkage when conversation/analysis ids are available.
+- `pr-intent.ts` remains a staging/intent helper; it does not create a PR.
+- `PullRequestIntent` status is still only `validated`; draft PR creation is recorded separately in `AgentPullRequest`.
 
 ## Known thin spots
 
 - **No agent-driven re-index.** If a repo's `main` branch moves forward, there's no automatic re-sync. Re-sync is operator-initiated today.
 - **Reranker model is hardcoded to gpt-4-turbo.** No per-workspace model choice; no fallback if OpenAI is down for the reranker specifically.
 - **No per-query cost tracking.** `CodeSearchQuery` records the query, not the model spend on embedding or reranking.
-- **Agent tool dispatch layer has no explicit doc.** The path from agent-SDK tool call → HTTP endpoint → `searchRepositoryCode` is slightly implicit depending on which SDK is in use. Making this explicit would help if we switch SDKs.
-- **PR generation is stub.** `pr-intent.ts` stores intent; no downstream writer.
+- **Agent tool dispatch layer has no explicit doc.** The path from Mastra tool call → service helper → codex/GitHub implementation is slightly implicit. Making this explicit would help if we switch SDKs.
 
 ## Invariants
 
@@ -157,7 +173,7 @@ For each returned result:
 - **The pgvector HNSW index is managed in a raw SQL migration, not Prisma.** Running `db:push` on the codex schema will not recreate the HNSW index. Only `db:migrate` preserves it.
 - **Every search query and result set is persisted to `CodeSearchQuery` + `CodeSearchResult`.** Never skip the audit writes — the audit trail is the tuning signal for ranking quality and reranker evaluation.
 - **Embedding content is preprocessed with `splitIdentifiers()`** (camelCase + snake_case → spaces). Changing the preprocessor requires re-embedding every chunk, not a config flag.
-- **The `searchCode` agent tool name is stable across SDK migrations.** Renaming it breaks every prompt baseline.
+- **The agent code tool names are stable across SDK migrations.** Renaming `searchCode`, `readRepositoryFile`, or `createPullRequest` breaks prompt baselines and stored team tool configuration.
 
 ## Related concepts
 
