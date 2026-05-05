@@ -8,6 +8,8 @@ import {
 } from "@shared/types";
 import OpenAI from "openai";
 
+import { maybeObserveOpenAI } from "../observability/langfuse";
+
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_TITLE = "TrustLoop";
 
@@ -114,11 +116,15 @@ export function createOpenAiCompatibleClient(target: LlmResolvedTarget): OpenAI 
     return cached;
   }
 
-  const client = new OpenAI({
+  const rawClient = new OpenAI({
     apiKey: target.apiKey,
     ...(target.baseURL ? { baseURL: target.baseURL } : {}),
     ...(target.headers ? { defaultHeaders: target.headers } : {}),
   });
+  // Wrap once at instantiation so every caller of `client.chat.completions.create()`
+  // gets traced — codex hybrid-search, support-summary, future direct callers.
+  // No-op when Langfuse env vars are missing.
+  const client = maybeObserveOpenAI(rawClient);
   openAiClientCache.set(cacheKey, client);
   return client;
 }

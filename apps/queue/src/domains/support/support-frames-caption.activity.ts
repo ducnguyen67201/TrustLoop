@@ -1,6 +1,6 @@
-import { env } from "@shared/env";
+import * as llmManager from "@shared/rest/services/llm-manager-service";
 import * as analysisFrames from "@shared/rest/services/support/analysis-frames-service";
-import type { FailureFrame, FailureFrameCaption } from "@shared/types";
+import { type FailureFrame, type FailureFrameCaption, LLM_USE_CASE } from "@shared/types";
 
 export interface CaptionFailureFramesInput {
   analysisId: string;
@@ -11,8 +11,8 @@ export interface CaptionFailureFramesResult {
   captions: FailureFrameCaption[];
 }
 
-const CAPTIONER_MODEL = "gpt-4o-mini";
 const CAPTIONER_MAX_TOKENS = 200;
+const CAPTIONER_TIMEOUT_MS = 15_000;
 const CAPTION_PROMPT = `You are describing one screenshot of a customer's screen at the moment of a software failure.
 Describe what is visible in the image in 2-3 sentences. Focus on UI elements that suggest the failure cause:
 - Visible text in error messages, toasts, banners
@@ -36,15 +36,19 @@ export async function captionFailureFramesActivity(
   input: CaptionFailureFramesInput
 ): Promise<CaptionFailureFramesResult> {
   if (input.frames.length === 0) return { captions: [] };
-  if (!env.OPENAI_API_KEY) {
-    console.warn("[frames] OPENAI_API_KEY missing — skipping captioner");
+  // Resolve once per activity call. resolveRoute returns null when no provider
+  // is configured — preserves the prior fail-soft "no key, empty captions"
+  // contract without leaking provider keys into this file.
+  const route = llmManager.resolveRoute(LLM_USE_CASE.frameCaption);
+  if (!route) {
+    console.warn("[frames] no LLM provider configured — skipping captioner");
     return { captions: [] };
   }
 
   const captions: FailureFrameCaption[] = [];
   for (const frame of input.frames) {
     try {
-      const captionText = await captionOneFrame(frame.base64Png);
+      const captionText = await captionOneFrame(route, frame.base64Png);
       if (captionText) {
         captions.push({
           timestamp: frame.timestamp,
@@ -65,34 +69,33 @@ export async function captionFailureFramesActivity(
   return { captions };
 }
 
-async function captionOneFrame(base64Png: string): Promise<string | null> {
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: CAPTIONER_MODEL,
-      max_tokens: CAPTIONER_MAX_TOKENS,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: CAPTION_PROMPT },
-            { type: "image_url", image_url: { url: `data:image/png;base64,${base64Png}` } },
-          ],
-        },
-      ],
-    }),
-    signal: AbortSignal.timeout(15_000),
+async function captionOneFrame(
+  route: llmManager.LlmResolvedRoute,
+  base64Png: string
+): Promise<string | null> {
+  const { result } = await llmManager.executeWithFallback(route, async (target) => {
+    const client = llmManager.createOpenAiCompatibleClient(target);
+    return client.chat.completions.create(
+      {
+        model: target.apiModel,
+        max_tokens: CAPTIONER_MAX_TOKENS,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: CAPTION_PROMPT },
+              {
+                type: "image_url",
+                image_url: { url: `data:image/png;base64,${base64Png}` },
+              },
+            ],
+          },
+        ],
+      },
+      { signal: AbortSignal.timeout(CAPTIONER_TIMEOUT_MS) }
+    );
   });
 
-  if (!response.ok) {
-    throw new Error(`captioner HTTP ${response.status}`);
-  }
-
-  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const text = data.choices?.[0]?.message?.content?.trim();
-  return text || null;
+  const text = result.choices[0]?.message?.content?.trim();
+  return text ? text : null;
 }

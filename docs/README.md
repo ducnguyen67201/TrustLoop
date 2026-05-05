@@ -29,6 +29,7 @@ That's it. No `plans/`, no `domains/`, no `specs/`. If you need a forward-lookin
 | [concepts/ai-analysis-pipeline.md](concepts/ai-analysis-pipeline.md) | Analysis trigger (debounce + manual), Temporal workflow, agent service call, positional JSON output, SSE progress stream. |
 | [concepts/agent-team.md](concepts/agent-team.md) | Multi-agent team with addressed dialogue: per-role inboxes, routing policy, event-sourced observability, nightly metrics rollup + partition archive. |
 | [concepts/llm-routing-and-provider-fallback.md](concepts/llm-routing-and-provider-fallback.md) | Shared LLM routing contract, provider/model selection, OpenAI primary + OpenRouter fallback, and app boundaries. |
+| [concepts/llm-observability.md](concepts/llm-observability.md) | Langfuse self-host stack and the two integration surfaces (wrapped OpenAI client + Mastra traces) that make every LLM call visible by construction. Token usage flow into `roleCompleted` events. |
 | [concepts/ai-draft-generation.md](concepts/ai-draft-generation.md) | Draft lifecycle, state machine, `slackClientMsgId` idempotent delivery, reconciliation, dismiss/retry flows. |
 | [concepts/session-replay-capture.md](concepts/session-replay-capture.md) | Browser SDK → ingest → storage → SessionDigest correlation into analysis. |
 | [concepts/auth-and-workspaces.md](concepts/auth-and-workspaces.md) | Google OAuth, workspace auto-join, membership roles, the three auth surfaces (`tli_` / `tlk_` / operator session). |

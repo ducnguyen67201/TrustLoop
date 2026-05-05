@@ -88,6 +88,14 @@ export const serverSchemas = {
   // consciously — losing stdout means losing the event row forever.
   AGENT_ARCHIVE_MODE: z.enum(["keep", "unsafe-stdout-only"]).optional().default("keep"),
 
+  // Langfuse — LLM observability. All three are optional in dev so the
+  // instrumentation no-ops cleanly when keys are absent. In production these
+  // either come from Doppler stg/prd configs or stay unset (cloud free tier
+  // also works — set LANGFUSE_BASEURL=https://cloud.langfuse.com).
+  LANGFUSE_PUBLIC_KEY: z.string().min(1).optional(),
+  LANGFUSE_SECRET_KEY: z.string().min(1).optional(),
+  LANGFUSE_BASEURL: z.url().optional(),
+
   // Debug
   TRUSTLOOP_DEBUG_TRPC: z.enum(["0", "1"]).optional().default("0"),
 };

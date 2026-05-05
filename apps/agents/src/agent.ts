@@ -9,6 +9,7 @@ import {
   type WorkspaceSearchResult,
   searchWorkspaceCode,
 } from "@shared/rest/codex/workspace-code-search";
+import { flushLangfuse, getLangfuseClient } from "@shared/rest/observability/langfuse";
 import * as llmManager from "@shared/rest/services/llm-manager-service";
 import {
   AGENT_TEAM_MESSAGE_KIND,
@@ -65,6 +66,88 @@ import { buildSearchSentryTool } from "./tools/search-sentry";
 const DEFAULT_MAX_STEPS = 8;
 const DEFAULT_TEAM_MAX_STEPS = 6;
 const shouldLogLocalAgentDebug = checkEnv(env.NODE_ENV, NODE_ENV.DEVELOPMENT);
+
+interface AgentCallUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+// Mastra returns AI SDK `usage` which has shifted between SDK majors. Read both
+// the v5 shape (inputTokens/outputTokens) and the v3 shape (promptTokens/
+// completionTokens) so this helper survives an SDK bump without code changes.
+function readAgentCallUsage(result: { usage?: unknown }): AgentCallUsage | null {
+  const usage = result.usage;
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+  const record = usage as Record<string, unknown>;
+  const input = pickNonNegativeInt(record.inputTokens ?? record.promptTokens);
+  const output = pickNonNegativeInt(record.outputTokens ?? record.completionTokens);
+  if (input === null || output === null) {
+    return null;
+  }
+  return { inputTokens: input, outputTokens: output };
+}
+
+function pickNonNegativeInt(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  return Math.trunc(value);
+}
+
+interface TraceImageStats {
+  frameCount: number;
+  approxBytes: number;
+}
+
+// Strip base64 image payloads before shipping the prompt to Langfuse. Images
+// can be ~100KB each — a 30-frame failure analysis would otherwise store
+// ~3MB of base64 in ClickHouse per trace. We keep the message structure so
+// the trace still shows what the model saw (which messages, which content
+// types) but replace the bytes with a placeholder + aggregate stats.
+function sanitizeMessagesForTrace(messages: unknown): {
+  sanitized: unknown;
+  imageStats: TraceImageStats;
+} {
+  const stats: TraceImageStats = { frameCount: 0, approxBytes: 0 };
+
+  function walk(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map(walk);
+    }
+    if (!value || typeof value !== "object") {
+      return value;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.type === "image_url" && isPlainObject(record.image_url)) {
+      const url = typeof record.image_url.url === "string" ? record.image_url.url : "";
+      if (url.startsWith("data:")) {
+        stats.frameCount += 1;
+        // base64 → bytes: each 4 chars decode to 3 bytes. The data:...;base64,
+        // prefix is small enough to ignore for an approximation.
+        const commaIndex = url.indexOf(",");
+        const base64 = commaIndex >= 0 ? url.slice(commaIndex + 1) : "";
+        stats.approxBytes += Math.floor(base64.length * 0.75);
+        return {
+          type: "image_url",
+          image_url: { url: "[stripped: base64 image, see metadata.imageStats]" },
+        };
+      }
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(record)) {
+      out[key] = walk(val);
+    }
+    return out;
+  }
+
+  return { sanitized: walk(messages), imageStats: stats };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 // Tool factories close over per-request context (workspaceId + optional
 // conversationId/analysisId). The LLM never sees workspace identity in
@@ -174,60 +257,127 @@ export async function runAnalysis(request: AnalyzeRequest): Promise<AnalyzeRespo
     failureFrames: request.failureFrames,
     failureFrameCaptions: request.failureFrameCaptions,
   });
-  const { result, target } = await llmManager.executeWithFallback(route, async (candidate) => {
-    const agent = createSupportAgent(
-      candidate,
-      {
-        workspaceId: request.workspaceId,
-        conversationId: request.conversationId,
-        analysisId: request.analysisId,
-      },
-      {
-        toneConfig: request.config?.toneConfig,
-        sessionDigest: request.sessionDigest,
-        hasVisualEvidence,
+  const langfuseClient = getLangfuseClient();
+  const trace = langfuseClient?.trace({
+    name: "support-analysis",
+    // Prefix with workspaceId so sessions never cluster across tenants if a
+    // conversationId ever collides — defense in depth on a UUID assumption.
+    sessionId: request.conversationId
+      ? `${request.workspaceId}:${request.conversationId}`
+      : undefined,
+    metadata: {
+      conversationId: request.conversationId,
+      analysisId: request.analysisId,
+      workspaceId: request.workspaceId,
+      maxSteps,
+      hasVisualEvidence,
+    },
+    tags: ["analysis"],
+  });
+
+  try {
+    const { result, target } = await llmManager.executeWithFallback(route, async (candidate) => {
+      const agent = createSupportAgent(
+        candidate,
+        {
+          workspaceId: request.workspaceId,
+          conversationId: request.conversationId,
+          analysisId: request.analysisId,
+        },
+        {
+          toneConfig: request.config?.toneConfig,
+          sessionDigest: request.sessionDigest,
+          hasVisualEvidence,
+        }
+      );
+      const { sanitized: traceInput, imageStats } = sanitizeMessagesForTrace(messages);
+      const generation = trace?.generation({
+        name: "agent.generate",
+        model: candidate.model,
+        modelParameters: { maxSteps, toolChoice: "auto" },
+        input: traceInput,
+        ...(imageStats.frameCount > 0 ? { metadata: { imageStats } } : {}),
+      });
+      // Mastra's `agent.generate` accepts either a string (legacy text path) or
+      // a messages array (multimodal path). Cast at the boundary because the
+      // public type doesn't model multimodal content parts in every alpha; we
+      // forward what the LLM SDK natively understands.
+      try {
+        const generated = await agent.generate(messages as never, { maxSteps, toolChoice: "auto" });
+        const usage = readAgentCallUsage(generated);
+        generation?.end({
+          output: generated.text,
+          usage: usage
+            ? {
+                input: usage.inputTokens,
+                output: usage.outputTokens,
+                total: usage.inputTokens + usage.outputTokens,
+              }
+            : undefined,
+        });
+        return generated;
+      } catch (error) {
+        generation?.end({
+          level: "ERROR",
+          statusMessage: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
       }
-    );
-    // Mastra's `agent.generate` accepts either a string (legacy text path) or
-    // a messages array (multimodal path). Cast at the boundary because the
-    // public type doesn't model multimodal content parts in every alpha; we
-    // forward what the LLM SDK natively understands.
-    return agent.generate(messages as never, { maxSteps, toolChoice: "auto" });
-  });
+    });
 
-  const output = parseAgentOutput(result.text);
-  const toolCalls = extractToolCalls(result);
-  logToolUsage("[agents:debug] Analysis tool usage", {
-    endpoint: "/analyze",
-    agentId: "trustloop-support-agent",
-    agentSlug: "support-analysis",
-    conversationId: request.conversationId,
-    provider: target.provider,
-    model: target.model,
-    steps: result.steps?.length ?? 0,
-    toolCalls,
-  });
-
-  console.log("[agents] Analysis complete", {
-    conversationId: request.conversationId,
-    durationMs: Date.now() - startTime,
-    toolCallCount: toolCalls.length,
-    steps: result.steps?.length ?? 0,
-    confidence: output.analysis.confidence,
-    severity: output.analysis.severity,
-  });
-
-  return {
-    analysis: output.analysis,
-    draft: output.draft,
-    toolCalls,
-    meta: {
+    const output = parseAgentOutput(result.text);
+    const toolCalls = extractToolCalls(result);
+    trace?.update({ output: result.text });
+    logToolUsage("[agents:debug] Analysis tool usage", {
+      endpoint: "/analyze",
+      agentId: "trustloop-support-agent",
+      agentSlug: "support-analysis",
+      conversationId: request.conversationId,
       provider: target.provider,
       model: target.model,
-      totalDurationMs: Date.now() - startTime,
-      turnCount: result.steps?.length ?? 0,
-    },
-  };
+      steps: result.steps?.length ?? 0,
+      toolCalls,
+    });
+
+    console.log("[agents] Analysis complete", {
+      conversationId: request.conversationId,
+      durationMs: Date.now() - startTime,
+      toolCallCount: toolCalls.length,
+      steps: result.steps?.length ?? 0,
+      confidence: output.analysis.confidence,
+      severity: output.analysis.severity,
+    });
+
+    return {
+      analysis: output.analysis,
+      draft: output.draft,
+      toolCalls,
+      meta: {
+        provider: target.provider,
+        model: target.model,
+        totalDurationMs: Date.now() - startTime,
+        turnCount: result.steps?.length ?? 0,
+      },
+    };
+  } catch (error) {
+    // Annotate the trace as errored so failed analyses (LLM emitted invalid
+    // JSON, Zod parse rejected, etc.) surface as red traces in the Langfuse UI
+    // instead of half-finished sessions with no output and no error context.
+    // trace.update() doesn't expose level/statusMessage (those are generation
+    // fields). Stash the error in metadata so the Langfuse UI surfaces it on
+    // the trace detail page; the absent `output` already flags the trace as
+    // incomplete in the session list.
+    trace?.update({
+      output: null,
+      metadata: {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          name: error instanceof Error ? error.name : "UnknownError",
+        },
+      },
+    });
+    throw error;
+  }
 }
 
 export async function runTeamTurn(
@@ -275,70 +425,139 @@ export async function runTeamTurn(
     availableTools: turnToolIds,
   });
 
-  const result = await agent.generate(userMessage, {
-    maxSteps,
-    toolChoice: resolveTeamTurnToolChoice(request),
-  });
-  const extractedToolCalls = extractToolCalls(result);
-  const toolCalls = hasTextOutput(result.text)
-    ? extractedToolCalls
-    : await synthesizeMissingToolCalls(request, extractedToolCalls);
-  const toolResultOutput = synthesizeAuthoritativeToolOutput(request, toolCalls);
-  const parsedOutput = toolResultOutput
-    ? toolResultOutput
-    : hasTextOutput(result.text)
-      ? parseTeamTurnOutput(result.text, {
-          runId: request.runId,
-          turnIndex: request.turnIndex,
-          addressableRoleKeys: listAddressableRoleKeys(request),
-        })
-      : synthesizeTeamTurnOutputFromTools(request, toolCalls);
-  const output = postProcessTeamTurnOutput(request, parsedOutput);
-  logToolUsage("[agents:debug] Team turn tool usage", {
-    endpoint: "/team-turn",
-    agentId: `trustloop-agent-team-${request.role.roleKey}`,
-    agentSlug: request.role.slug,
-    runId: request.runId,
-    conversationId: request.conversationId ?? null,
-    roleKey: request.role.roleKey,
-    provider: target.provider,
-    model: target.model,
-    steps: result.steps?.length ?? 0,
-    toolCalls,
-  });
-  const meta = {
-    provider: target.provider,
-    model: target.model,
-    totalDurationMs: Date.now() - startTime,
-    turnCount: result.steps?.length ?? 0,
-  };
-
-  logLocalAgentDebug("[agents:debug] Team turn complete", {
-    endpoint: "/team-turn",
-    agentId: `trustloop-agent-team-${request.role.roleKey}`,
-    agentSlug: request.role.slug,
-    runId: request.runId,
-    conversationId: request.conversationId ?? null,
-    roleKey: request.role.roleKey,
-    durationMs: Date.now() - startTime,
-    toolCallCount: toolCalls.length,
-    steps: result.steps?.length ?? 0,
-    messages: output.messages.length,
-    proposedFacts: output.proposedFacts.length,
-    done: output.done,
-    // Blocked = unresolved questions external to this role. `no_action_needed`
-    // is a close-recommendation handled by the operator, not a blocked state.
-    blocked:
-      output.resolution !== null &&
-      output.resolution !== undefined &&
-      output.resolution.status === "needs_input",
+  const langfuseClient = getLangfuseClient();
+  const trace = langfuseClient?.trace({
+    name: "team-turn",
+    // Group all turns of one agent-team run under a single Langfuse session
+    // so the per-run token cost is one click away in the UI. Prefix with
+    // workspaceId so sessions never cluster across tenants on UUID collision.
+    sessionId: `${request.workspaceId}:${request.runId}`,
+    metadata: {
+      runId: request.runId,
+      conversationId: request.conversationId ?? null,
+      workspaceId: request.workspaceId,
+      roleKey: request.role.roleKey,
+      roleSlug: request.role.slug,
+      turnIndex: request.turnIndex,
+      maxSteps,
+    },
+    tags: ["team-turn", request.role.slug],
   });
 
-  return agentTeamRoleTurnOutputSchema.parse({
-    ...output,
-    messages: buildToolTraceMessages(toolCalls).concat(output.messages),
-    meta,
-  });
+  try {
+    const generation = trace?.generation({
+      name: "agent.generate",
+      model: target.model,
+      modelParameters: { maxSteps, toolChoice: "auto" },
+      input: userMessage,
+    });
+
+    let result: Awaited<ReturnType<typeof agent.generate>>;
+    try {
+      result = await agent.generate(userMessage, {
+        maxSteps,
+        toolChoice: resolveTeamTurnToolChoice(request),
+      });
+    } catch (error) {
+      generation?.end({
+        level: "ERROR",
+        statusMessage: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    const usage = readAgentCallUsage(result);
+    generation?.end({
+      output: result.text,
+      usage: usage
+        ? {
+            input: usage.inputTokens,
+            output: usage.outputTokens,
+            total: usage.inputTokens + usage.outputTokens,
+          }
+        : undefined,
+    });
+
+    const extractedToolCalls = extractToolCalls(result);
+    const toolCalls = hasTextOutput(result.text)
+      ? extractedToolCalls
+      : await synthesizeMissingToolCalls(request, extractedToolCalls);
+    const toolResultOutput = synthesizeAuthoritativeToolOutput(request, toolCalls);
+    const parsedOutput = toolResultOutput
+      ? toolResultOutput
+      : hasTextOutput(result.text)
+        ? parseTeamTurnOutput(result.text, {
+            runId: request.runId,
+            turnIndex: request.turnIndex,
+            addressableRoleKeys: listAddressableRoleKeys(request),
+          })
+        : synthesizeTeamTurnOutputFromTools(request, toolCalls);
+    const output = postProcessTeamTurnOutput(request, parsedOutput);
+
+    logToolUsage("[agents:debug] Team turn tool usage", {
+      endpoint: "/team-turn",
+      agentId: `trustloop-agent-team-${request.role.roleKey}`,
+      agentSlug: request.role.slug,
+      runId: request.runId,
+      conversationId: request.conversationId ?? null,
+      roleKey: request.role.roleKey,
+      provider: target.provider,
+      model: target.model,
+      steps: result.steps?.length ?? 0,
+      toolCalls,
+    });
+    const meta = {
+      provider: target.provider,
+      model: target.model,
+      totalDurationMs: Date.now() - startTime,
+      turnCount: result.steps?.length ?? 0,
+      tokensIn: usage?.inputTokens ?? null,
+      tokensOut: usage?.outputTokens ?? null,
+    };
+    trace?.update({ output: result.text });
+
+    logLocalAgentDebug("[agents:debug] Team turn complete", {
+      endpoint: "/team-turn",
+      agentId: `trustloop-agent-team-${request.role.roleKey}`,
+      agentSlug: request.role.slug,
+      runId: request.runId,
+      conversationId: request.conversationId ?? null,
+      roleKey: request.role.roleKey,
+      durationMs: Date.now() - startTime,
+      toolCallCount: toolCalls.length,
+      steps: result.steps?.length ?? 0,
+      messages: output.messages.length,
+      proposedFacts: output.proposedFacts.length,
+      done: output.done,
+      // Blocked = unresolved questions external to this role. `no_action_needed`
+      // is a close-recommendation handled by the operator, not a blocked state.
+      blocked:
+        output.resolution !== null &&
+        output.resolution !== undefined &&
+        output.resolution.status === "needs_input",
+    });
+
+    return agentTeamRoleTurnOutputSchema.parse({
+      ...output,
+      messages: buildToolTraceMessages(toolCalls).concat(output.messages),
+      meta,
+    });
+  } catch (error) {
+    // Annotate the trace as errored so failed turns (LLM emitted invalid JSON,
+    // routing policy rejected a target, schema parse threw, etc.) surface as
+    // red traces in the Langfuse UI instead of half-finished sessions. trace
+    // .update() doesn't expose level/statusMessage (those are generation
+    // fields), so we stash the error in metadata.
+    trace?.update({
+      output: null,
+      metadata: {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          name: error instanceof Error ? error.name : "UnknownError",
+        },
+      },
+    });
+    throw error;
+  }
 }
 
 // ── Drafter Delegation (FAST path) ───────────────────────────────────

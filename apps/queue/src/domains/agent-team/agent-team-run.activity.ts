@@ -686,6 +686,13 @@ export async function persistRoleTurnResult(
         runId: input.runId,
         workspaceId: run.workspaceId,
         actor: input.role.roleKey,
+        // Token counts come from the agent service's meta block (read from the
+        // model provider's usage when reported). Stored on roleCompleted so the
+        // nightly metrics rollup (WorkspaceAgentMetrics.tokensTotal) finally
+        // sums real values instead of zeros.
+        latencyMs: input.result.meta.totalDurationMs,
+        tokensIn: input.result.meta.tokensIn ?? null,
+        tokensOut: input.result.meta.tokensOut ?? null,
         payload: { roleKey: input.role.roleKey },
       });
     } else if (selfState === AGENT_TEAM_ROLE_INBOX_STATE.blocked) {

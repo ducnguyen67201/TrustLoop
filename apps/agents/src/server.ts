@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { env } from "@shared/env";
+import { flushLangfuse } from "@shared/rest/observability/langfuse";
 import { agentTeamRoleTurnInputSchema } from "@shared/types";
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
@@ -61,6 +62,21 @@ app.post("/team-turn", requireServiceKey, async (c) => {
     console.error("[agents] Team turn failed:", message);
     if (stack) console.error("[agents] Stack:", stack);
     return c.json({ error: message }, 500);
+  } finally {
+    // Flush Langfuse so traces show up in the UI before the queue activity
+    // returns. Periodic flushes would catch up eventually, but waiting on the
+    // explicit flush is what makes the trace visible "instantly" during dev.
+    // Swallow flush errors — a Langfuse network blip must not mask a real
+    // failure thrown from runTeamTurn(). Cap at 2s so an unreachable Langfuse
+    // (DNS-resolvable, HTTP unresponsive) cannot hang the request.
+    try {
+      await flushLangfuse(2000);
+    } catch (flushError) {
+      console.warn(
+        "[agents] Langfuse flush failed (non-blocking):",
+        flushError instanceof Error ? flushError.message : String(flushError)
+      );
+    }
   }
 });
 
