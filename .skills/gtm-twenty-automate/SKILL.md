@@ -18,6 +18,7 @@ target.
 Default posture:
 
 - automate research, CRM updates, note copying, and browser setup
+- treat cold DM as one lane in founder-led sales, not the whole GTM system
 - do not blast generic DMs
 - do not invent facts
 - keep outreach notes under 200 characters unless the active UI says otherwise
@@ -77,7 +78,7 @@ For each target:
 5. Write a concise Twenty research note:
    - what the product does
    - where messy customer/support/workflow exceptions likely happen
-   - why the founder may still be close to the pain
+   - why the founder may still decide routing/ownership for messy customer issues
    - which parts are inference
 6. Draft a note under 200 characters in the user's tone.
 7. Run `researched` so the task becomes `Send ...`.
@@ -144,13 +145,38 @@ Keep it flexible, not template-locked. Sound like Duc:
 - no demo ask
 - no pitch paragraph
 
-Good shape:
+The first DM should ask about their current reality, not TrustLoop. Prefer
+routing/ownership language over "escalation."
+
+Best first DM shape:
 
 ```text
-hey {firstName} - saw {specific thing}. curious, do {messy customer/workflow issues} still make it back to you sometimes?
+hey {firstName} - saw {specific company detail}. curious: when messy customer issues come through Slack/support, are you still the person deciding where they go, or is that fully off your plate now?
 ```
 
-Vary the wording when the research suggests a better angle.
+If yes:
+
+```text
+makes sense. what usually makes an issue messy enough that it still reaches you?
+```
+
+Then:
+
+```text
+would it be useful if I helped map that flow and turn the recurring cases into something routed/answerable over a 2-week pilot?
+```
+
+If no:
+
+```text
+got it, that's helpful. who owns that flow now: support, CS, eng, or someone else?
+```
+
+Vary the wording when the research suggests a better angle, but keep the ladder:
+
+```text
+pain question -> reply -> call -> map workflow -> concierge pilot -> paid pilot -> quote/referral/investor proof
+```
 
 ## Reporting
 
