@@ -129,6 +129,23 @@ Dev commands (`npm run dev`, `npm run dev:web`, `npm run dev:queue`,
 your local DB schema is out of sync with committed migrations. See
 `docs/conventions/dev-drift-check.md`.
 
+### Local observability (optional)
+
+Langfuse self-host runs as an opt-in compose profile so default boot stays
+lean. Bring it up only when debugging LLM token cost / trace flow:
+
+```bash
+docker compose --profile observability up -d
+# UI on http://localhost:3200 — first user becomes admin.
+# Create org → project → API keys → wire LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+# into the agents service env. LANGFUSE_BASEURL=http://localhost:3200.
+```
+
+Adds langfuse-web/worker, ClickHouse, Redis, MinIO. Shares the existing
+Postgres (separate `langfuse` database in `docker/postgres/init.sql`).
+Inlined secrets are local-dev only — every value marked `# CHANGEME for prod`
+must be replaced before any non-local deploy.
+
 ## Type Safety Rules (Non-Negotiable)
 
 - **No `any` types. No `as unknown as` casts.** Every variable, parameter, and return value must have an explicit or inferred type. If a helper function loses type information (e.g. generic returns `Record<string, unknown>`), fix the helper's generics or use a follow-up query with proper includes instead of casting. Type assertions (`as`) are a last resort for third-party library boundaries only — never for internal code.
