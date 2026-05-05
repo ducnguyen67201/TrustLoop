@@ -1,0 +1,4 @@
+interface:
+  display_name: "GTM Twenty Outreach"
+  short_description: "Run the research-first founder outreach loop through Twenty CRM."
+  default_prompt: "Use the GTM Twenty Outreach skill to manage my outreach queue in Twenty. Show today's next leads, research named founders or companies, draft personalized openers, and log sent messages, replies, follow-ups, or meetings."
