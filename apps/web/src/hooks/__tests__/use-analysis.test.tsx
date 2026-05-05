@@ -36,7 +36,7 @@ describe("useAnalysis", () => {
     // "Re-run" button in AgentTeamRunView opts into force:true.
     expect(mocks.trpcMutation).toHaveBeenCalledWith(
       "agentTeam.startRun",
-      { conversationId: "conversation_1", teamConfig: AGENT_TEAM_CONFIG.DEEP, force: false },
+      { conversationId: "conversation_1", teamConfig: AGENT_TEAM_CONFIG.FAST, force: false },
       { withCsrf: true }
     );
   });

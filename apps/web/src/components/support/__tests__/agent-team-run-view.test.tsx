@@ -16,6 +16,8 @@ function buildRunSummary(): AgentTeamRunSummary {
     conversationId: "conv_1",
     analysisId: null,
     teamConfig: "DEEP",
+    runtimeVersion: "harness_v2",
+    ledgerOutcome: null,
     status: "running",
     workflowId: "workflow_1",
     startedAt: new Date().toISOString(),

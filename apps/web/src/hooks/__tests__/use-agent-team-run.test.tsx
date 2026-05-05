@@ -35,7 +35,7 @@ describe("useAgentTeamRun", () => {
     });
   });
 
-  it("starts the configured default team with the deep multi-agent config", async () => {
+  it("starts the hard-cutover FAST harness run", async () => {
     const { result } = renderHook(() => useAgentTeamRun("conversation_1", "workspace_1"));
 
     await act(async () => {
@@ -44,7 +44,7 @@ describe("useAgentTeamRun", () => {
 
     expect(mocks.trpcMutation).toHaveBeenCalledWith(
       "agentTeam.startRun",
-      { conversationId: "conversation_1", teamConfig: AGENT_TEAM_CONFIG.DEEP, force: true },
+      { conversationId: "conversation_1", teamConfig: AGENT_TEAM_CONFIG.FAST, force: true },
       { withCsrf: true }
     );
   });

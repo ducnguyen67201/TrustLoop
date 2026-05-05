@@ -75,7 +75,7 @@ export function useAgentTeamRun(
     try {
       const created = await trpcMutation<StartAgentTeamRunInput, AgentTeamRunSummary>(
         "agentTeam.startRun",
-        { conversationId, teamConfig: AGENT_TEAM_CONFIG.DEEP, force: true },
+        { conversationId, teamConfig: AGENT_TEAM_CONFIG.FAST, force: true },
         { withCsrf: true }
       );
       setRun(created);

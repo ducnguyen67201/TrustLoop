@@ -1,12 +1,15 @@
 import {
+  AGENT_TEAM_JOB_STATUS,
   AGENT_TEAM_RUN_STATUS,
   ANALYSIS_STATUS,
   DRAFT_DISPATCH_STATUS,
   DRAFT_STATUS,
   MAX_ANALYSIS_RETRIES,
   SUPPORT_CONVERSATION_STATUS,
+  createAgentTeamJobContext,
 } from "@shared/types";
 import {
+  InvalidAgentTeamJobTransitionError,
   InvalidAgentTeamRunTransitionError,
   InvalidAnalysisTransitionError,
   InvalidConversationTransitionError,
@@ -26,6 +29,7 @@ import {
   restoreAgentTeamRunContext,
   restoreAnalysisContext,
   restoreConversationContext,
+  transitionAgentTeamJob,
   transitionAgentTeamRun,
   transitionAnalysis,
   transitionConversation,
@@ -847,5 +851,54 @@ describe("agentTeamRun state machine", () => {
       expect(completed).toEqual([]);
       expect(failed).toEqual([]);
     });
+  });
+});
+
+// ── AgentTeamJob State Machine ───────────────────────────────────────
+
+describe("agentTeamJob state machine", () => {
+  it("claims and completes a queued job", () => {
+    const claimed = transitionAgentTeamJob(createAgentTeamJobContext("job_1"), {
+      type: "claim",
+      workerId: "worker_1",
+      leaseUntil: "2026-05-05T12:05:00.000Z",
+    });
+    const completed = transitionAgentTeamJob(claimed, {
+      type: "complete",
+      completedAt: "2026-05-05T12:06:00.000Z",
+    });
+
+    expect(claimed.status).toBe(AGENT_TEAM_JOB_STATUS.running);
+    expect(completed.status).toBe(AGENT_TEAM_JOB_STATUS.completed);
+  });
+
+  it("blocks and retries a running job", () => {
+    const claimed = transitionAgentTeamJob(createAgentTeamJobContext("job_1"), {
+      type: "claim",
+      workerId: "worker_1",
+      leaseUntil: "2026-05-05T12:05:00.000Z",
+    });
+    const blocked = transitionAgentTeamJob(claimed, {
+      type: "block",
+      reason: "missing approval",
+    });
+    const retried = transitionAgentTeamJob(blocked, {
+      type: "retry",
+      reason: "approval arrived",
+      nextAttemptAt: "2026-05-05T12:10:00.000Z",
+    });
+
+    expect(blocked.status).toBe(AGENT_TEAM_JOB_STATUS.blocked);
+    expect(retried.status).toBe(AGENT_TEAM_JOB_STATUS.queued);
+    expect(retried.attempt).toBe(2);
+  });
+
+  it("rejects invalid completion from queued", () => {
+    expect(() =>
+      transitionAgentTeamJob(createAgentTeamJobContext("job_1"), {
+        type: "complete",
+        completedAt: "2026-05-05T12:06:00.000Z",
+      })
+    ).toThrow(InvalidAgentTeamJobTransitionError);
   });
 });

@@ -104,7 +104,7 @@ describe("findConversationsReadyForAnalysis", () => {
 });
 
 describe("dispatchAnalysis", () => {
-  it("dispatches an agent-team DEEP run when automatic mode is enabled", async () => {
+  it("dispatches an agent-team FAST harness run when automatic mode is enabled", async () => {
     workspaceFindUnique.mockResolvedValueOnce({ analysisTriggerMode: ANALYSIS_TRIGGER_MODE.auto });
     agentTeamRunsStart.mockResolvedValueOnce({ id: "run_1" });
 
@@ -117,7 +117,7 @@ describe("dispatchAnalysis", () => {
       {
         workspaceId: "ws_123",
         conversationId: "conv_123",
-        teamConfig: AGENT_TEAM_CONFIG.DEEP,
+        teamConfig: AGENT_TEAM_CONFIG.FAST,
       },
       temporalWorkflowDispatcher
     );

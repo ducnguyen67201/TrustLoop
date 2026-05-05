@@ -75,6 +75,8 @@ model AgentTeamRun {
   // pr-creator/rca-analyst team. Validated by agentTeamConfigSchema in shared types.
   teamConfig     String   @default("FAST")
   status         String   @default("queued")
+  runtimeVersion String   @default("dialogue_v1")
+  ledgerOutcome  String?
   teamSnapshot   Json
   workflowId     String?
   startedAt      DateTime?
@@ -93,11 +95,111 @@ model AgentTeamRun {
   facts         AgentTeamFact[]
   openQuestions AgentTeamOpenQuestion[]
   events        AgentTeamRunEvent[]
+  jobs          AgentTeamJob[]
+  artifacts     AgentTeamArtifact[]
+  receipts      AgentTeamJobReceipt[]
 
   @@index([workspaceId, status])
   @@index([conversationId])
   @@index([analysisId])
   @@index([parentRunId])
+}
+
+model AgentTeamJob {
+  id                    String    @id @default(cuid())
+  workspaceId           String
+  runId                 String
+  type                  String
+  jobClass              String
+  status                String    @default("queued")
+  assignedRoleKey       String?
+  objective             String    @db.Text
+  inputArtifactIds      String[]
+  allowedToolIds        String[]
+  requiredArtifactTypes String[]
+  modelPolicy           Json
+  budget                Json
+  stopCondition         String    @db.Text
+  controllerReason      String    @db.Text
+  plannedTransitionKey  String?
+  leaseUntil            DateTime?
+  nextAttemptAt         DateTime?
+  attempt               Int       @default(1)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  errorMessage          String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  workspace Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  run       AgentTeamRun          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  artifacts AgentTeamArtifact[]
+  receipts  AgentTeamJobReceipt[]
+
+  @@unique([runId, plannedTransitionKey])
+  @@index([workspaceId, status, nextAttemptAt])
+  @@index([runId, status, createdAt])
+  @@index([runId, type])
+}
+
+model AgentTeamArtifact {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  runId        String
+  jobId        String
+  type         String
+  artifactKey  String   @default("default")
+  content      Json
+  contentRef   String?
+  contentHash  String
+  evidenceRefs Json
+  confidence   Float
+  createdAt    DateTime @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  run       AgentTeamRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  job       AgentTeamJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, type, artifactKey])
+  @@index([runId, type, createdAt])
+  @@index([workspaceId, type, createdAt])
+}
+
+model AgentTeamJobReceipt {
+  id                            String   @id @default(cuid())
+  workspaceId                   String
+  runId                         String
+  jobId                         String
+  jobType                       String
+  attempt                       Int      @default(1)
+  provider                      String
+  model                         String
+  apiModel                      String
+  inputTokenEstimate            Int?
+  outputTokenEstimate           Int?
+  totalDurationMs               Int
+  compiledContextRef            String?
+  rawModelOutputRef             String?
+  rawModelOutputHash            String?
+  toolCalls                     Json
+  contextSections               Json
+  controllerDecision            String   @db.Text
+  gateResults                   Json
+  approval                      Json?
+  resolvedRoute                 Json
+  circuitBreakerStateBeforeCall Json?
+  fallbackAttempted             Boolean  @default(false)
+  fallbackIndex                 Int?
+  fallbackBudgetRemaining       Json?
+  createdAt                     DateTime @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  run       AgentTeamRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  job       AgentTeamJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, attempt])
+  @@index([runId, createdAt])
+  @@index([workspaceId, provider, model, jobType, createdAt])
 }
 
 // Append-only event log for an agent-team run. Source of truth; derived read

@@ -1,16 +1,6 @@
 export { archiveAgentTeamEvents } from "@/domains/agent-team/agent-team-archive.activity";
+export { executeHarnessRun } from "@/domains/agent-team/agent-team-harness.activity";
 export { rollupAgentTeamMetricsForDay } from "@/domains/agent-team/agent-team-metrics-rollup.activity";
-export {
-  claimNextQueuedInbox,
-  getRunProgress,
-  initializeRunState,
-  loadTurnContext,
-  markRunCompleted,
-  markRunFailed,
-  markRunWaiting,
-  persistRoleTurnResult,
-  runTeamTurnActivity,
-} from "@/domains/agent-team/agent-team-run.activity";
 export { runPurgeDeletedRecords } from "@/domains/maintenance/purge.activity";
 export {
   markSyncRequestFailed,

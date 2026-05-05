@@ -76,7 +76,7 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
       // the explicit "Re-run" button in AgentTeamRunView opts into force:true.
       await trpcMutation<StartAgentTeamRunInput, AgentTeamRunSummary>(
         "agentTeam.startRun",
-        { conversationId, teamConfig: AGENT_TEAM_CONFIG.DEEP, force: false },
+        { conversationId, teamConfig: AGENT_TEAM_CONFIG.FAST, force: false },
         { withCsrf: true }
       );
       setIsAnalyzing(true);
