@@ -102,7 +102,7 @@ CREATE UNIQUE INDEX "AgentTeamJobReceipt_jobId_attempt_key"
   ON "AgentTeamJobReceipt"("jobId", "attempt");
 CREATE INDEX "AgentTeamJobReceipt_runId_createdAt_idx"
   ON "AgentTeamJobReceipt"("runId", "createdAt");
-CREATE INDEX "AgentTeamJobReceipt_workspaceId_provider_model_jobType_createdAt_idx"
+CREATE INDEX "AgentTeamJobReceipt_workspaceId_provider_model_jobType_crea_idx"
   ON "AgentTeamJobReceipt"("workspaceId", "provider", "model", "jobType", "createdAt");
 
 ALTER TABLE "AgentTeamJob"
