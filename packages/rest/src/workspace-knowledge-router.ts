@@ -23,8 +23,23 @@ const triggerBackfillInputSchema = z.object({
   maxConversations: z.number().int().positive().optional(),
 });
 
+const setEnabledInputSchema = z.object({
+  enabled: z.boolean(),
+});
+
 export function createWorkspaceKnowledgeRouter(dispatcher: WorkflowDispatcher) {
   return router({
+    getEnabled: workspaceProcedure.query(({ ctx }) =>
+      workspaceKnowledge.getEnabled(ctx.workspaceId)
+    ),
+
+    setEnabled: workspaceRoleProcedure(WORKSPACE_ROLE.ADMIN)
+      .input(setEnabledInputSchema)
+      .mutation(async ({ ctx, input }) => {
+        await workspaceKnowledge.setEnabled(ctx.workspaceId, input.enabled);
+        return { enabled: input.enabled };
+      }),
+
     getIndexedCounts: workspaceProcedure.query(({ ctx }) =>
       workspaceKnowledge.getIndexedCounts(ctx.workspaceId)
     ),

@@ -136,6 +136,28 @@ export async function getIndexedCounts(workspaceId: string): Promise<{
   return { notes, pastResolutions, pastResolutionCandidates };
 }
 
+/// Read the per-workspace feature flag. Used by the Settings UI to render
+/// the on/off state of the knowledge base feature.
+export async function getEnabled(workspaceId: string): Promise<boolean> {
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { knowledgeSearchEnabled: true },
+  });
+  return Boolean(workspace?.knowledgeSearchEnabled);
+}
+
+/// Flip the per-workspace feature flag. Called only from the admin-only
+/// Settings UI mutation. When toggled on, retrieval starts injecting hits
+/// into draft generation AND new DRAFT_APPROVED events dispatch the embed
+/// workflow. Existing approved drafts are NOT auto-embedded — operator
+/// runs backfill from the same Settings page.
+export async function setEnabled(workspaceId: string, enabled: boolean): Promise<void> {
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data: { knowledgeSearchEnabled: enabled },
+  });
+}
+
 function emptyResult(enabled: boolean): SearchKnowledgeResult {
   return {
     code: [],

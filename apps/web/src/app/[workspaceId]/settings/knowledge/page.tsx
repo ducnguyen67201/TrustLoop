@@ -22,8 +22,8 @@ import { useCallback, useEffect, useState } from "react";
 //     trigger the embedding workflow over historical approved drafts.
 //
 // Behind the per-workspace feature flag (Workspace.knowledgeSearchEnabled).
-// The flag itself is wokspace-row-level, not toggleable from this page in v1
-// — operator flips it via DB or via a follow-up admin tool.
+// Admin operators can flip the flag from the "Knowledge retrieval" card at the
+// top of this page. Disabled workspaces incur zero retrieval or embedding cost.
 // ---------------------------------------------------------------------------
 
 type IndexedCounts = {
@@ -41,6 +41,8 @@ const INITIAL_COUNTS: IndexedCounts = {
 export default function KnowledgeSettingsPage() {
   const [counts, setCounts] = useState<IndexedCounts>(INITIAL_COUNTS);
   const [notes, setNotes] = useState<ListKnowledgeNotesOutput["notes"]>([]);
+  const [enabled, setEnabledState] = useState(false);
+  const [togglingEnabled, setTogglingEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,18 +58,38 @@ export default function KnowledgeSettingsPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [countsResult, notesResult] = await Promise.all([
+      const [countsResult, notesResult, enabledResult] = await Promise.all([
         trpcQuery<IndexedCounts>("workspaceKnowledge.getIndexedCounts"),
         trpcQuery<ListKnowledgeNotesOutput>("workspaceKnowledge.listNotes"),
+        trpcQuery<boolean>("workspaceKnowledge.getEnabled"),
       ]);
       setCounts(countsResult);
       setNotes(notesResult.notes);
+      setEnabledState(enabledResult);
       setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load knowledge.";
       setError(message);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const handleToggleEnabled = useCallback(async (next: boolean) => {
+    setTogglingEnabled(true);
+    setError(null);
+    try {
+      const result = await trpcMutation<{ enabled: boolean }, { enabled: boolean }>(
+        "workspaceKnowledge.setEnabled",
+        { enabled: next },
+        { withCsrf: true }
+      );
+      setEnabledState(result.enabled);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update flag.";
+      setError(message);
+    } finally {
+      setTogglingEnabled(false);
     }
   }, []);
 
@@ -159,6 +181,29 @@ export default function KnowledgeSettingsPage() {
           <p className="text-sm">{error}</p>
         </Alert>
       ) : null}
+
+      <Card className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold">Knowledge retrieval</h2>
+              <Badge variant={enabled ? "default" : "secondary"}>{enabled ? "ON" : "OFF"}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              When enabled, the agent draft prompt receives related notes, similar past resolutions,
+              and indexed code. New approved drafts are also embedded automatically. Disabled
+              workspaces incur zero retrieval or embedding cost.
+            </p>
+          </div>
+          <Button
+            variant={enabled ? "outline" : "default"}
+            disabled={togglingEnabled}
+            onClick={() => handleToggleEnabled(!enabled)}
+          >
+            {togglingEnabled ? "Saving…" : enabled ? "Disable" : "Enable"}
+          </Button>
+        </div>
+      </Card>
 
       <Separator />
 

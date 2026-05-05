@@ -88,43 +88,59 @@ jobs:
         run: npm run db:migrate:deploy
 
       - name: Assert raw SQL objects Prisma cannot model
-        # Prisma cannot model the pgvector HNSW index. Verify it exists with
-        # the expected method/opclass before dropping it for Prisma's diff.
+        # Prisma cannot model the pgvector HNSW indexes. Verify each one exists
+        # with the expected method/opclass before dropping it for Prisma's diff.
+        # Add new HNSW indexes here as they're introduced.
         run: |
           PGPASSWORD=postgres psql \
             -h localhost -U postgres -d trustloop_test \
             -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
           DECLARE
+            target_index text;
             index_method text;
             opclass_name text;
           BEGIN
-            SELECT am.amname, opc.opcname
-              INTO index_method, opclass_name
-              FROM pg_class index_class
-              JOIN pg_index index_info ON index_info.indexrelid = index_class.oid
-              JOIN pg_am am ON am.oid = index_class.relam
-              JOIN pg_opclass opc ON opc.oid = index_info.indclass[0]
-             WHERE index_class.relname = 'RepositoryIndexChunk_embedding_idx';
+            FOR target_index IN
+              SELECT unnest(ARRAY[
+                'RepositoryIndexChunk_embedding_idx',
+                'WorkspaceKnowledgeNote_embedding_idx',
+                'SupportResolutionEmbedding_embedding_idx'
+              ])
+            LOOP
+              SELECT am.amname, opc.opcname
+                INTO index_method, opclass_name
+                FROM pg_class index_class
+                JOIN pg_index index_info ON index_info.indexrelid = index_class.oid
+                JOIN pg_am am ON am.oid = index_class.relam
+                JOIN pg_opclass opc ON opc.oid = index_info.indclass[0]
+               WHERE index_class.relname = target_index;
 
-            IF index_method IS DISTINCT FROM 'hnsw'
-              OR opclass_name IS DISTINCT FROM 'vector_cosine_ops' THEN
-              RAISE EXCEPTION
-                'RepositoryIndexChunk_embedding_idx mismatch. method=%, opclass=%',
-                index_method,
-                opclass_name;
-            END IF;
+              IF index_method IS DISTINCT FROM 'hnsw'
+                OR opclass_name IS DISTINCT FROM 'vector_cosine_ops' THEN
+                RAISE EXCEPTION
+                  '% mismatch. method=%, opclass=%',
+                  target_index,
+                  index_method,
+                  opclass_name;
+              END IF;
+            END LOOP;
           END $$;
           SQL
 
-      - name: Drop HNSW index for drift check
-        # Prisma 7's schema language cannot express `USING hnsw`. The
-        # RepositoryIndexChunk_embedding_idx lives only in raw SQL. To let
-        # migrate diff see a clean baseline, drop it in the ephemeral DB.
+      - name: Drop HNSW indexes for drift check
+        # Prisma 7's schema language cannot express `USING hnsw`. These
+        # indexes live only in raw SQL. To let migrate diff see a clean
+        # baseline, drop them all in the ephemeral DB. Add new HNSW
+        # indexes here as they're introduced.
         run: |
           PGPASSWORD=postgres psql \
             -h localhost -U postgres -d trustloop_test \
-            -c 'DROP INDEX IF EXISTS "RepositoryIndexChunk_embedding_idx";'
+            -v ON_ERROR_STOP=1 <<'SQL'
+          DROP INDEX IF EXISTS "RepositoryIndexChunk_embedding_idx";
+          DROP INDEX IF EXISTS "WorkspaceKnowledgeNote_embedding_idx";
+          DROP INDEX IF EXISTS "SupportResolutionEmbedding_embedding_idx";
+          SQL
 
       - name: Check post-migration status
         run: npm --workspace @shared/database exec -- prisma migrate status

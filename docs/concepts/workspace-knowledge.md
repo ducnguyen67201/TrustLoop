@@ -143,7 +143,9 @@ This is observation infrastructure, not retrieval gating. `rerankerUsed: false` 
 1. The umbrella searcher returns `{ enabled: false, ... }` and skips ALL DB / LLM work.
 2. The `DRAFT_APPROVED` hook only dispatches the embed workflow when the flag is on. (Backfill catches up history when the flag flips on.)
 
-The flag is workspace-scoped, not toggleable from the Settings UI in v1 — it's flipped via DB or admin tool. This is intentional: the knowledge surface affects every draft and shouldn't be turned on without operator awareness.
+The flag is workspace-scoped and exposed as an admin-only toggle on `/[workspaceId]/settings/knowledge`. Read via `workspaceKnowledge.getEnabled` (any workspace member); write via `workspaceKnowledge.setEnabled` (admin role only) which calls `prisma.workspace.update` directly. Tying the flag to a workspace-row column rather than a separate feature-flag service keeps the dispatch hook in `approveDraft` to one DB lookup and avoids cross-tenant misreads.
+
+Flipping the flag does NOT auto-embed historical approved drafts — operator runs the backfill button on the same page. Forward-flowing approvals embed automatically once the flag is on.
 
 ## Anti-stale framing
 
