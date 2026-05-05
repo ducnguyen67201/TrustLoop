@@ -148,6 +148,14 @@ All three are optional. When any is missing, `getLangfuseClient()` returns `null
 - **Embeddings (`text-embedding-3-small` via codex).** The wrapped OpenAI client covers `chat.completions.create()`; embedding calls (`client.embeddings.create()`) would need `observeOpenAI` to also intercept that method. Today embeddings call sites are not separately verified — confirm before claiming coverage.
 - **OpenAI SDK calls outside the manager.** `AGENTS.md` mandates centralization, and a recent grep audit found zero direct `new OpenAI(...)` outside `llm-manager-service.ts`. New rogue instantiations would slip through — the discipline is enforced by code review, not by lint today.
 
+## Invariants
+
+- **Every LLM call lands on one of two surfaces.** Either Surface 1 (the wrapped OpenAI client created by `createOpenAiCompatibleClient` in `llm-manager-service.ts`) or Surface 2 (the explicit Langfuse trace + generation spans around Mastra `agent.generate()` in `apps/agents/src/agent.ts`). Raw `fetch()` against provider hosts is a regression — see the failure-frame captioner refactor for the right pattern.
+- **Instrumentation no-ops gracefully when keys are absent.** `getLangfuseClient()` returns `null` when `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` are missing, and both surfaces detect that. Production deploys without Langfuse pay zero overhead in the LLM path.
+- **`sessionId` is always prefixed with `workspaceId`.** Sessions never cluster across tenants on UUID collision — defense in depth on the assumption that `conversationId` / `runId` are globally unique.
+- **Token usage flows from `result.usage` into the event log.** Read at the agent service boundary by `readAgentCallUsage`, threaded through `agentTeamTurnMetaSchema`, persisted on `roleCompleted` events. The metrics rollup never recomputes — it only sums what the activity wrote.
+- **`LANGFUSE_BASEURL` pointing at localhost is dev-only by definition.** Staging and production Doppler configs are intentionally not populated; an accidental sync would no-op rather than break.
+
 ## Related concepts
 
 - `llm-routing-and-provider-fallback.md` — provider/model selection that runs *before* the call this doc traces
