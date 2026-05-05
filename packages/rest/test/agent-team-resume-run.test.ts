@@ -78,6 +78,7 @@ function createDispatcher(): WorkflowDispatcher {
     startSupportSummaryWorkflow: vi.fn(),
     startRepositoryIndexWorkflow: vi.fn(),
     startSendDraftToSlackWorkflow: vi.fn(),
+    startSupportResolutionKnowledgeWorkflow: vi.fn(),
     startAgentTeamRunWorkflow: vi.fn(),
     startAgentTeamRunResumeWorkflow: vi.fn(async (input) => ({
       workflowId: `agent-team-run-${input.runId}-resume-${input.resumeNonce}`,

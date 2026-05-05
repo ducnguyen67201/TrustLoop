@@ -27,8 +27,8 @@ const {
   hybridSearch,
   literalSearch,
   reciprocalRankFusion,
-} = await import("../../src/codex/hybrid-search");
-type ScoredChunk = import("../../src/codex/hybrid-search").ScoredChunk;
+} = await import("../../src/codex/code-hybrid-search");
+type ScoredChunk = import("../../src/codex/code-hybrid-search").ScoredChunk;
 
 function makeChunk(id: string, score: number, overrides: Partial<ScoredChunk> = {}): ScoredChunk {
   return {

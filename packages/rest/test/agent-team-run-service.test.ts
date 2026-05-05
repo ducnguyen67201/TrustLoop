@@ -33,6 +33,7 @@ function createDispatcher(): WorkflowDispatcher {
     startSupportSummaryWorkflow: vi.fn(),
     startRepositoryIndexWorkflow: vi.fn(),
     startSendDraftToSlackWorkflow: vi.fn(),
+    startSupportResolutionKnowledgeWorkflow: vi.fn(),
     startAgentTeamRunWorkflow: vi.fn(async (payload) => ({
       workflowId: `agent-team-run-${payload.runId}`,
       runId: "temporal_run_1",

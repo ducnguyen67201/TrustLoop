@@ -3,6 +3,7 @@ import {
   type AgentTeamRunWorkflowInput,
   type RepositoryIndexWorkflowInput,
   type SendDraftToSlackInput,
+  type SupportResolutionKnowledgeWorkflowInput,
   type SupportSummaryWorkflowInput,
   type SupportWorkflowInput,
   TASK_QUEUES,
@@ -26,6 +27,9 @@ export interface WorkflowDispatcher {
     input: RepositoryIndexWorkflowInput
   ): Promise<WorkflowDispatchResponse>;
   startSendDraftToSlackWorkflow(input: SendDraftToSlackInput): Promise<WorkflowDispatchResponse>;
+  startSupportResolutionKnowledgeWorkflow(
+    input: SupportResolutionKnowledgeWorkflowInput
+  ): Promise<WorkflowDispatchResponse>;
 }
 
 let temporalClient: Client | undefined;
@@ -157,6 +161,30 @@ export const temporalWorkflowDispatcher: WorkflowDispatcher = {
       workflowId,
       runId: handle.firstExecutionRunId,
       queue: TASK_QUEUES.SUPPORT,
+    });
+  },
+  async startSupportResolutionKnowledgeWorkflow(input) {
+    const client = await getClient();
+    // Deterministic workflow ID. SINGLE mode dedups on (workspaceId, sourceEventId)
+    // so a double-approve never embeds twice. BACKFILL mode dedups per-day so
+    // a click-happy operator can't run two backfills in parallel.
+    const workflowId =
+      input.mode === "SINGLE"
+        ? `support-resolution-knowledge-single-${input.workspaceId}-${input.sourceEventId}`
+        : `support-resolution-knowledge-backfill-${input.workspaceId}-${new Date()
+            .toISOString()
+            .slice(0, 10)}`;
+    const handle = await client.workflow.start(workflowNames.supportResolutionKnowledge, {
+      args: [input],
+      taskQueue: TASK_QUEUES.CODEX,
+      workflowId,
+      workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
+    });
+
+    return workflowDispatchResponseSchema.parse({
+      workflowId,
+      runId: handle.firstExecutionRunId,
+      queue: TASK_QUEUES.CODEX,
     });
   },
 };

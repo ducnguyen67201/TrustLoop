@@ -11,6 +11,7 @@ import {
 import { publicProcedure, router } from "@shared/rest/trpc";
 import { workspaceAiSettingsRouter } from "@shared/rest/workspace-ai-settings-router";
 import { workspaceApiKeyRouter } from "@shared/rest/workspace-api-key-router";
+import { createWorkspaceKnowledgeRouter } from "@shared/rest/workspace-knowledge-router";
 import { workspaceRouter } from "@shared/rest/workspace-router";
 import { healthResponseSchema } from "@shared/types";
 
@@ -32,6 +33,7 @@ export function createAppRouter(dispatcher: WorkflowDispatcher = temporalWorkflo
     workspace: workspaceRouter,
     workspaceAiSettings: workspaceAiSettingsRouter,
     workspaceApiKey: workspaceApiKeyRouter,
+    workspaceKnowledge: createWorkspaceKnowledgeRouter(dispatcher),
     health: publicProcedure.query(() =>
       healthResponseSchema.parse({
         ok: true,

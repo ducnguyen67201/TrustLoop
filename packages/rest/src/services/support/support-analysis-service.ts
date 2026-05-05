@@ -9,6 +9,7 @@ import {
   type DismissDraftInput,
   type DraftStatus,
   InvalidDraftTransitionError,
+  SUPPORT_RESOLUTION_KNOWLEDGE_WORKFLOW_MODE,
   ValidationError,
   restoreDraftContext,
   transitionDraft,
@@ -104,7 +105,7 @@ export async function approveDraft(
       where: { id: input.draftId },
     });
 
-    await tx.supportConversationEvent.create({
+    const approvedEvent = await tx.supportConversationEvent.create({
       data: {
         workspaceId: input.workspaceId,
         conversationId: draft.conversationId,
@@ -115,7 +116,7 @@ export async function approveDraft(
       },
     });
 
-    return { draft, dispatchId: dispatch.id };
+    return { draft, dispatchId: dispatch.id, approvedEventId: approvedEvent.id };
   });
 
   // Best-effort dispatch. Any failure here leaves the outbox row PENDING for
@@ -145,6 +146,35 @@ export async function approveDraft(
       await prisma.draftDispatch.update({
         where: { id: result.dispatchId },
         data: { lastError: message, attempts: { increment: 1 } },
+      });
+    }
+  }
+
+  // Additive: dispatch the past-resolution embedding workflow if the workspace
+  // has knowledge search enabled. Best-effort — failures here NEVER throw back
+  // to the caller. If this dispatch fails or the flag was off, the operator
+  // can still flip the flag on later and run /settings/knowledge backfill to
+  // catch up. Workflow ID is deterministic (single-mode dedups on sourceEventId).
+  try {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: input.workspaceId },
+      select: { knowledgeSearchEnabled: true },
+    });
+    if (workspace?.knowledgeSearchEnabled) {
+      await dispatcher.startSupportResolutionKnowledgeWorkflow({
+        mode: SUPPORT_RESOLUTION_KNOWLEDGE_WORKFLOW_MODE.SINGLE,
+        workspaceId: input.workspaceId,
+        conversationId: result.draft.conversationId,
+        sourceEventId: result.approvedEventId,
+      });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes("WorkflowExecutionAlreadyStarted")) {
+      console.warn("[approveDraft] knowledge embed dispatch failed (non-fatal)", {
+        draftId: input.draftId,
+        workspaceId: input.workspaceId,
+        error: message,
       });
     }
   }
