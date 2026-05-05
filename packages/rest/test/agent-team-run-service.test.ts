@@ -158,6 +158,89 @@ describe("agentTeamRuns.start", () => {
     );
   });
 
+  it("preserves the blueprint drafter provider for FAST snapshots", async () => {
+    const dispatcher = createDispatcher();
+    const startedAt = new Date("2026-04-12T12:00:00Z");
+    const baseTeam = {
+      id: "team_1",
+      workspaceId: "ws_1",
+      name: "Default Team",
+      isDefault: true,
+      deletedAt: null,
+      roles: [
+        {
+          id: "role_drafter",
+          teamId: "team_1",
+          roleKey: "drafter",
+          slug: "drafter",
+          label: "Drafter",
+          provider: "openrouter",
+          model: "anthropic/claude-sonnet-4.5",
+          toolIds: [],
+          systemPromptOverride: null,
+          maxSteps: 6,
+          sortOrder: 0,
+          metadata: null,
+        },
+      ],
+      edges: [],
+    };
+    const createdRun = {
+      id: "run_1",
+      workspaceId: "ws_1",
+      teamId: "team_1",
+      conversationId: "conv_1",
+      analysisId: null,
+      teamConfig: AGENT_TEAM_CONFIG.FAST,
+      status: "queued",
+      workflowId: null,
+      startedAt: null,
+      completedAt: null,
+      errorMessage: null,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      teamSnapshot: { roles: baseTeam.roles, edges: [] },
+      messages: [],
+      roleInboxes: [],
+      facts: [],
+      openQuestions: [],
+    };
+
+    mockFindFirstTeam.mockResolvedValue(baseTeam);
+    mockFindUniqueConversation.mockResolvedValue({
+      id: "conv_1",
+      channelId: "C123",
+      threadTs: "1710000000.0001",
+      status: "UNREAD",
+      events: [],
+    });
+    mockCreateRun.mockResolvedValue(createdRun);
+    mockUpdateRun.mockResolvedValue({ ...createdRun, workflowId: "agent-team-run-run_1" });
+
+    await agentTeamRuns.start(
+      {
+        workspaceId: "ws_1",
+        conversationId: "conv_1",
+        teamConfig: AGENT_TEAM_CONFIG.FAST,
+      },
+      dispatcher
+    );
+
+    expect(dispatcher.startAgentTeamRunWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamSnapshot: expect.objectContaining({
+          roles: [
+            expect.objectContaining({
+              slug: "drafter",
+              provider: "openrouter",
+              model: "anthropic/claude-sonnet-4.5",
+            }),
+          ],
+        }),
+      })
+    );
+  });
+
   it("persists analysisId on the run row and forwards it to the workflow input", async () => {
     const dispatcher = createDispatcher();
     const startedAt = new Date("2026-04-12T12:00:00Z");

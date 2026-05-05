@@ -22,6 +22,12 @@ import {
   updateAgentTeamRoleInputSchema,
 } from "./agent-team-core.schema";
 import {
+  AGENT_TEAM_RUNTIME_VERSION,
+  agentTeamRuntimeVersionSchema,
+  agentWorkLedgerOutcomeSchema,
+} from "./agent-team-job.schema";
+
+import {
   agentTeamDialogueMessageSchema,
   agentTeamFactSchema,
   agentTeamOpenQuestionSchema,
@@ -119,6 +125,8 @@ export const agentTeamRunSummarySchema = z.object({
   conversationId: z.string().nullable(),
   analysisId: z.string().nullable(),
   teamConfig: agentTeamConfigSchema,
+  runtimeVersion: agentTeamRuntimeVersionSchema.default(AGENT_TEAM_RUNTIME_VERSION.dialogueV1),
+  ledgerOutcome: agentWorkLedgerOutcomeSchema.nullable().default(null),
   status: agentTeamRunStatusSchema,
   workflowId: z.string().nullable(),
   startedAt: z.iso.datetime().nullable(),

@@ -102,7 +102,7 @@ export async function dispatchAnalysis(input: {
       {
         workspaceId: input.workspaceId,
         conversationId: input.conversationId,
-        teamConfig: AGENT_TEAM_CONFIG.DEEP,
+        teamConfig: AGENT_TEAM_CONFIG.FAST,
       },
       temporalWorkflowDispatcher
     );

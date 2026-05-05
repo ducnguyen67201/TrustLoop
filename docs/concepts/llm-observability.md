@@ -69,7 +69,7 @@ Mastra's `agent.generate()` calls in `apps/agents/src/agent.ts` use the Vercel A
 - `tags` include `team-turn` plus the role slug, so filtering by role in the UI is one click.
 - The Hono `/team-turn` handler flushes Langfuse in `finally`, so traces appear in the UI before the queue activity returns.
 
-## Token usage flow into the event log
+## Token usage flow into harness receipts
 
 ```
 apps/agents/src/agent.ts
@@ -81,21 +81,22 @@ apps/agents/src/agent.ts
               │
               │ HTTP /team-turn response (AgentTeamRoleTurnOutput)
               ▼
-apps/queue/src/domains/agent-team/agent-team-run.activity.ts
-    persistRoleTurnResult()
-        roleCompleted event:
-            latencyMs : meta.totalDurationMs
-            tokensIn  : meta.tokensIn
-            tokensOut : meta.tokensOut
+apps/queue/src/domains/agent-team/agent-team-harness.activity.ts
+    executeHarnessRun()
+        AgentTeamJobReceipt:
+            totalDurationMs : meta.totalDurationMs
+            provider        : meta.provider
+            model/apiModel  : meta.model
               │
-              │ AgentTeamRunEvent insert
+              │ receipt insert
               ▼
-apps/queue/src/domains/agent-team/agent-team-metrics-rollup.activity.ts
-    nightly: SUM(tokensIn + tokensOut) per (workspaceId, day)
-        → WorkspaceAgentMetrics.tokensTotal
+packages/rest/src/services/agent-team/harness/receipt-service.ts
+    validates and stores one receipt per (jobId, attempt)
 ```
 
-`agentTeamTurnMetaSchema` in `packages/types/src/agent-team/agent-team-dialogue.schema.ts` declares `tokensIn` / `tokensOut` as nullable optional, so older snapshots and providers that do not surface usage still validate.
+`AgentTeamJobReceipt` is the durable harness record for provider/model and
+duration. Token estimates are nullable until the agents service exposes
+provider-normalized usage for the harness path.
 
 ## Local self-host stack
 

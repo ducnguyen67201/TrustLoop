@@ -32,3 +32,4 @@ export {
   recordOperatorAnswer,
   resumeRun as resumeAgentTeamRun,
 } from "@shared/rest/services/agent-team/resume-run";
+export * as harness from "@shared/rest/services/agent-team/harness";

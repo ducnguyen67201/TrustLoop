@@ -26,8 +26,8 @@ That's it. No `plans/`, no `domains/`, no `specs/`. If you need a forward-lookin
 | [concepts/slack-ingestion.md](concepts/slack-ingestion.md) | Slack webhook → signature verify → dedup → Temporal dispatch → realtime fanout. |
 | [concepts/thread-grouping.md](concepts/thread-grouping.md) | How Slack messages collapse into `SupportConversation` records. Thread-alias lookup, grouping anchor, merge/reassign/undo. |
 | [concepts/support-conversation-fsm.md](concepts/support-conversation-fsm.md) | The conversation state machine: states, events, transitions, guards. |
-| [concepts/ai-analysis-pipeline.md](concepts/ai-analysis-pipeline.md) | Analysis trigger (debounce + manual), Temporal workflow, agent service call, positional JSON output, SSE progress stream. |
-| [concepts/agent-team.md](concepts/agent-team.md) | Multi-agent team with addressed dialogue: per-role inboxes, routing policy, event-sourced observability, nightly metrics rollup + partition archive. |
+| [concepts/ai-analysis-pipeline.md](concepts/ai-analysis-pipeline.md) | Analysis trigger (debounce + manual), AgentTeamRun harness execution, and compact SupportAnalysis projection. |
+| [concepts/agent-team.md](concepts/agent-team.md) | Agent Work Ledger harness: jobs, artifacts, receipts, FAST projection, and removed dialogue runtime. |
 | [concepts/llm-routing-and-provider-fallback.md](concepts/llm-routing-and-provider-fallback.md) | Shared LLM routing contract, provider/model selection, OpenAI primary + OpenRouter fallback, and app boundaries. |
 | [concepts/llm-observability.md](concepts/llm-observability.md) | Langfuse self-host stack and the two integration surfaces (wrapped OpenAI client + Mastra traces) that make every LLM call visible by construction. Token usage flow into `roleCompleted` events. |
 | [concepts/ai-draft-generation.md](concepts/ai-draft-generation.md) | Draft lifecycle, state machine, `slackClientMsgId` idempotent delivery, reconciliation, dismiss/retry flows. |

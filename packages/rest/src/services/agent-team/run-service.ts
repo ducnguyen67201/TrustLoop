@@ -5,6 +5,7 @@ import {
   AGENT_PROVIDER,
   AGENT_TEAM_CONFIG,
   AGENT_TEAM_ROLE_SLUG,
+  AGENT_TEAM_RUNTIME_VERSION,
   AGENT_TEAM_RUN_STATUS,
   AGENT_TEAM_TOOL_ID,
   type AgentTeamConfig,
@@ -141,6 +142,7 @@ export async function start(
       analysisId: parsed.analysisId ?? null,
       teamConfig,
       status: AGENT_TEAM_RUN_STATUS.queued,
+      runtimeVersion: AGENT_TEAM_RUNTIME_VERSION.harnessV2,
       teamSnapshot: JSON.parse(JSON.stringify(teamSnapshot)),
     },
     include: runInclude,
@@ -326,7 +328,9 @@ function buildTeamSnapshotForConfig(args: {
     });
   }
 
-  const drafter = synthesizeDrafterRole(args.teamId);
+  const drafter =
+    args.teamRoles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.drafter) ??
+    synthesizeDrafterRole(args.teamId);
   if (args.teamConfig === AGENT_TEAM_CONFIG.FAST) {
     return agentTeamSnapshotSchema.parse({ roles: [drafter], edges: [] });
   }
@@ -381,6 +385,8 @@ function mapRun(run: {
   conversationId: string | null;
   analysisId: string | null;
   teamConfig: string;
+  runtimeVersion: string;
+  ledgerOutcome: string | null;
   status: string;
   workflowId: string | null;
   startedAt: Date | null;
@@ -449,6 +455,8 @@ function mapRun(run: {
     conversationId: run.conversationId,
     analysisId: run.analysisId,
     teamConfig: run.teamConfig,
+    runtimeVersion: run.runtimeVersion,
+    ledgerOutcome: run.ledgerOutcome,
     status: run.status,
     workflowId: run.workflowId,
     startedAt: run.startedAt?.toISOString() ?? null,

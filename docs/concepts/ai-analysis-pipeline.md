@@ -16,8 +16,9 @@ support right rail can show a compact status, confidence, problem statement,
 reasoning trace, and draft/PR affordances without rendering the whole team
 transcript.
 
-The dedicated Agent Team tab remains the source for detailed role-to-role
-dialogue, tool calls, facts, questions, and resolution steps.
+The dedicated Agent Team tab remains the place to inspect run progress. The
+current runtime is the `harness_v2` ledger path, not the old role-inbox
+dialogue scheduler.
 
 ## Trigger
 
@@ -29,50 +30,50 @@ Two paths start the same Agent Team engine:
 - Long-lived Temporal workflow per conversation: `analysis-debounce-${conversationId}`
 - Each new message signal resets the debounce timer.
 - When the customer stops typing, `dispatchAnalysis()` calls
-  `agentTeamRuns.start({ workspaceId, conversationId, teamConfig: DEEP })`.
+  `agentTeamRuns.start({ workspaceId, conversationId, teamConfig: FAST })`.
 
 ### MANUAL: UI trigger
 
 - `apps/web/src/hooks/use-analysis.ts`
-- The AI Analysis button calls `agentTeam.startRun({ conversationId, teamConfig: DEEP })`.
-- `apps/web/src/hooks/use-agent-team-run.ts` uses the same `DEEP` team config for
+- The AI Analysis button calls `agentTeam.startRun({ conversationId, teamConfig: FAST })`.
+- `apps/web/src/hooks/use-agent-team-run.ts` uses the same `FAST` team config for
   the Agent Team tab.
 
-`agentTeam.startRun` defaults `teamConfig` to `DEEP` at the shared schema
-boundary. Callers must explicitly request `FAST` if they want the legacy
-single-drafter compatibility path.
+`agentTeam.startRun` still accepts all shared team config values, but the live
+auto/manual support paths explicitly request `FAST` while deeper harness job
+paths are built out.
 
 ## Execution
 
 The trigger creates an `AgentTeamRun` and dispatches
-`agentTeamRunWorkflow`. See `docs/concepts/agent-team.md` for the full turn
-loop, routing policy, role inboxes, tool calls, and event log.
+`agentTeamRunWorkflow`. See `docs/concepts/agent-team.md` for the current
+ledger harness.
 
 Important execution facts for AI Analysis:
 
 - The run stores a `teamSnapshot`, so editing the live team does not change an
   already-started run.
-- The default `DEEP` path uses the workspace's configured default team.
-- `FAST` still exists as an explicit compatibility mode. Its synthetic
-  `drafter` delegates to the old `/analyze` prompt path.
+- The current live path is `FAST`: `triage -> draft_reply -> synthesize`.
+- `draft_reply` calls the agents service `/team-turn` endpoint with the drafter
+  role as the model adapter.
 
 ## Projection
 
-Projection happens inside `apps/queue/src/domains/agent-team/agent-team-run.activity.ts`.
+Projection happens inside
+`apps/queue/src/domains/agent-team/agent-team-harness.activity.ts`.
 
 | Run state | SupportAnalysis status | Projection behavior |
 |---|---|---|
 | `completed` | `ANALYZED` | Summarizes facts and key messages, computes confidence, records tool-call count. |
-| `waiting` | `NEEDS_CONTEXT` | Summarizes the current transcript and open questions so the right rail stops spinning. |
+| `waiting` | `NEEDS_CONTEXT` | Reserved for future harness jobs that need operator input. |
 | `failed` | `FAILED` | Records the failure as the analysis summary with confidence `0`. |
 
 The projection is idempotent per `agentTeamRunId`. A `waiting` projection can
 later be updated to `ANALYZED` when the same run resumes and completes.
 
-`SupportDraft` creation is now compatibility-only: if a `FAST` drafter proposal
-exists, the projection still creates a draft and drives it through the draft
-FSM. Normal `DEEP` runs project summary only; reply and PR actions are surfaced
-through the Agent Team transcript and PR records.
+`SupportDraft` creation is currently the FAST projection path: when
+`draft_reply` emits a `draft_response` artifact, projection creates or updates
+an awaiting-approval draft.
 
 ## UI Read Path
 
@@ -82,8 +83,8 @@ through the Agent Team transcript and PR records.
   latest `SupportAnalysis` projection and its newest draft, if any.
 - `apps/web/src/components/support/analysis-panel.tsx` renders the compact
   summary.
-- `apps/web/src/components/support/agent-team-run-view.tsx` renders the detailed
-  team transcript.
+- `apps/web/src/components/support/agent-team-run-view.tsx` renders the current
+  run surface while the ledger UI is filled in.
 
 While a team run is queued/running and no new projection exists yet, the AI
 Analysis panel shows its analyzing state. Terminal, waiting, and failed states
@@ -95,10 +96,10 @@ write a projection so the panel can settle.
   `support-analysis.workflow` dispatch path for normal analysis.
 - **SupportAnalysis is a projection.** It should be written from Agent Team run
   state, not treated as the primary execution table.
-- **Manual and auto analysis use `DEEP`.** `FAST` is explicit compatibility, not
-  the default.
-- **Waiting and failed runs must project.** Otherwise the right rail can spin
-  forever or show stale analysis.
+- **Manual and auto analysis use `FAST`.** `DEEP`/PR paths require explicit
+  harness jobs before they are re-enabled in live support analysis.
+- **Failed runs must mark the ledger outcome.** Otherwise the right rail can
+  spin forever or show stale analysis.
 - **Draft status transitions still use the draft FSM.** If compatibility
   projection creates a `SupportDraft`, move it through `transitionDraft`.
 
