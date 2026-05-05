@@ -1,0 +1,4 @@
+interface:
+  display_name: "GTM Twenty Automate"
+  short_description: "Batch outreach with Twenty and Chrome."
+  default_prompt: "Use the GTM Twenty Automate skill to work through my outreach queue in batches. Find founders, research their businesses, update Twenty tasks and notes, open Chrome tabs for LinkedIn, paste connection notes, and move through the queue with human approval for sends."
