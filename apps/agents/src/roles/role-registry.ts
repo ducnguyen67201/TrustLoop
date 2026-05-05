@@ -48,7 +48,11 @@ export const AGENT_ROLE_REGISTRY: Record<AgentTeamRoleSlug, RoleDefinition> = {
   },
   [AGENT_TEAM_ROLE_SLUG.prCreator]: {
     label: "PR Creator",
-    defaultToolIds: [AGENT_TEAM_TOOL_ID.searchCode, AGENT_TEAM_TOOL_ID.createPullRequest],
+    defaultToolIds: [
+      AGENT_TEAM_TOOL_ID.searchCode,
+      AGENT_TEAM_TOOL_ID.readRepositoryFile,
+      AGENT_TEAM_TOOL_ID.createPullRequest,
+    ],
     defaultMaxSteps: 8,
     systemPrompt: PR_CREATOR_ROLE_SYSTEM_PROMPT,
   },
@@ -65,11 +69,18 @@ export function getRoleDefinition(slug: AgentTeamRoleSlug): RoleDefinition {
 }
 
 export function getRoleToolIds(role: AgentTeamRole): readonly AgentTeamToolId[] {
-  if (role.toolIds.length > 0) {
-    return role.toolIds;
+  if (role.slug === AGENT_TEAM_ROLE_SLUG.prCreator) {
+    return mergeToolIds(role.toolIds, getRoleDefinition(role.slug).defaultToolIds);
   }
 
-  return getRoleDefinition(role.slug).defaultToolIds;
+  return role.toolIds.length > 0 ? role.toolIds : getRoleDefinition(role.slug).defaultToolIds;
+}
+
+function mergeToolIds(
+  configuredToolIds: readonly AgentTeamToolId[],
+  defaultToolIds: readonly AgentTeamToolId[]
+): readonly AgentTeamToolId[] {
+  return [...new Set([...configuredToolIds, ...defaultToolIds])];
 }
 
 export function getRoleMaxSteps(role: AgentTeamRole): number {

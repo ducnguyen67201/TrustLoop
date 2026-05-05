@@ -48,6 +48,7 @@ export function ResolutionPanel({
   const customerPending = pending.filter((q) => q.target === "customer");
   const internalPending = pending.filter((q) => q.target === "internal");
   const operatorAnswered = isWaiting && operatorPending.length === 0;
+  const waitingOnCustomer = isWaiting && customerPending.length > 0;
 
   if (isLoading && pending.length === 0) {
     return <p className="text-sm text-muted-foreground">Loading resolution questions…</p>;
@@ -130,7 +131,13 @@ export function ResolutionPanel({
       <div className="rounded-md border border-border/50 p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs text-muted-foreground">
-            {operatorAnswered ? (
+            {waitingOnCustomer ? (
+              <span className="flex items-center gap-1.5 text-amber-700">
+                <RiUserVoiceLine className="h-4 w-4" />
+                Waiting on customer reply. Copy the draft into Slack, then resume after the customer
+                responds.
+              </span>
+            ) : operatorAnswered ? (
               <span className="flex items-center gap-1.5 text-emerald-700">
                 <RiCheckboxCircleLine className="h-4 w-4" />
                 All operator questions answered. Resume to wake the architect.

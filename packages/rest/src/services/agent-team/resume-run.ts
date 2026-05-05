@@ -1,5 +1,6 @@
 import { prisma } from "@shared/database";
 import { recordEvent } from "@shared/rest/services/agent-team/run-event-service";
+import * as sessionThreadMatch from "@shared/rest/services/support/session-thread-match-service";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
   AGENT_TEAM_EVENT_KIND,
@@ -9,6 +10,8 @@ import {
   ConflictError,
   type GetPendingResolutionQuestionsResponse,
   type PendingResolutionQuestion,
+  SUPPORT_CONVERSATION_EVENT_SOURCE,
+  type SessionDigest,
   type ThreadSnapshot,
   ValidationError,
   type WorkflowDispatchResponse,
@@ -216,6 +219,15 @@ export async function resumeRun(
   // arrived while the run was paused (e.g. the customer wrote back, even if
   // the operator hasn't typed an answer yet).
   const threadSnapshot = await buildThreadSnapshot(run.conversationId);
+  await recordCustomerAnswersFromThread({
+    workspaceId: run.workspaceId,
+    runId: run.id,
+    threadSnapshot,
+  });
+  const sessionDigest = await loadSessionDigest({
+    workspaceId: run.workspaceId,
+    conversationId: run.conversationId,
+  });
 
   // Monotonic-enough nonce: Date.now() in ms is collision-safe for human-paced
   // operator clicks (you cannot hit "Resume" twice within the same millisecond
@@ -231,6 +243,7 @@ export async function resumeRun(
     teamConfig: agentTeamConfigSchema.parse(run.teamConfig),
     teamSnapshot,
     threadSnapshot,
+    sessionDigest: sessionDigest ?? undefined,
     isResume: true,
     resumeNonce,
   });
@@ -285,6 +298,135 @@ export async function resumeRun(
   });
 
   return dispatch;
+}
+
+async function loadSessionDigest(input: {
+  workspaceId: string;
+  conversationId: string | null;
+}): Promise<SessionDigest | null> {
+  if (!input.conversationId) {
+    return null;
+  }
+
+  try {
+    const context = await sessionThreadMatch.getConversationSessionContext({
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+    });
+    return context.sessionDigest;
+  } catch (error) {
+    console.warn("[agent-team] failed to load session digest for resume", {
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function recordCustomerAnswersFromThread(args: {
+  workspaceId: string;
+  runId: string;
+  threadSnapshot: ThreadSnapshot;
+}): Promise<void> {
+  const pendingQuestions = await getPendingQuestions({
+    workspaceId: args.workspaceId,
+    runId: args.runId,
+  });
+  const customerQuestions = pendingQuestions.filter((question) => question.target === "customer");
+  if (customerQuestions.length === 0) {
+    return;
+  }
+
+  const answeredCount = await prisma.$transaction(async (tx) => {
+    let count = 0;
+    for (const question of customerQuestions) {
+      const answer = buildCustomerAnswer(args.threadSnapshot, question.dispatchedAt);
+      if (!answer) {
+        continue;
+      }
+
+      await tx.agentTeamMessage.create({
+        data: {
+          runId: args.runId,
+          threadId: args.runId,
+          fromRoleKey: "customer",
+          fromRoleSlug: "customer",
+          fromRoleLabel: "Customer",
+          toRoleKey: question.askedByRoleKey,
+          kind: AGENT_TEAM_MESSAGE_KIND.answer,
+          subject: `Customer reply to ${question.questionId}`,
+          content: answer,
+          parentMessageId: null,
+          refs: [question.questionId],
+          metadata: {
+            source: "customer",
+            questionId: question.questionId,
+          },
+        },
+      });
+
+      await tx.agentTeamRoleInbox.update({
+        where: {
+          runId_roleKey: {
+            runId: args.runId,
+            roleKey: question.askedByRoleKey,
+          },
+        },
+        data: {
+          state: AGENT_TEAM_ROLE_INBOX_STATE.queued,
+          wakeReason: "customer-answer",
+          unreadCount: { increment: 1 },
+        },
+      });
+
+      await recordEvent(tx, {
+        kind: AGENT_TEAM_EVENT_KIND.questionAnswered,
+        runId: args.runId,
+        workspaceId: args.workspaceId,
+        actor: "customer",
+        target: question.askedByRoleKey,
+        payload: {
+          questionId: question.questionId,
+          target: "customer",
+          source: "customer",
+          answer,
+        },
+      });
+      count += 1;
+    }
+    return count;
+  });
+
+  if (answeredCount === 0) {
+    throw new ConflictError(
+      "Customer-bound questions are still waiting for a newer customer reply. Send the suggested reply and resume after the customer responds."
+    );
+  }
+}
+
+function buildCustomerAnswer(threadSnapshot: ThreadSnapshot, dispatchedAt: string): string | null {
+  const dispatchedAtMs = Date.parse(dispatchedAt);
+  const lines = threadSnapshot.events
+    .filter(
+      (event) =>
+        event.source === SUPPORT_CONVERSATION_EVENT_SOURCE.customer &&
+        Date.parse(event.at) > dispatchedAtMs
+    )
+    .map(formatCustomerEventAnswer)
+    .filter((line) => line.length > 0);
+
+  return lines.length > 0 ? lines.join("\n\n") : null;
+}
+
+function formatCustomerEventAnswer(event: ThreadSnapshot["events"][number]): string {
+  const summary = event.summary?.trim() ?? "";
+  if (summary.length > 0) {
+    return summary;
+  }
+
+  const text = event.details?.text;
+  return typeof text === "string" ? text.trim() : "";
 }
 
 interface GetPendingQuestionsArgs {

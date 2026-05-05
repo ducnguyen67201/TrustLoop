@@ -74,7 +74,7 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
     try {
       await trpcMutation<StartAgentTeamRunInput, AgentTeamRunSummary>(
         "agentTeam.startRun",
-        { conversationId, teamConfig: AGENT_TEAM_CONFIG.DEEP },
+        { conversationId, teamConfig: AGENT_TEAM_CONFIG.DEEP, force: true },
         { withCsrf: true }
       );
       setIsAnalyzing(true);

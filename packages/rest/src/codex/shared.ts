@@ -25,7 +25,11 @@ const execFileAsync = promisify(execFile);
 export const DEFAULT_WORKSPACE_ID = "workspace_default";
 export const DEFAULT_WORKSPACE_NAME = "Default Workspace";
 export const DEFAULT_REPOSITORY_FRESHNESS_SLA_MINUTES = 24 * 60;
-export const DEFAULT_GITHUB_PERMISSIONS = ["contents:read", "metadata:read", "pull_requests:write"];
+export const DEFAULT_GITHUB_PERMISSIONS = [
+  "contents:write",
+  "metadata:read",
+  "pull_requests:write",
+];
 
 function resolveMonorepoRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../../../");
@@ -112,12 +116,13 @@ export async function ensureRepositoryCatalog(workspaceId: string) {
 
 function buildGithubConnectionSummary(
   installation: {
+    githubInstallationId: number | null;
     installationOwner: string;
     connectedAt: Date;
     missingPermissions: string[];
   } | null
 ): GithubConnectionSummary {
-  const summary = installation
+  const summary = installation?.githubInstallationId
     ? {
         status:
           installation.missingPermissions.length > 0

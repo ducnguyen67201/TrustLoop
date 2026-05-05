@@ -121,7 +121,7 @@ export function AgentTeamRunView({
               size="sm"
               className="h-6 px-2 text-xs"
               onClick={onStartRun}
-              disabled={isMutating || isStreaming}
+              disabled={isMutating}
             >
               <RiRefreshLine className="h-3.5 w-3.5" />
               Re-run
@@ -356,7 +356,9 @@ function MessageRow({
             {showAbs ? formatAbs(message.createdAt) : `+${relSec}s`}
           </span>
         </summary>
-        <pre className="whitespace-pre-wrap py-1 pl-4 text-muted-foreground">{message.content}</pre>
+        <pre className="whitespace-pre-wrap py-1 pl-4 text-muted-foreground">
+          {formatToolMessageContent(message.content)}
+        </pre>
       </details>
     );
   }
@@ -551,6 +553,23 @@ function buildRawTranscript(messages: AgentTeamDialogueMessage[]): string {
     )
     .map((m) => `(${m.fromRoleKey}) → (${m.toRoleKey}) [${m.kind}]  ${m.subject}\n${m.content}`)
     .join("\n\n");
+}
+
+function formatToolMessageContent(content: string): string {
+  if (content.trim().length === 0) {
+    return "(empty tool output)";
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (typeof parsed === "string" && parsed.trim().length === 0) {
+      return "(empty tool output)";
+    }
+  } catch {
+    return content;
+  }
+
+  return content;
 }
 
 function buildRoleLabelMap(run: AgentTeamRunSummary | null): Map<string, string> {

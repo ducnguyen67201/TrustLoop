@@ -1,4 +1,8 @@
-import { MAX_AGENT_TEAM_TURNS } from "@/domains/agent-team/agent-team-run-routing";
+import {
+  MAX_AGENT_TEAM_TURNS,
+  selectBudgetSynthesisRole,
+  shouldWaitAtTurnBudget,
+} from "@/domains/agent-team/agent-team-run-routing";
 import type * as agentTeamActivities from "@/domains/agent-team/agent-team-run.activity";
 import {
   AGENT_TEAM_RUN_STATUS,
@@ -95,12 +99,70 @@ export async function agentTeamRunWorkflow(
       turnCount += 1;
     }
 
-    const errorMessage = `Agent team run exceeded the ${MAX_AGENT_TEAM_TURNS} turn budget`;
-    await lifecycleActivities.markRunFailed({ runId: input.runId, errorMessage });
+    const budgetMessage = `Agent team run reached the ${MAX_AGENT_TEAM_TURNS} turn budget`;
+    await lifecycleActivities.recordRunWarning({
+      runId: input.runId,
+      message: budgetMessage,
+    });
 
+    const synthesisRole = selectBudgetSynthesisRole(input.teamSnapshot);
+    try {
+      await lifecycleActivities.prepareTurnBudgetSynthesis({
+        runId: input.runId,
+        role: synthesisRole,
+        maxTurns: MAX_AGENT_TEAM_TURNS,
+      });
+
+      const context = await turnActivities.loadTurnContext({
+        runId: input.runId,
+        roleKey: synthesisRole.roleKey,
+      });
+      const result = await turnActivities.runTeamTurnActivity({
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        runId: input.runId,
+        turnIndex: turnCount,
+        teamRoles: input.teamSnapshot.roles,
+        role: synthesisRole,
+        requestSummary: input.threadSnapshot,
+        inbox: context.inbox,
+        acceptedFacts: context.acceptedFacts,
+        openQuestions: context.openQuestions,
+        recentThread: context.recentThread,
+        sessionDigest: input.sessionDigest ?? null,
+      });
+
+      progress = await turnActivities.persistRoleTurnResult({
+        runId: input.runId,
+        turnIndex: turnCount,
+        role: synthesisRole,
+        teamRoles: input.teamSnapshot.roles,
+        result,
+      });
+    } catch (synthesisError) {
+      const errorMessage =
+        synthesisError instanceof Error ? synthesisError.message : String(synthesisError);
+      await lifecycleActivities.recordRunWarning({
+        runId: input.runId,
+        message: `Budget synthesis failed: ${errorMessage}`,
+      });
+      progress = await lifecycleActivities.getRunProgress(input.runId);
+    }
+
+    if (shouldWaitAtTurnBudget(progress)) {
+      await lifecycleActivities.markRunWaiting(input.runId);
+      return {
+        runId: input.runId,
+        status: AGENT_TEAM_RUN_STATUS.waiting,
+        messageCount: progress.messageCount,
+        completedRoleKeys: progress.completedRoleKeys,
+      };
+    }
+
+    await lifecycleActivities.markRunCompleted(input.runId);
     return {
       runId: input.runId,
-      status: AGENT_TEAM_RUN_STATUS.failed,
+      status: AGENT_TEAM_RUN_STATUS.completed,
       messageCount: progress.messageCount,
       completedRoleKeys: progress.completedRoleKeys,
     };

@@ -1,14 +1,17 @@
 import { prisma } from "@shared/database";
+import * as sessionThreadMatch from "@shared/rest/services/support/session-thread-match-service";
 import type { WorkflowDispatcher } from "@shared/rest/temporal-dispatcher";
 import {
   AGENT_PROVIDER,
   AGENT_TEAM_CONFIG,
   AGENT_TEAM_ROLE_SLUG,
   AGENT_TEAM_RUN_STATUS,
+  AGENT_TEAM_TOOL_ID,
   type AgentTeamConfig,
   type AgentTeamRole,
   type AgentTeamRunSummary,
   type AgentTeamSnapshot,
+  type SessionDigest,
   type ThreadSnapshot,
   ValidationError,
   agentTeamRunSummarySchema,
@@ -25,6 +28,7 @@ interface StartRunArgs {
   teamId?: string;
   analysisId?: string;
   teamConfig?: AgentTeamConfig;
+  force?: boolean;
 }
 
 interface GetRunArgs {
@@ -47,17 +51,19 @@ export async function start(
   // Dedupe: a queued or running run for this (workspace, conversation) wins.
   // Mirrors the GATHERING_CONTEXT|ANALYZING dedupe in supportAnalysis. Race on
   // two near-simultaneous calls is a sub-100ms window — accept rare double-runs.
-  const inFlight = await prisma.agentTeamRun.findFirst({
-    where: {
-      workspaceId: input.workspaceId,
-      conversationId: parsed.conversationId,
-      status: { in: [AGENT_TEAM_RUN_STATUS.queued, AGENT_TEAM_RUN_STATUS.running] },
-    },
-    include: runInclude,
-    orderBy: { createdAt: "desc" },
-  });
-  if (inFlight) {
-    return mapRun(inFlight);
+  if (!parsed.force) {
+    const inFlight = await prisma.agentTeamRun.findFirst({
+      where: {
+        workspaceId: input.workspaceId,
+        conversationId: parsed.conversationId,
+        status: { in: [AGENT_TEAM_RUN_STATUS.queued, AGENT_TEAM_RUN_STATUS.running] },
+      },
+      include: runInclude,
+      orderBy: { createdAt: "desc" },
+    });
+    if (inFlight) {
+      return mapRun(inFlight);
+    }
   }
 
   const team = await findTeam(input.workspaceId, parsed.teamId);
@@ -118,6 +124,11 @@ export async function start(
     teamConfig,
     teamSnapshot,
     threadSnapshot: buildConversationSnapshot(conversation),
+    sessionDigest:
+      (await loadSessionDigest({
+        workspaceId: input.workspaceId,
+        conversationId: conversation.id,
+      })) ?? undefined,
   });
 
   const updated = await prisma.agentTeamRun.update({
@@ -229,6 +240,23 @@ function buildConversationSnapshot(conversation: {
   });
 }
 
+async function loadSessionDigest(input: {
+  workspaceId: string;
+  conversationId: string;
+}): Promise<SessionDigest | null> {
+  try {
+    const context = await sessionThreadMatch.getConversationSessionContext(input);
+    return context.sessionDigest;
+  } catch (error) {
+    console.warn("[agent-team] failed to load session digest for run", {
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 // Build the snapshot of roles + edges for this run based on teamConfig.
 // FAST: single synthetic drafter (replaces the legacy single-agent analysis).
 // STANDARD: drafter + reviewer (drafts go through a review gate before exposure).
@@ -273,10 +301,9 @@ function buildTeamSnapshotForConfig(args: {
   }
 
   // STANDARD: drafter + first reviewer if the blueprint has one.
-  const reviewerRow = args.teamRoles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.reviewer);
-  if (!reviewerRow) {
-    return agentTeamSnapshotSchema.parse({ roles: [drafter], edges: [] });
-  }
+  const reviewerRow =
+    args.teamRoles.find((role) => role.slug === AGENT_TEAM_ROLE_SLUG.reviewer) ??
+    synthesizeReviewerRole(args.teamId, 1);
   return agentTeamSnapshotSchema.parse({ roles: [drafter, reviewerRow], edges: [] });
 }
 
@@ -294,6 +321,24 @@ function synthesizeDrafterRole(teamId: string): AgentTeamRole {
     systemPromptOverride: null,
     maxSteps: 6,
     sortOrder: 0,
+    metadata: null,
+  };
+}
+
+function synthesizeReviewerRole(teamId: string, sortOrder: number): AgentTeamRole {
+  return {
+    id: `${teamId}-synthetic-reviewer`,
+    teamId,
+    roleKey: AGENT_TEAM_ROLE_SLUG.reviewer,
+    slug: AGENT_TEAM_ROLE_SLUG.reviewer,
+    label: "Reviewer",
+    description: null,
+    provider: AGENT_PROVIDER.openai,
+    model: null,
+    toolIds: [AGENT_TEAM_TOOL_ID.searchCode],
+    systemPromptOverride: null,
+    maxSteps: 6,
+    sortOrder,
     metadata: null,
   };
 }
