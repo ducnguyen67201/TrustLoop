@@ -15,13 +15,13 @@ Do not send generic DMs. The loop is:
 
 1. Find the next task.
 2. Research the founder/company.
-3. Identify why they might feel TrustLoop's support-routing pain.
+3. Identify why they might feel TrustLoop's support routing/ownership pain.
 4. Draft a short personalized opener.
 5. Log sent/reply/follow-up state in Twenty.
 
 TrustLoop angle: help early B2B SaaS teams turn messy customer conversations
 into routed, answerable support work so founders stop being the invisible
-escalation layer.
+routing/ownership layer.
 
 ## Commands
 
@@ -90,17 +90,50 @@ funding, team size, or product claims.
 
 ## Message Style
 
-Default opener shape:
+Cold DM is only the opener in a founder-led sales system. The first message
+should ask about their current reality, not pitch TrustLoop.
+
+Best first DM shape:
 
 ```text
-Hey {firstName} - saw {specific product/workflow detail}.
-
-Quick question: when {likely support/onboarding/exception event} comes in today,
-are you still close to routing it yourself, or has that moved fully to the team?
+hey {firstName} - saw {specific company detail}. curious: when messy customer issues come through Slack/support, are you still the person deciding where they go, or is that fully off your plate now?
 ```
+
+Why this works:
+
+- It lets them say "no, team owns it now" without feeling sold to.
+- It qualifies the exact buyer state: founder still close to support routing.
+- It asks about a concrete job, not whether they are vaguely "close to it."
+
+If yes:
+
+```text
+makes sense. what usually makes an issue messy enough that it still reaches you?
+```
+
+Then:
+
+```text
+would it be useful if I helped map that flow and turn the recurring cases into something routed/answerable over a 2-week pilot?
+```
+
+If no:
+
+```text
+got it, that's helpful. who owns that flow now: support, CS, eng, or someone else?
+```
+
+Avoid overusing "escalation" as the mental model. The sharper founder pain is
+routing/ownership: who decides where messy customer issues go.
 
 Keep it warm, short, and founder-to-founder. The goal is insight, not a hard
 sell.
+
+The real ladder is:
+
+```text
+pain question -> reply -> call -> map workflow -> concierge pilot -> paid pilot -> quote/referral/investor proof
+```
 
 ## Output Back To User
 
