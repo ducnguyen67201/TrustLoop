@@ -179,6 +179,7 @@ Important things this layer does **not** do today:
 - `architecture.md` — big-picture service boundaries
 - `ai-analysis-pipeline.md` — support analysis flow using the manager
 - `codex-search.md` — hybrid search and reranking
+- `llm-observability.md` — what runs *after* the manager picks a target: every call traced into Langfuse with token usage
 - `spec-positional-json-format.md` — structured LLM output contract
 
 ## Keep this doc honest
