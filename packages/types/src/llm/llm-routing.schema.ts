@@ -21,6 +21,7 @@ export const QUEUE_LLM_USE_CASE = {
   supportSummary: "support-summary",
   codexRerank: "codex-rerank",
   codexEmbedding: "codex-embedding",
+  frameCaption: "frame-caption",
 } as const;
 
 /*
@@ -47,6 +48,7 @@ export const queueLlmUseCaseValues = [
   QUEUE_LLM_USE_CASE.supportSummary,
   QUEUE_LLM_USE_CASE.codexRerank,
   QUEUE_LLM_USE_CASE.codexEmbedding,
+  QUEUE_LLM_USE_CASE.frameCaption,
 ] as const;
 
 export const agentServiceLlmUseCaseValues = [
@@ -117,6 +119,14 @@ export const LLM_USE_CASE_DEFAULTS: Record<
     model: MODEL_CONFIG.embedding,
     primaryProvider: LLM_PROVIDER.openai,
     fallbackProviders: [],
+  },
+  [LLM_USE_CASE.frameCaption]: {
+    // Vision captioner for failure-frame screenshots. MODEL_CONFIG.fast is
+    // gpt-4o-mini, which is vision-capable. OpenRouter relays the same model
+    // for fallback when OpenAI is unavailable.
+    model: MODEL_CONFIG.fast,
+    primaryProvider: LLM_PROVIDER.openai,
+    fallbackProviders: [LLM_PROVIDER.openrouter],
   },
 
   // Agent service model defaults.
