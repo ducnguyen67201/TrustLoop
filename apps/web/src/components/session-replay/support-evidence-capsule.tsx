@@ -56,6 +56,7 @@ interface SupportEvidenceCapsuleProps {
   onRecorrelateSession?: () => Promise<void> | void;
   isRecorrelatingSession?: boolean;
   sessionActionError?: string | null;
+  sessionActionMessage?: string | null;
 }
 
 interface EvidenceListItem {
@@ -91,6 +92,7 @@ export function SupportEvidenceCapsule({
   onRecorrelateSession,
   isRecorrelatingSession = false,
   sessionActionError = null,
+  sessionActionMessage = null,
 }: SupportEvidenceCapsuleProps) {
   const [copiedAction, setCopiedAction] = useState<"repro" | "escalation" | null>(null);
   const evidenceLists = useMemo(() => buildEvidenceLists(supportEvidence), [supportEvidence]);
@@ -186,6 +188,9 @@ export function SupportEvidenceCapsule({
           </div>
           {sessionActionError ? (
             <p className="text-xs text-destructive">{sessionActionError}</p>
+          ) : null}
+          {sessionActionMessage ? (
+            <p className="text-xs text-muted-foreground">{sessionActionMessage}</p>
           ) : null}
         </CardContent>
       </Card>

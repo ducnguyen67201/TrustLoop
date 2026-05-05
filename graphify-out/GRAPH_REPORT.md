@@ -1,7 +1,7 @@
 # Graph Report - .  (2026-05-05)
 
 ## Corpus Check
-- 598 files · ~352,903 words
+- 598 files · ~353,052 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -2497,12 +2497,12 @@ Nodes (0):
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `push()` connect `Community 5` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 13`, `Community 14`, `Community 16`?**
-  _High betweenness centrality (0.092) - this node is a cross-community bridge._
 - **Why does `parse()` connect `Community 2` to `Community 0`, `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 13`, `Community 16`?**
-  _High betweenness centrality (0.083) - this node is a cross-community bridge._
-- **Why does `has()` connect `Community 1` to `Community 0`, `Community 32`, `Community 2`, `Community 3`, `Community 4`, `Community 5`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 11`, `Community 26`?**
-  _High betweenness centrality (0.048) - this node is a cross-community bridge._
+  _High betweenness centrality (0.099) - this node is a cross-community bridge._
+- **Why does `push()` connect `Community 5` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 4`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 13`, `Community 14`, `Community 16`?**
+  _High betweenness centrality (0.054) - this node is a cross-community bridge._
+- **Why does `now()` connect `Community 3` to `Community 0`, `Community 1`, `Community 2`, `Community 6`, `Community 7`, `Community 9`, `Community 10`, `Community 12`?**
+  _High betweenness centrality (0.043) - this node is a cross-community bridge._
 - **Are the 48 inferred relationships involving `push()` (e.g. with `ae()` and `re()`) actually correct?**
   _`push()` has 48 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 5 inferred relationships involving `A()` (e.g. with `Ee()` and `De()`) actually correct?**
