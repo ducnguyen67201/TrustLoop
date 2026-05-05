@@ -17,6 +17,7 @@ model WorkspaceKnowledgeNote {
   title           String
   content         String                @db.Text
   embedding       Unsupported("vector(1536)")?
+  tsv             Unsupported("tsvector")?
   contentHash     String
   createdByUserId String?
   createdAt       DateTime              @default(now())
@@ -29,6 +30,11 @@ model WorkspaceKnowledgeNote {
   // TYPE GENERATION ONLY: DB uses partial unique index (WHERE deletedAt IS NULL).
   @@unique([workspaceId, contentHash])
   @@index([workspaceId])
+  @@index([tsv], type: Gin)
+  // embedding uses an HNSW index created via raw SQL in
+  // 20260505200000_workspace_knowledge. Prisma's schema cannot express
+  // `USING hnsw` — the CI drift check tolerates this single unrepresentable
+  // index (same pattern as RepositoryIndexChunk).
 }
 
 /// Past-resolution embedding. Created when a SupportConversationEvent of type
@@ -44,6 +50,7 @@ model SupportResolutionEmbedding {
   /// Q+A concatenated text that was actually embedded (per D5).
   embeddedText    String                @db.Text
   embedding       Unsupported("vector(1536)")?
+  tsv             Unsupported("tsvector")?
   /// sha256(embeddedText). Semantic dedup key — same Q+A across multiple events
   /// will deduplicate at this level (closes the codex outside-voice idempotency
   /// concern).
@@ -63,6 +70,11 @@ model SupportResolutionEmbedding {
   @@unique([workspaceId, contentHash])
   @@index([workspaceId])
   @@index([conversationId])
+  @@index([tsv], type: Gin)
+  // embedding uses an HNSW index created via raw SQL in
+  // 20260505200000_workspace_knowledge. Prisma's schema cannot express
+  // `USING hnsw` — the CI drift check tolerates this single unrepresentable
+  // index (same pattern as RepositoryIndexChunk).
 }
 
 /// Index registry. One entry per knowledge chunk that has been embedded and is
