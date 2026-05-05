@@ -74,6 +74,8 @@ const recommendedCloseCodeSchema = z.union(
   ]
 );
 
+const messageTargetSchema = z.union([z.string().min(1), z.number().int().positive()]);
+
 export const compressedQuestionToResolveSchema = z.object({
   t: targetCodeSchema,
   q: z.string().min(1),
@@ -92,7 +94,7 @@ export const compressedTurnResolutionSchema = z.object({
 
 export const compressedAgentTeamTurnMessageSchema = z.object({
   k: kindCodeSchema,
-  t: z.string().min(1),
+  t: messageTargetSchema,
   s: z.string().min(1),
   b: z.string().min(1),
   p: z.string().nullable().optional(),
@@ -153,6 +155,7 @@ export type ReconstructedAgentTeamTurnOutput = {
 export interface ReconstructAgentTeamTurnOutputContext {
   runId: string;
   turnIndex: number;
+  addressableRoleKeys?: readonly string[];
 }
 
 export function reconstructAgentTeamTurnOutput(
@@ -162,7 +165,7 @@ export function reconstructAgentTeamTurnOutput(
   return {
     messages: compressed.m.map((message) => ({
       kind: mapKindCodeToKind(message.k),
-      toRoleKey: message.t,
+      toRoleKey: mapMessageTargetToRoleKey(message.t, context),
       subject: message.s,
       content: message.b,
       parentMessageId: message.p ?? null,
@@ -178,6 +181,22 @@ export function reconstructAgentTeamTurnOutput(
     done: compressed.d === 1,
     resolution: compressed.r === null ? null : reconstructResolution(compressed.r, context),
   };
+}
+
+function mapMessageTargetToRoleKey(
+  target: z.infer<typeof messageTargetSchema>,
+  context: ReconstructAgentTeamTurnOutputContext
+): string {
+  if (typeof target === "string") {
+    return target;
+  }
+
+  const roleKey = context.addressableRoleKeys?.[target - 1];
+  if (!roleKey) {
+    throw new Error(`Unsupported agent-team message target index: ${target}`);
+  }
+
+  return roleKey;
 }
 
 function reconstructResolution(

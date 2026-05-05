@@ -66,10 +66,39 @@ export function buildSearchCodeTool(ctx: SearchCodeToolContext) {
           lines: `${result.lineStart}-${result.lineEnd}`,
           symbol: result.symbolName,
           repo: result.repositoryFullName,
-          snippet: result.snippet.slice(0, 500),
+          snippet: focusSnippet(result.snippet, input.query, 900),
           score: Math.round(result.mergedScore * 100) / 100,
         })),
       };
     },
   });
+}
+
+function focusSnippet(content: string, query: string, maxChars: number): string {
+  const needle = findBestNeedle(query);
+  const index = needle ? content.toLowerCase().indexOf(needle.toLowerCase()) : -1;
+  if (!needle || index === -1) {
+    return content.slice(0, maxChars);
+  }
+
+  const context = Math.floor((maxChars - needle.length) / 2);
+  const start = Math.max(0, index - context);
+  const end = Math.min(content.length, start + maxChars);
+  const prefix = start > 0 ? "... " : "";
+  const suffix = end < content.length ? " ..." : "";
+  return `${prefix}${content.slice(start, end)}${suffix}`;
+}
+
+function findBestNeedle(query: string): string | null {
+  const quoted = query.match(/[`'"]([^`'"]{3,160})[`'"]/);
+  if (quoted?.[1]) {
+    return quoted[1];
+  }
+
+  return (
+    query
+      .split(/\s+/)
+      .map((token) => token.replace(/^[`'",;:()[\]{}]+|[`'",;:()[\]{}]+$/g, ""))
+      .find((token) => token.length >= 3 && /[./_-]/.test(token)) ?? null
+  );
 }

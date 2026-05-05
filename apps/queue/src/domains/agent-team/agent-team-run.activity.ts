@@ -1,7 +1,11 @@
 import {
   MAX_AGENT_TEAM_MESSAGES,
+  applyMessageBudget,
   collectQueuedTargets,
+  filterQueuedTargetsForHumanInput,
+  hasHumanResolutionQuestion,
   isHumanResolutionTarget,
+  normalizeRoutableMessageTargets,
   partitionMessagesByRouting,
   resolveSelfTurnState,
   selectInitialRole,
@@ -38,6 +42,7 @@ import {
   type AgentTeamRoleTurnInput,
   type AgentTeamRoleTurnOutput,
   type AgentTeamRunWorkflowInput,
+  EVIDENCE_SOURCE_TYPE,
   RESOLUTION_STATUS,
   RESOLUTION_TARGET,
   agentTeamDialogueMessageSchema,
@@ -73,6 +78,12 @@ interface PersistRoleTurnResultInput {
   result: AgentTeamRoleTurnOutput;
 }
 
+interface PrepareTurnBudgetSynthesisInput {
+  runId: string;
+  role: AgentTeamRole;
+  maxTurns: number;
+}
+
 interface RunProgressSnapshot {
   messageCount: number;
   completedRoleKeys: string[];
@@ -96,8 +107,17 @@ interface RunProgressClient extends MessageCountClient {
   };
 }
 
+interface OpenQuestionInferenceClient {
+  agentTeamOpenQuestion: {
+    findMany: typeof prisma.agentTeamOpenQuestion.findMany;
+  };
+}
+
 const AGENT_TIMEOUT_MS = 4 * 60 * 1000;
+const AGENT_TURN_HEARTBEAT_INTERVAL_MS = 15_000;
+const PROMPT_INBOX_LIMIT = 20;
 const RECENT_THREAD_LIMIT = 12;
+const PROMPT_TOOL_CONTENT_LIMIT = 800;
 
 export async function initializeRunState(
   input: Pick<AgentTeamRunWorkflowInput, "runId" | "teamSnapshot">
@@ -245,7 +265,8 @@ export async function loadTurnContext(
         runId: input.runId,
         OR: [{ toRoleKey: input.roleKey }, { toRoleKey: AGENT_TEAM_TARGET.broadcast }],
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
+      take: PROMPT_INBOX_LIMIT,
     }),
     prisma.agentTeamFact.findMany({
       where: {
@@ -270,10 +291,10 @@ export async function loadTurnContext(
   ]);
 
   return {
-    inbox: inboxRows.map(mapMessageRow),
+    inbox: inboxRows.reverse().map(mapMessageRowForTurnContext),
     acceptedFacts: factRows.map(mapFactRow),
     openQuestions: questionRows.map(mapOpenQuestionRow),
-    recentThread: recentThreadRows.reverse().map(mapMessageRow),
+    recentThread: recentThreadRows.reverse().map(mapMessageRowForTurnContext),
   };
 }
 
@@ -282,17 +303,27 @@ export async function runTeamTurnActivity(
 ): Promise<AgentTeamRoleTurnOutput> {
   heartbeat();
 
-  const response = await fetch(`${resolveAgentServiceUrl()}/team-turn`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      // Service-key auth: see callAgentService in support-analysis.activity.ts
-      // for the rationale. The agent service treats the body as trusted input.
-      authorization: `Bearer ${env.INTERNAL_SERVICE_KEY}`,
-    },
-    body: JSON.stringify(input),
-    signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
-  });
+  const keepAlive = setInterval(() => {
+    heartbeat();
+  }, AGENT_TURN_HEARTBEAT_INTERVAL_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${resolveAgentServiceUrl()}/team-turn`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        // Service-key auth: see callAgentService in support-analysis.activity.ts
+        // for the rationale. The agent service treats the body as trusted input.
+        authorization: `Bearer ${env.INTERNAL_SERVICE_KEY}`,
+      },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
+    });
+  } finally {
+    clearInterval(keepAlive);
+    heartbeat();
+  }
 
   if (!response.ok) {
     const errorBody = await response.text();
@@ -312,7 +343,11 @@ export async function persistRoleTurnResult(
 ): Promise<RunProgressSnapshot> {
   heartbeat();
 
-  const normalizedMessages = normalizeTurnMessages(input.role, input.result, input.teamRoles);
+  const normalizedMessages = normalizeRoutableMessageTargets({
+    senderRole: input.role,
+    teamRoles: input.teamRoles,
+    messages: normalizeTurnMessages(input.role, input.result, input.teamRoles),
+  });
   const { valid: routedMessages, dropped: droppedMessages } = partitionMessagesByRouting({
     senderRole: input.role,
     teamRoles: input.teamRoles,
@@ -353,7 +388,7 @@ export async function persistRoleTurnResult(
             },
             select: { id: true },
           });
-    const persistableMessages = clearUnknownParentMessageIds(
+    const parentResolvedMessages = clearUnknownParentMessageIds(
       routedMessages,
       new Set(existingParentMessageRows.map((message) => message.id))
     );
@@ -361,15 +396,38 @@ export async function persistRoleTurnResult(
     const messageCount = await tx.agentTeamMessage.count({
       where: { runId: input.runId },
     });
-    if (messageCount + persistableMessages.length > MAX_AGENT_TEAM_MESSAGES) {
-      throw new Error(
-        `Agent team run exceeded the ${MAX_AGENT_TEAM_MESSAGES} message budget for run ${input.runId}`
-      );
-    }
+    const messageBudget = applyMessageBudget({
+      currentMessageCount: messageCount,
+      maxMessages: MAX_AGENT_TEAM_MESSAGES,
+      messages: parentResolvedMessages,
+    });
+    const persistableMessages = messageBudget.messages;
 
     // Collect event drafts as we project; flush in one batch at the end of
     // the transaction so the event log + its projections share atomicity.
     const eventDrafts: AgentTeamRunEventDraft[] = [];
+    if (messageBudget.droppedCount > 0) {
+      console.warn("[agent-team] Dropped over-budget LLM messages", {
+        runId: input.runId,
+        turnIndex: input.turnIndex,
+        roleKey: input.role.roleKey,
+        currentMessageCount: messageCount,
+        maxMessages: MAX_AGENT_TEAM_MESSAGES,
+        attemptedMessageCount: parentResolvedMessages.length,
+        persistedMessageCount: persistableMessages.length,
+        droppedCount: messageBudget.droppedCount,
+      });
+      eventDrafts.push({
+        kind: AGENT_TEAM_EVENT_KIND.error,
+        runId: input.runId,
+        workspaceId: run.workspaceId,
+        actor: input.role.roleKey,
+        payload: {
+          message: `Message budget reached at ${messageCount}/${MAX_AGENT_TEAM_MESSAGES}; persisted ${persistableMessages.length} of ${parentResolvedMessages.length} messages from this turn and dropped ${messageBudget.droppedCount}.`,
+          recoverable: true,
+        },
+      });
+    }
 
     const createdMessages: AgentTeamDialogueMessage[] = [];
     for (const message of persistableMessages) {
@@ -460,14 +518,39 @@ export async function persistRoleTurnResult(
       });
     }
 
-    if (input.result.resolvedQuestionIds.length > 0) {
+    const inferredAnsweredQuestions = await inferAnsweredInternalQuestions(tx, {
+      runId: input.runId,
+      answererRoleKey: input.role.roleKey,
+      messages: createdMessages,
+    });
+    const resolvedQuestionIds = new Set([
+      ...input.result.resolvedQuestionIds,
+      ...inferredAnsweredQuestions.map((question) => question.id),
+    ]);
+
+    if (resolvedQuestionIds.size > 0) {
       await tx.agentTeamOpenQuestion.updateMany({
         where: {
           runId: input.runId,
-          id: { in: input.result.resolvedQuestionIds },
+          id: { in: [...resolvedQuestionIds] },
         },
         data: {
           status: AGENT_TEAM_OPEN_QUESTION_STATUS.answered,
+        },
+      });
+    }
+    for (const question of inferredAnsweredQuestions) {
+      eventDrafts.push({
+        kind: AGENT_TEAM_EVENT_KIND.questionAnswered,
+        runId: input.runId,
+        workspaceId: run.workspaceId,
+        actor: input.role.roleKey,
+        target: question.askedByRoleKey,
+        payload: {
+          questionId: question.id,
+          target: RESOLUTION_TARGET.internal,
+          source: "internal_role",
+          answer: question.answerPreview,
         },
       });
     }
@@ -498,13 +581,29 @@ export async function persistRoleTurnResult(
       }
     }
 
-    const hasReviewerApproval = await reviewerApprovalExists(tx, input.runId, createdMessages);
-    const queueTargets = collectQueuedTargets({
-      senderRole: input.role,
-      teamRoles: input.teamRoles,
+    const messageResolutionQuestions = buildResolutionQuestionsFromMessages({
+      runId: input.runId,
+      turnIndex: input.turnIndex,
       messages: persistableMessages,
-      nextSuggestedRoleKeys: input.result.nextSuggestedRoleKeys,
-      hasReviewerApproval,
+      teamRoles: input.teamRoles,
+    });
+
+    const turnHasHumanResolutionQuestion = hasHumanResolutionQuestion({
+      resolution: input.result.resolution,
+      messageResolutionQuestionCount: messageResolutionQuestions.length,
+    });
+
+    const queueTargets = filterQueuedTargetsForHumanInput({
+      hasHumanResolutionQuestion: turnHasHumanResolutionQuestion,
+      messages: persistableMessages,
+      queueTargets: collectQueuedTargets({
+        senderRole: input.role,
+        teamRoles: input.teamRoles,
+        messages: persistableMessages,
+        nextSuggestedRoleKeys: input.result.nextSuggestedRoleKeys,
+        hasReviewerApproval: await reviewerApprovalExists(tx, input.runId, createdMessages),
+      }),
+      teamRoles: input.teamRoles,
     });
 
     for (const roleKey of queueTargets) {
@@ -547,13 +646,6 @@ export async function persistRoleTurnResult(
     // `no_action_needed` is a close-recommendation, not a blocked state —
     // treating it as blocked would strand acknowledgement cases. Closure
     // happens via the operator's Close-as-no-action action.
-    const messageResolutionQuestions = buildResolutionQuestionsFromMessages({
-      runId: input.runId,
-      turnIndex: input.turnIndex,
-      messages: persistableMessages,
-      teamRoles: input.teamRoles,
-    });
-
     const { state: selfState, hallucinatedBlock } = resolveSelfTurnState({
       resolution: input.result.resolution,
       messageResolutionQuestionCount: messageResolutionQuestions.length,
@@ -851,6 +943,20 @@ async function projectRunToSupportAnalysis(
         select: { id: true },
       });
 
+  const codeEvidence = extractProjectedCodeEvidence(messages);
+  await tx.analysisEvidence.deleteMany({ where: { analysisId: analysis.id } });
+  if (codeEvidence.length > 0) {
+    await tx.analysisEvidence.createMany({
+      data: codeEvidence.map((evidence) => ({
+        analysisId: analysis.id,
+        sourceType: EVIDENCE_SOURCE_TYPE.codeChunk,
+        filePath: evidence.filePath,
+        snippet: evidence.snippet,
+        citation: evidence.citation,
+      })),
+    });
+  }
+
   if (drafterMessage && hasDraft && !isNoDraftMarker && !existing?.drafts.length) {
     // Legacy FAST compatibility: if a drafter proposal exists, keep the
     // approve/dismiss draft flow working. DEEP team runs normally project only
@@ -874,6 +980,78 @@ async function projectRunToSupportAnalysis(
       data: { status: next.status, errorMessage: next.errorMessage },
     });
   }
+}
+
+interface ProjectedCodeEvidence {
+  filePath: string;
+  snippet: string | null;
+  citation: string;
+}
+
+function extractProjectedCodeEvidence(
+  messages: Array<{
+    kind: string;
+    content: string;
+    toolName: string | null;
+  }>
+): ProjectedCodeEvidence[] {
+  const evidenceByCitation = new Map<string, ProjectedCodeEvidence>();
+  for (const message of messages) {
+    if (
+      message.kind !== AGENT_TEAM_MESSAGE_KIND.toolResult ||
+      !isSearchCodeTool(message.toolName)
+    ) {
+      continue;
+    }
+
+    for (const evidence of readSearchCodeEvidence(message.content)) {
+      evidenceByCitation.set(evidence.citation, evidence);
+    }
+  }
+
+  return [...evidenceByCitation.values()].slice(0, 12);
+}
+
+function isSearchCodeTool(toolName: string | null): boolean {
+  return toolName === "searchCode" || toolName === "search_code";
+}
+
+function readSearchCodeEvidence(content: string): ProjectedCodeEvidence[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return [];
+  }
+
+  if (!isRecord(parsed) || !Array.isArray(parsed.results)) {
+    return [];
+  }
+
+  return parsed.results.flatMap((result): ProjectedCodeEvidence[] => {
+    if (!isRecord(result)) {
+      return [];
+    }
+
+    const filePath = readString(result, "file") ?? readString(result, "filePath");
+    if (!filePath) {
+      return [];
+    }
+
+    const lines = readString(result, "lines");
+    const snippet = readString(result, "snippet");
+    const citation = lines ? `${filePath}:${lines}` : filePath;
+    return [{ filePath, snippet, citation }];
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
 function findDrafterProposal(
@@ -1094,6 +1272,115 @@ export async function markRunWaiting(runId: string): Promise<void> {
   });
 }
 
+export async function recordRunWarning(input: { runId: string; message: string }): Promise<void> {
+  const event = await prisma.$transaction(async (tx) => {
+    const run = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: input.runId },
+      select: { id: true, workspaceId: true },
+    });
+
+    return recordEvent(tx, {
+      kind: AGENT_TEAM_EVENT_KIND.error,
+      runId: run.id,
+      workspaceId: run.workspaceId,
+      actor: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+      payload: {
+        message: input.message,
+        recoverable: true,
+      },
+    });
+  });
+
+  if (event) {
+    logRecordedEvents([event]);
+  }
+}
+
+export async function prepareTurnBudgetSynthesis(
+  input: PrepareTurnBudgetSynthesisInput
+): Promise<void> {
+  const events = await prisma.$transaction(async (tx) => {
+    const run = await tx.agentTeamRun.findUniqueOrThrow({
+      where: { id: input.runId },
+      select: { id: true, workspaceId: true },
+    });
+    const message = await tx.agentTeamMessage.create({
+      data: {
+        runId: input.runId,
+        threadId: "thread:budget-synthesis",
+        fromRoleKey: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+        fromRoleSlug: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+        fromRoleLabel: "Orchestrator",
+        toRoleKey: input.role.roleKey,
+        kind: AGENT_TEAM_MESSAGE_KIND.question,
+        subject: "Budget synthesis",
+        content: buildBudgetSynthesisPrompt(input.maxTurns),
+        parentMessageId: null,
+        refs: [],
+        toolName: null,
+        metadata: { reason: "turn_budget", maxTurns: input.maxTurns },
+      },
+      select: { id: true },
+    });
+    const wakeReason = `turn-budget:${input.maxTurns}:synthesis`;
+
+    await tx.agentTeamRoleInbox.upsert({
+      where: {
+        runId_roleKey: {
+          runId: input.runId,
+          roleKey: input.role.roleKey,
+        },
+      },
+      create: {
+        runId: input.runId,
+        roleKey: input.role.roleKey,
+        state: AGENT_TEAM_ROLE_INBOX_STATE.queued,
+        wakeReason,
+        unreadCount: 1,
+        lastWokenAt: new Date(),
+      },
+      update: {
+        state: AGENT_TEAM_ROLE_INBOX_STATE.queued,
+        wakeReason,
+        unreadCount: { increment: 1 },
+        lastWokenAt: new Date(),
+      },
+    });
+
+    return recordEvents(tx, [
+      {
+        kind: AGENT_TEAM_EVENT_KIND.messageSent,
+        runId: input.runId,
+        workspaceId: run.workspaceId,
+        actor: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+        target: input.role.roleKey,
+        messageKind: AGENT_TEAM_MESSAGE_KIND.question,
+        payload: {
+          messageId: message.id,
+          fromRoleKey: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+          toRoleKey: input.role.roleKey,
+          kind: AGENT_TEAM_MESSAGE_KIND.question,
+          subject: "Budget synthesis",
+          contentPreview: buildBudgetSynthesisPrompt(input.maxTurns).slice(0, 280),
+        },
+      },
+      {
+        kind: AGENT_TEAM_EVENT_KIND.roleQueued,
+        runId: input.runId,
+        workspaceId: run.workspaceId,
+        actor: AGENT_TEAM_EVENT_ACTOR_SYSTEM.orchestrator,
+        target: input.role.roleKey,
+        payload: {
+          roleKey: input.role.roleKey,
+          wakeReason,
+        },
+      },
+    ]);
+  });
+
+  logRecordedEvents(events);
+}
+
 export async function markRunFailed(input: { runId: string; errorMessage: string }): Promise<void> {
   const event = await prisma.$transaction(async (tx) => {
     const current = await tx.agentTeamRun.findUniqueOrThrow({
@@ -1194,6 +1481,14 @@ function computeDurationMs(startedAt: Date | null, completedAt: Date | null): nu
   if (!startedAt || !completedAt) return 0;
   const delta = completedAt.getTime() - startedAt.getTime();
   return delta < 0 ? 0 : delta;
+}
+
+function buildBudgetSynthesisPrompt(maxTurns: number): string {
+  return [
+    `The run reached its ${maxTurns}-turn budget. Stop broad investigation and synthesize the best current outcome from the transcript.`,
+    "Emit a concise decision or proposal that covers: strongest finding, likely root cause, recommended fix or PR direction, evidence references, and remaining uncertainty.",
+    "If there is already reviewer approval and the fix is bounded, address pr_creator with the concrete PR direction. Otherwise address reviewer or broadcast with the strongest next action. Do not ask for more generic investigation.",
+  ].join("\n");
 }
 
 /**
@@ -1361,6 +1656,65 @@ function buildOpenQuestionRow(
   };
 }
 
+async function inferAnsweredInternalQuestions(
+  client: OpenQuestionInferenceClient,
+  input: {
+    runId: string;
+    answererRoleKey: string;
+    messages: AgentTeamDialogueMessage[];
+  }
+): Promise<Array<{ id: string; askedByRoleKey: string; answerPreview: string }>> {
+  const responseMessages = input.messages.filter(isInternalQuestionResponseMessage);
+  if (responseMessages.length === 0) {
+    return [];
+  }
+
+  const openQuestions = await client.agentTeamOpenQuestion.findMany({
+    where: {
+      runId: input.runId,
+      ownerRoleKey: input.answererRoleKey,
+      status: AGENT_TEAM_OPEN_QUESTION_STATUS.open,
+    },
+    select: {
+      id: true,
+      askedByRoleKey: true,
+    },
+  });
+
+  return openQuestions.flatMap((question) => {
+    const answer = responseMessages.find(
+      (message) =>
+        message.toRoleKey === question.askedByRoleKey ||
+        message.toRoleKey === AGENT_TEAM_TARGET.broadcast
+    );
+    if (!answer) {
+      return [];
+    }
+
+    return [
+      {
+        id: question.id,
+        askedByRoleKey: question.askedByRoleKey,
+        answerPreview: answer.content.slice(0, 1000),
+      },
+    ];
+  });
+}
+
+function isInternalQuestionResponseMessage(message: AgentTeamDialogueMessage): boolean {
+  const responseKinds: string[] = [
+    AGENT_TEAM_MESSAGE_KIND.answer,
+    AGENT_TEAM_MESSAGE_KIND.evidence,
+    AGENT_TEAM_MESSAGE_KIND.hypothesis,
+    AGENT_TEAM_MESSAGE_KIND.challenge,
+    AGENT_TEAM_MESSAGE_KIND.decision,
+    AGENT_TEAM_MESSAGE_KIND.proposal,
+    AGENT_TEAM_MESSAGE_KIND.approval,
+  ];
+
+  return responseKinds.includes(message.kind);
+}
+
 async function reviewerApprovalExists(
   tx: MessageCountClient,
   runId: string,
@@ -1475,6 +1829,50 @@ function mapMessageRow(row: {
     metadata: parseJsonRecord(row.metadata),
     createdAt: row.createdAt.toISOString(),
   });
+}
+
+function mapMessageRowForTurnContext(
+  row: Parameters<typeof mapMessageRow>[0]
+): AgentTeamDialogueMessage {
+  const message = mapMessageRow(row);
+  if (
+    message.kind !== AGENT_TEAM_MESSAGE_KIND.toolCall &&
+    message.kind !== AGENT_TEAM_MESSAGE_KIND.toolResult
+  ) {
+    return message;
+  }
+
+  return {
+    ...message,
+    content: summarizeToolMessageForPrompt(message),
+  };
+}
+
+function summarizeToolMessageForPrompt(message: AgentTeamDialogueMessage): string {
+  if (message.kind === AGENT_TEAM_MESSAGE_KIND.toolCall) {
+    return truncatePromptContent(`Tool input: ${message.content}`, 280);
+  }
+
+  if (isSearchCodeTool(message.toolName)) {
+    const evidence = readSearchCodeEvidence(message.content).slice(0, 3);
+    if (evidence.length > 0) {
+      return evidence
+        .map((item, index) => {
+          const snippet = item.snippet ? ` — ${truncatePromptContent(item.snippet, 180)}` : "";
+          return `${index + 1}. ${item.citation}${snippet}`;
+        })
+        .join("\n");
+    }
+  }
+
+  return truncatePromptContent(message.content, PROMPT_TOOL_CONTENT_LIMIT);
+}
+
+function truncatePromptContent(content: string, maxChars: number): string {
+  if (content.length <= maxChars) {
+    return content;
+  }
+  return `${content.slice(0, maxChars)}... [truncated]`;
 }
 
 function mapFactRow(row: {

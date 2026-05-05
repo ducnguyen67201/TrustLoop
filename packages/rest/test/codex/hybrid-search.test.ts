@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+const mockGenerateEmbeddings = vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]);
+
 // Mock env and database before importing hybrid-search
 vi.mock("@shared/env", () => ({
   env: { OPENAI_API_KEY: "test-key" },
@@ -7,11 +9,25 @@ vi.mock("@shared/env", () => ({
 vi.mock("@shared/database", () => ({
   prisma: { $queryRawUnsafe: vi.fn().mockResolvedValue([]) },
 }));
+vi.mock("@shared/rest/services/codex/embedding", () => ({
+  splitIdentifiers: (query: string) => query,
+  generate: mockGenerateEmbeddings,
+  formatVector: (embedding: number[]) => `[${embedding.join(",")}]`,
+}));
+vi.mock("@shared/rest/services/llm-manager-service", () => ({
+  resolveRoute: () => null,
+}));
 vi.mock("openai", () => ({
   default: vi.fn(),
 }));
 
-const { reciprocalRankFusion } = await import("../../src/codex/hybrid-search");
+const {
+  buildKeywordTsQuery,
+  extractLiteralSearchTerms,
+  hybridSearch,
+  literalSearch,
+  reciprocalRankFusion,
+} = await import("../../src/codex/hybrid-search");
 type ScoredChunk = import("../../src/codex/hybrid-search").ScoredChunk;
 
 function makeChunk(id: string, score: number, overrides: Partial<ScoredChunk> = {}): ScoredChunk {
@@ -99,5 +115,67 @@ describe("reciprocalRankFusion", () => {
     for (let i = 1; i < fused.length; i++) {
       expect(fused[i - 1]!.rrfScore).toBeGreaterThanOrEqual(fused[i]!.rrfScore);
     }
+  });
+});
+
+describe("extractLiteralSearchTerms", () => {
+  it("keeps route-like literals intact", () => {
+    expect(extractLiteralSearchTerms("Check `/api/does-not-exist` endpoint")).toContain(
+      "/api/does-not-exist"
+    );
+  });
+
+  it("ignores plain prose tokens", () => {
+    expect(extractLiteralSearchTerms("customer reported a problem")).toEqual([]);
+  });
+});
+
+describe("buildKeywordTsQuery", () => {
+  it("drops punctuation that would make to_tsquery invalid", () => {
+    expect(
+      buildKeywordTsQuery('Tool input: {"query":"Check `/api/does-not-exist` endpoint"}')
+    ).toBe("tool & input & query & check & api/does-not-exist & endpoint");
+  });
+});
+
+describe("literalSearch", () => {
+  it("uses an escaped substring fallback for URL and path-like queries", async () => {
+    const { prisma } = await import("@shared/database");
+    vi.mocked(prisma.$queryRawUnsafe).mockResolvedValueOnce([
+      makeChunk("error-panel", 1, {
+        filePath: "apps/demo-app/src/components/error-panel.tsx",
+        content: 'fetch("/api/does-not-exist")',
+      }),
+    ]);
+
+    const results = await literalSearch("version_1", "/api/does-not-exist");
+
+    expect(results[0]?.filePath).toBe("apps/demo-app/src/components/error-panel.tsx");
+    expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining("ILIKE"),
+      "version_1",
+      expect.any(Number),
+      expect.any(Number),
+      "%/api/does-not-exist%"
+    );
+  });
+});
+
+describe("hybridSearch", () => {
+  it("falls back to keyword and literal search when embeddings are unavailable", async () => {
+    const { prisma } = await import("@shared/database");
+    mockGenerateEmbeddings.mockRejectedValueOnce(new Error("embedding route unavailable"));
+    vi.mocked(prisma.$queryRawUnsafe)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        makeChunk("error-panel", 1, {
+          filePath: "apps/demo-app/src/components/error-panel.tsx",
+          content: 'fetch("/api/does-not-exist")',
+        }),
+      ]);
+
+    const results = await hybridSearch("/api/does-not-exist", "version_1");
+
+    expect(results[0]?.filePath).toBe("apps/demo-app/src/components/error-panel.tsx");
   });
 });

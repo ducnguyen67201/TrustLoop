@@ -72,9 +72,11 @@ export function useAnalysis(conversationId: string | null, workspaceId: string) 
     setIsMutating(true);
 
     try {
+      // Initial trigger respects the in-flight dedupe in agent-team start();
+      // the explicit "Re-run" button in AgentTeamRunView opts into force:true.
       await trpcMutation<StartAgentTeamRunInput, AgentTeamRunSummary>(
         "agentTeam.startRun",
-        { conversationId, teamConfig: AGENT_TEAM_CONFIG.DEEP },
+        { conversationId, teamConfig: AGENT_TEAM_CONFIG.DEEP, force: false },
         { withCsrf: true }
       );
       setIsAnalyzing(true);

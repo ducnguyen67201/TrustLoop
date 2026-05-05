@@ -63,6 +63,7 @@ export const startAgentTeamRunInputSchema = z.object({
   teamId: z.string().min(1).optional(),
   analysisId: z.string().min(1).optional(),
   teamConfig: agentTeamConfigSchema.default(AGENT_TEAM_CONFIG.DEEP),
+  force: z.boolean().default(false),
 });
 
 export const getAgentTeamRunInputSchema = z.object({

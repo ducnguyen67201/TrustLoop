@@ -107,6 +107,16 @@ describe("ResolutionPanel", () => {
     expect(screen.getByTestId("resolution-customer-copy")).toBeTruthy();
   });
 
+  it("explains that customer-target questions keep the run waiting", async () => {
+    mockPendingResponse([customerQuestion]);
+
+    render(<ResolutionPanel runId="run_1" runStatus="waiting" roleLabels={roleLabels} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Waiting on customer reply/)).toBeTruthy();
+    });
+  });
+
   it("flips Copy button to 'Copied' optimistically even when clipboard write rejects", async () => {
     mockPendingResponse([customerQuestion]);
     // Simulate a locked-down browser: writeText rejects, but the UI must

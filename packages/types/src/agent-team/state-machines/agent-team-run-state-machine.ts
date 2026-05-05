@@ -19,8 +19,7 @@ export interface AgentTeamRunContext {
 // `waitForResolution`  — pause: open questions or blocked inboxes remain;
 //                        operator must resume.
 // `fail`               — any non-terminal can fail (dispatch error,
-//                        MAX_AGENT_TEAM_TURNS exceeded, activity error past
-//                        the retry budget).
+//                        activity error past the retry budget).
 // `resume`             — operator-triggered resume from a `waiting` run.
 export type AgentTeamRunFsmEvent =
   | { type: "start" }

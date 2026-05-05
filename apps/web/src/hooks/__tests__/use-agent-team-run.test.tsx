@@ -44,7 +44,7 @@ describe("useAgentTeamRun", () => {
 
     expect(mocks.trpcMutation).toHaveBeenCalledWith(
       "agentTeam.startRun",
-      { conversationId: "conversation_1", teamConfig: AGENT_TEAM_CONFIG.DEEP },
+      { conversationId: "conversation_1", teamConfig: AGENT_TEAM_CONFIG.DEEP, force: true },
       { withCsrf: true }
     );
   });

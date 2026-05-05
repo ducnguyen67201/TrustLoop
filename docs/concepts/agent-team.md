@@ -101,6 +101,12 @@ only; reply/PR actions live in the team transcript and `AgentPullRequest` rows.
 - A queued or running run for the same `(workspaceId, conversationId)` dedupes and is returned instead of starting a duplicate.
 
 On success: inserts `AgentTeamRun` (status = `queued`) with a **`teamSnapshot` JSON** of the team's roles + edges at dispatch time. Editing the team later does not mutate this run.
+Dispatch also asks the session-correlation service for the conversation's
+matched session digest and passes it into the workflow when available. The
+digest is not required — failures to resolve session context are logged and the
+run continues with thread evidence only — but when present it gives every role
+route history, last actions, console/errors, network failures, and failure point
+context.
 
 ## Main workflow
 
@@ -110,8 +116,13 @@ On success: inserts `AgentTeamRun` (status = `queued`) with a **`teamSnapshot` J
 
 | Proxy | Timeout | Retries | Used for |
 |---|---|---|---|
-| `lifecycleActivities` | 30s | 1 | `initializeRunState`, `getRunProgress`, `markRunCompleted`, `markRunWaiting`, `markRunFailed` |
+| `lifecycleActivities` | 30s | 1 | `initializeRunState`, `getRunProgress`, `recordRunWarning`, `markRunCompleted`, `markRunWaiting`, `markRunFailed` |
 | `turnActivities` | 5 min | 2, heartbeat 45s | `claimNextQueuedInbox`, `loadTurnContext`, `runTeamTurnActivity`, `persistRoleTurnResult` |
+
+`runTeamTurnActivity()` keeps heartbeating while it waits on the agent service's
+`/team-turn` HTTP request. The agent call can legitimately take longer than the
+45s Temporal heartbeat window, so the queue worker sends a periodic heartbeat
+until the request resolves or the activity's own 4-minute agent timeout fires.
 
 ### Turn loop
 
@@ -126,7 +137,7 @@ On success: inserts `AgentTeamRun` (status = `queued`) with a **`teamSnapshot` J
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ loop  (turnCount < MAX_AGENT_TEAM_TURNS = 20)               │
+│ loop  (turnCount < MAX_AGENT_TEAM_TURNS = 40)               │
 ├─────────────────────────────────────────────────────────────┤
 │  1. claimNextQueuedInbox(runId)                             │
 │       ↳ transactional: first queued inbox → running         │
@@ -145,11 +156,21 @@ On success: inserts `AgentTeamRun` (status = `queued`) with a **`teamSnapshot` J
 │ getRunProgress → decide terminal state                      │
 │   openQuestions>0 or blockedInboxes>0 → markRunWaiting      │
 │   otherwise                             → markRunCompleted  │
-│ turnCount exhausted or throw            → markRunFailed     │
+│ turnCount exhausted → budget-synthesis handoff, then settle  │
+│ throw              → markRunFailed                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Caps live in `apps/queue/src/domains/agent-team/agent-team-run-routing.ts:14-16`: `MAX_AGENT_TEAM_TURNS = 20`, `MAX_AGENT_TEAM_MESSAGES = 40`, `MAX_ROLE_TURNS = 8`.
+Caps live in `apps/queue/src/domains/agent-team/agent-team-run-routing.ts:14-16`: `MAX_AGENT_TEAM_TURNS = 40`, `MAX_AGENT_TEAM_MESSAGES = 160`, `MAX_ROLE_TURNS = 8`.
+When a turn would exceed the message budget, `persistRoleTurnResult()` persists
+the best-effort subset that fits, preferring finding/dialogue messages over
+passive tool trace/status messages, records a recoverable `error` event, and
+continues the workflow instead of failing the run.
+When the workflow reaches `MAX_AGENT_TEAM_TURNS`, it records a recoverable
+warning, wakes a synthesis role (Architect if present, otherwise the best
+available specialist) for one reserved "Budget synthesis" turn, then settles
+with saved progress: `waiting` if queued inboxes, blocked inboxes, or open
+questions remain; otherwise `completed`.
 
 ## Agent service call
 
@@ -181,9 +202,9 @@ Caps live in `apps/queue/src/domains/agent-team/agent-team-run-routing.ts:14-16`
 - `apps/agents/src/agent.ts` — `runTeamTurn()` builds a Mastra `Agent` per turn using the role registry
 - `apps/agents/src/roles/role-registry.ts:21` defines five roles, each with:
   - a **system prompt** (one file per role: `architect.prompt.ts`, `reviewer.prompt.ts`, `code-reader.prompt.ts`, `pr-creator.prompt.ts`, `rca-analyst.prompt.ts`)
-  - a **default tool set** (`searchCode`, `searchSentry`, `createPullRequest`)
+  - a **default tool set** (`searchCode`, `searchSentry`, `readRepositoryFile`, `createPullRequest`)
   - a **default max-step budget**
-- Override points live on `AgentTeamRole`: `systemPromptOverride`, `toolIds`, `maxSteps`, `provider`, `model`. The registry supplies defaults only.
+- Override points live on `AgentTeamRole`: `systemPromptOverride`, `toolIds`, `maxSteps`, `provider`, `model`. The registry supplies defaults by role. `pr_creator` always receives the PR tool chain (`searchCode`, `readRepositoryFile`, `createPullRequest`) in addition to any configured tools so older team snapshots cannot strand it without the tools needed to act.
 
 ### Output shape
 
@@ -202,6 +223,24 @@ Caps live in `apps/queue/src/domains/agent-team/agent-team-run-routing.ts:14-16`
 ```
 
 Validated by `agentTeamRoleTurnOutputSchema.parse()` inside `runTeamTurnActivity` (activity.ts:259). Invalid output → Temporal retry.
+
+Agents emit compressed Positional JSON first (`packages/types/src/positional-format/agent-team-turn.ts`).
+The `m[].t` message target should be a role key string such as `rca_analyst`,
+`broadcast`, or `orchestrator`. Because the prompt displays addressable peers
+as a numbered list, reconstruction also accepts a numeric `m[].t` and maps it
+to the current turn's displayed addressable role index before validation.
+Every team turn also receives a high-signal `Runtime Debug Evidence` prompt
+section derived from the matched session digest. RCA reads that section first:
+it flattens failure point, recent actions, network failures, console signals,
+JS exceptions, routes, and environment so runtime evidence is not buried inside
+raw JSON.
+Tool trace messages are built only from structured tool-result objects. Empty
+provider placeholders are skipped so the transcript does not fill with
+`unknown` / `""` rows.
+When a required-tool role returns tool results but no final prose, the agent
+server synthesizes an evidence message from the tool output instead of failing
+the Temporal activity. This keeps code-reader/RCA evidence moving through the
+team even when the model stops after tool calls.
 
 ## Addressed dialogue
 
@@ -242,17 +281,69 @@ This is the core novelty. Five roles, five inboxes, typed messages with explicit
   - `blocked` → also wake architect
   - `approval` → also wake pr-creator
 - Merge in `nextSuggestedRoleKeys` from the agent's output
-- **Hard gate:** pr-creator is removed unless `hasReviewerApproval === true` somewhere in the run history. This is the single hardcoded approval check. There is no pending signing/human-in-the-loop primitive yet.
+- **Reviewer gate:** when the run snapshot includes a Reviewer, pr-creator is
+  removed unless `hasReviewerApproval === true` somewhere in the run history.
+  When a custom `DEEP` snapshot has no Reviewer, reviewer-directed handoffs fall
+  through to PR Creator if that role is addressable; the team should degrade
+  instead of locking on an absent role.
+- **Actionable PR handoff:** once code/RCA evidence identifies a repository,
+  target file, relevant snippet, fix direction, and test scope, Architect should
+  stop repeating investigation questions and hand the proposal to PR Creator.
+  PR Creator reads the full file from the same indexed repository with
+  `readRepositoryFile`, builds the minimal post-fix file content, then calls
+  `createPullRequest`. Non-actionable uncertainty such as "cannot locate target
+  file" or "confirm with customer" does not wake PR Creator.
+  When no Reviewer role is present, PR Creator is forced into the tool loop so
+  it must inspect repository evidence instead of returning a prose-only block.
+  The agent service also preloads repository files named in the handoff before
+  the PR Creator turn; that role is an executor, so repo/file evidence should
+  turn into edited full-file content and a draft PR, not another request for
+  analysis. If at least one target file is preloaded successfully, PR Creator is
+  given only `createPullRequest` for that turn so it cannot spend the turn
+  re-searching or re-reading the already supplied file evidence.
+  If GitHub rejects `createPullRequest` (for example the App cannot create refs
+  in the target repo), the agent service turns that tool result into an
+  operator-facing `needs_input` block. It does not route back to Architect for
+  more investigation because the fix is known and the blocker is permissions.
+- **Architect conclusion cleanup:** if Architect ends with only a broadcast
+  hypothesis, the agent service normalizes obvious conclusions before the queue
+  sees them. Concrete session failures cannot close as `no_action_needed`
+  before specialist evidence exists; the service routes them to RCA and Code
+  Reader. Once file-backed evidence exists, fix findings are promoted to a
+  reviewer or PR Creator proposal so the run does not stop on an inert
+  broadcast.
+- **Human-input gate:** if the turn dispatches any customer/operator question,
+  `persistRoleTurnResult()` still wakes roles that were explicitly addressed by
+  that turn's messages, but drops implicit/synthetic wakeups such as
+  `nextSuggestedRoleKeys` and the synthetic architect wakeup from `blocked`.
+  The sender is marked `blocked`; once the explicit role work drains, the run
+  can move to `waiting` for the resolution panel.
+- **Blocked self-loop guard:** a `blocked` message normally wakes Architect, but
+  never wakes the sender's own role key. This prevents Architect from repeatedly
+  waking itself after saying it has no customer specifics; it must either route
+  evidence to Reviewer, ask a human/customer resolution question, or let the run
+  pause.
 
 - `assertValidMessageRouting()` enforces `canRouteTo(sender.slug, target.slug)` from `packages/types/src/agent-team/agent-team-routing-policy.ts`. Delivery happens by `roleKey`, but the allow/deny policy still operates on preset role types. Invalid targets throw, which aborts `persistRoleTurnResult` and causes a Temporal retry of the turn.
 - Human resolution targets (`customer`, `operator`) are not role inboxes. If a role emits a question-like dialogue message to either target, the queue does not create a phantom inbox; it bridges the message into a `question_dispatched` event, marks the sender blocked, and lets the run pause in `waiting` for the resolution panel.
+- Internal open questions are usually closed explicitly via
+  `resolvedQuestionIds`. The queue also infers the common handoff case: if the
+  owning role sends an `answer`/`evidence`/`proposal`/approval-style response to
+  the asker or `broadcast`, the owned internal question is marked answered so
+  missing bookkeeping ids do not strand the run.
+- Customer-targeted questions are resolved by a later customer message in the
+  support thread. On Resume, `resumeRun()` checks for customer events newer
+  than the dispatched question; if found, it records a synthetic customer
+  answer, emits `question_answered`, queues the asking role, and starts the
+  resume workflow. If no newer customer reply exists, Resume rejects with a
+  conflict instead of restarting into the same waiting state.
 - Unknown/non-dialogue targets still throw. `nextSuggestedRoleKeys` are filtered to existing role keys that pass the same slug-level routing policy.
 
 ### Run terminal states
 
 - `completed` — no queued inboxes, no open questions, no blocked inboxes
-- `waiting` — no queued inboxes but open questions or blocked inboxes remain (human intervention, or a follow-up turn triggered by external signal, can resume)
-- `failed` — `MAX_AGENT_TEAM_TURNS` exceeded or an activity threw past its retry budget
+- `waiting` — unresolved queued work, open questions, or blocked inboxes remain after the run pauses for human input or a turn-budget checkpoint
+- `failed` — an activity threw past its retry budget
 
 ## Event log (source of truth)
 
@@ -346,7 +437,7 @@ Metrics run **3 hours before** archive by design — archive refuses to drop any
 |---|---|
 | Agent service down / timeout | Activity retries (2x, 5m), then workflow catches, `markRunFailed`, status `failed` |
 | Agent returns invalid JSON | Zod validate throws in activity, retry; persistent failure → `failed` |
-| `MAX_AGENT_TEAM_TURNS` exceeded | Workflow `markRunFailed` with a clear error message |
+| `MAX_AGENT_TEAM_TURNS` reached | Workflow records a recoverable warning, runs one reserved budget-synthesis handoff, and settles `waiting` when work remains or `completed` when drained |
 | Role tries to address a role it can't reach | `assertValidMessageRouting` throws, activity retries; persistent → `failed` |
 | Run has open questions and no queued inboxes | `waiting` — not a failure, but terminal until a follow-up turn is triggered |
 | Partition drop attempted with incomplete metrics | Archive skips the partition, logs `rollup-incomplete`, retries tomorrow |
@@ -355,7 +446,7 @@ Metrics run **3 hours before** archive by design — archive refuses to drop any
 ## Known thin spots
 
 - **`analysisId` is plumbed through the schema and DB but not through the UI hook.** Linking a team run to a prior projection row is not in the prompt yet.
-- **PR creator gating is hardcoded** (`hasReviewerApproval`). There is no general approval/signing primitive.
+- **PR creator gating is conditional on Reviewer being present.** There is no general approval/signing primitive yet.
 - **Metrics rollup has no UI.** Exposed to SQL only today.
 - **Team graph edges seed the DEEP snapshot but runtime routing still uses the routing policy + role hints.** Editing edges changes the recorded blueprint, but role-to-role delivery is still validated by policy.
 - **Single task queue (`TASK_QUEUES.CODEX`).** All three agent-team workflows (run, metrics, archive) share the codex queue. If codex indexing saturates the queue, agent-team runs wait.
@@ -368,7 +459,16 @@ Metrics run **3 hours before** archive by design — archive refuses to drop any
 - **Partitioned events table is managed by migration/DB ops, not Prisma or queue workers.** `db:push` on `AgentTeamRunEvent` recreates it without partitions — use `db:migrate`.
 - **Archive drops are double-gated** on `AGENT_ARCHIVE_MODE` AND rollup-watermark completeness. Loosening either is a data-loss risk.
 - **`TASK_QUEUES.CODEX` is where the run workflow lives.** Not SUPPORT. The queue worker registers both sets of workflows/activities.
-- **Turn budgets are enforced by the workflow, not the agent.** A buggy agent that emits infinite messages hits `MAX_AGENT_TEAM_MESSAGES = 40` inside `persistRoleTurnResult` and the whole run fails fast.
+- **Turn budgets are enforced by the workflow, not the agent.** Reaching `MAX_AGENT_TEAM_TURNS = 40` records a recoverable warning, asks the synthesis role for the best current RCA/PR direction, and preserves partial progress instead of failing the run. A buggy agent that emits too many messages hits `MAX_AGENT_TEAM_MESSAGES = 160` inside `persistRoleTurnResult`; the queue persists the best-effort subset that fits and records a recoverable error event instead of throwing away the turn.
+- **PR creation is reviewer-gated only when Reviewer exists in `teamSnapshot`.**
+  `pr_creator` is removed from wake targets until a Reviewer emits an
+  `approval` message. If a custom DEEP team omits Reviewer, Architect can hand a
+  concrete proposal directly to PR Creator; PR Creator treats the Architect
+  proposal + accepted facts as the review gate.
+- **Session digest is part of Agent Team context.** DEEP/FAST/STANDARD runs all
+  receive the matched session digest when session-correlation can resolve one
+  for the conversation; runs do not rely solely on Slack text when captured SDK
+  evidence exists.
 - **The queue → agents `/team-turn` call uses `withServiceAuth` (`tli_` key).** Same rule as `/analyze`: never expose `/team-turn` publicly.
 
 ## Related concepts

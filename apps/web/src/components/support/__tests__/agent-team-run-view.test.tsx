@@ -159,4 +159,61 @@ describe("AgentTeamRunView", () => {
 
     expect(screen.getByText("running")).toBeTruthy();
   });
+
+  it("disables the re-run button while a run is streaming so rapid clicks cannot spawn concurrent paid runs", () => {
+    const onStartRun = vi.fn();
+    render(
+      <AgentTeamRunView
+        error={null}
+        isLoading={false}
+        isMutating={false}
+        isStreaming={true}
+        onStartRun={onStartRun}
+        run={buildRunSummary()}
+      />
+    );
+
+    const button = screen.getByRole("button", { name: /Re-run/i });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+    expect(onStartRun).not.toHaveBeenCalled();
+  });
+
+  it("labels empty serialized tool results instead of rendering raw quotes", () => {
+    const run = buildRunSummary();
+    render(
+      <AgentTeamRunView
+        error={null}
+        isLoading={false}
+        isMutating={false}
+        isStreaming={false}
+        onStartRun={vi.fn()}
+        run={{
+          ...run,
+          messages: [
+            {
+              id: "tool_1",
+              runId: "run_1",
+              threadId: "thread_1",
+              fromRoleKey: "architect",
+              fromRoleSlug: "architect",
+              fromRoleLabel: "Architect",
+              toRoleKey: "broadcast",
+              kind: "tool_result",
+              subject: "unknown result",
+              content: '""',
+              parentMessageId: null,
+              refs: [],
+              toolName: "unknown",
+              metadata: null,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByText(/tool_result/));
+    expect(screen.getByText("(empty tool output)")).toBeTruthy();
+  });
 });

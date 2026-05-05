@@ -2,7 +2,11 @@ import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { prisma } from "@shared/database";
 import { env } from "@shared/env";
-import { ensureWorkspace, getSettings } from "@shared/rest/codex/shared";
+import {
+  DEFAULT_GITHUB_PERMISSIONS,
+  ensureWorkspace,
+  getSettings,
+} from "@shared/rest/codex/shared";
 import {
   type ConnectGithubInstallationRequest,
   type ConnectGithubInstallationResponse,
@@ -28,7 +32,12 @@ import { verifyAndDecodeGithubState } from "./install-url";
  * Uses app-level (not installation-level) auth because we only need the
  * metadata, not repo access.
  */
-async function fetchInstallationOwner(installationId: number): Promise<string> {
+interface InstallationMetadata {
+  owner: string;
+  missingPermissions: string[];
+}
+
+async function fetchInstallationMetadata(installationId: number): Promise<InstallationMetadata> {
   const appId = env.GITHUB_APP_ID;
   const privateKey = env.GITHUB_APP_PRIVATE_KEY;
 
@@ -43,7 +52,11 @@ async function fetchInstallationOwner(installationId: number): Promise<string> {
 
   const { data } = await appOctokit.apps.getInstallation({ installation_id: installationId });
   const account = data.account as { login?: string } | null;
-  return account?.login ?? "unknown";
+  const permissions = isPermissionRecord(data.permissions) ? data.permissions : {};
+  return {
+    owner: account?.login ?? "unknown",
+    missingPermissions: getMissingGithubPermissions(permissions),
+  };
 }
 
 /**
@@ -91,19 +104,20 @@ export async function connectGithubInstallation(
 ): Promise<ConnectGithubInstallationResponse> {
   const parsed = connectGithubInstallationRequestSchema.parse(input);
   await ensureWorkspace(parsed.workspaceId);
+  const metadata = await fetchInstallationMetadata(parsed.githubInstallationId);
 
   await prisma.gitHubInstallation.upsert({
     where: { workspaceId: parsed.workspaceId },
     create: {
       workspaceId: parsed.workspaceId,
       githubInstallationId: parsed.githubInstallationId,
-      installationOwner: parsed.installationOwner,
-      missingPermissions: [],
+      installationOwner: metadata.owner,
+      missingPermissions: metadata.missingPermissions,
     },
     update: {
       githubInstallationId: parsed.githubInstallationId,
-      installationOwner: parsed.installationOwner,
-      missingPermissions: [],
+      installationOwner: metadata.owner,
+      missingPermissions: metadata.missingPermissions,
       connectedAt: new Date(),
     },
   });
@@ -166,6 +180,14 @@ export async function refreshInstallationRepos(workspaceId: string): Promise<voi
   }
 
   const githubRepos = await fetchInstallationRepositories(installation.githubInstallationId);
+  const metadata = await fetchInstallationMetadata(installation.githubInstallationId);
+  await prisma.gitHubInstallation.update({
+    where: { workspaceId },
+    data: {
+      installationOwner: metadata.owner,
+      missingPermissions: metadata.missingPermissions,
+    },
+  });
 
   for (const repo of githubRepos) {
     await prisma.repository.upsert({
@@ -202,13 +224,44 @@ export async function handleGithubInstallationCallback(
   state: string
 ): Promise<{ workspaceId: string }> {
   const { workspaceId } = verifyAndDecodeGithubState(state);
-  const owner = await fetchInstallationOwner(installationId);
+  const metadata = await fetchInstallationMetadata(installationId);
 
   await connectGithubInstallation({
     workspaceId,
     githubInstallationId: installationId,
-    installationOwner: owner,
+    installationOwner: metadata.owner,
   });
 
   return { workspaceId };
+}
+
+function isPermissionRecord(value: unknown): value is Record<string, string> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getMissingGithubPermissions(permissions: Record<string, string>): string[] {
+  return DEFAULT_GITHUB_PERMISSIONS.filter((permission) => {
+    const [name, level] = permission.split(":");
+    if (!name || !level) {
+      return false;
+    }
+    return !permissionLevelSatisfies(permissions[name], level);
+  });
+}
+
+function permissionLevelSatisfies(actual: string | undefined, required: string): boolean {
+  return permissionLevelRank(actual) >= permissionLevelRank(required);
+}
+
+function permissionLevelRank(level: string | undefined): number {
+  switch (level) {
+    case "admin":
+      return 3;
+    case "write":
+      return 2;
+    case "read":
+      return 1;
+    default:
+      return 0;
+  }
 }
